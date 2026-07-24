@@ -3,9 +3,11 @@ package input
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/persona"
 )
@@ -140,6 +142,36 @@ func TestPersonaSelector_NoActionsOnBuiltin(t *testing.T) {
 	}
 	if cmd := s.HandleKeypress(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}); cmd != nil {
 		t.Error("Ctrl+O on the built-in default should be a no-op")
+	}
+}
+
+func TestPersonaSelector_RenderKeepsRowsWithinPanel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := NewPersonaSelector(persona.NewRegistry(""), nil)
+	if err := s.EnterSelect(120, 24); err != nil {
+		t.Fatal(err)
+	}
+	s.items = append(s.items, personaItem{
+		Name:        "software-engineer",
+		Scope:       "project",
+		Description: strings.Repeat("long description ", 20),
+	})
+	s.nav.Total = len(s.items)
+
+	rendered := s.Render()
+	plain := xansi.Strip(rendered)
+	row := ""
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "software-engineer") {
+			row = strings.TrimSpace(line)
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("software-engineer row was not rendered")
+	}
+	if strings.Contains(row, "long description long description long description long description long") || !strings.HasSuffix(row, "…") {
+		t.Fatalf("long persona description was not truncated on its row: %q", row)
 	}
 }
 
