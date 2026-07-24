@@ -87,7 +87,7 @@ Update                            update.go
    │     │
    │     ├─ tryActivePopup           — question modal, approval modal,
    │     │                             or one of the slash-command
-   │     │                             pickers (/model, /tools, ...)
+   │     │                             pickers (/models, /tools, ...)
    │     │                             nothing active for typing 'h'
    │     │
    │     ├─ HandleImageSelectKey     — image picker mode (off)
@@ -105,7 +105,7 @@ View                              view.go      bottom UI shows "h▮"
 ```
 
 The dispatch in `routeKeypress` is a **priority stack**: a popup that is
-shown (e.g. the model picker after `/model`) gets first refusal on every
+shown (e.g. the model picker after `/models`) gets first refusal on every
 key; only if nothing higher up claims the key does it reach the textarea
 shortcuts, and only then the textarea itself.
 

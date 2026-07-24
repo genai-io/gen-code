@@ -55,7 +55,7 @@ func (p Panel) PadViewport(content string) string {
 }
 
 // Wrap renders the assembled content inside a fixed-size box and centers it
-// near the top of the terminal — matching the /model overlay placement.
+// near the top of the terminal — matching the /models overlay placement.
 func (p Panel) Wrap(content string) string {
 	box := lipgloss.NewStyle().
 		Width(p.ContentWidth()).
@@ -120,7 +120,7 @@ type SearchBoxOpts struct {
 }
 
 // RenderSearchBox renders the magnifier-prefixed search input with optional
-// "(filtered/total)" count, matching the /model overlay style.
+// "(filtered/total)" count, matching the /models overlay style.
 func RenderSearchBox(opts SearchBoxOpts) string {
 	// Fill the panel's inner content area; the panel adds Padding(_, 2) so
 	// callers pass ContentWidth() and we subtract that 4 here.

@@ -3,6 +3,31 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.0] - 2026-07-24
+
+### Added
+- Add user-defined OpenAI- and Claude-compatible providers, configured with a base URL and API key ([@skeeey](https://github.com/skeeey) in [#404](https://github.com/genai-io/san/pull/404))
+- Add `/simplify` as a built-in prompt command ([@yanmxa](https://github.com/yanmxa) in [#395](https://github.com/genai-io/san/pull/395))
+- Show elapsed time and output size while Bash commands are running ([@yanmxa](https://github.com/yanmxa) in [#378](https://github.com/genai-io/san/pull/378))
+
+### Changed
+- Simplify agent selection around one implicit default runtime while preserving named custom agents and using unknown names as display labels ([@yanmxa](https://github.com/yanmxa) in [#410](https://github.com/genai-io/san/pull/410), [#417](https://github.com/genai-io/san/pull/417))
+- Trim the built-in tool surface, consolidate Cron and task lookup actions, and ship optional Cron, task-tracker, and SendMessage tools disabled by default ([@yanmxa](https://github.com/yanmxa) in [#380](https://github.com/genai-io/san/pull/380), [#386](https://github.com/genai-io/san/pull/386), [#387](https://github.com/genai-io/san/pull/387))
+- Rebuild `/tool` on the shared tabbed overlay and apply tool toggles on the next turn ([@yanmxa](https://github.com/yanmxa) in [#387](https://github.com/genai-io/san/pull/387))
+- Reduce the system prompt and move tool-specific guidance into tool schemas ([@yanmxa](https://github.com/yanmxa) in [#390](https://github.com/genai-io/san/pull/390))
+- Restrict bypass mode only with a root- and home-removal circuit breaker ([@yanmxa](https://github.com/yanmxa) in [#392](https://github.com/genai-io/san/pull/392))
+- Nest and visually connect Bash and file results beneath their tool calls, with compact single-line Bash previews and full wrapped commands ([@yanmxa](https://github.com/yanmxa) in [#396](https://github.com/genai-io/san/pull/396), [#399](https://github.com/genai-io/san/pull/399), [#400](https://github.com/genai-io/san/pull/400), [#419](https://github.com/genai-io/san/pull/419))
+- Expose Evolve through tool management and enable Autopilot Suggest by default while honoring explicit disablement ([@yanmxa](https://github.com/yanmxa) in [#419](https://github.com/genai-io/san/pull/419))
+
+### Fixed
+- Make Edit recover from whitespace mismatches and stale views, enforce current file observations, render inline diffs, and make Read truncation and empty-file results explicit ([@yanmxa](https://github.com/yanmxa) in [#388](https://github.com/genai-io/san/pull/388))
+- Split agent stop control from spawning and stop background Bash process groups reliably ([@yanmxa](https://github.com/yanmxa) in [#393](https://github.com/genai-io/san/pull/393))
+- Prevent stale, duplicated, reordered, or oversized commits from damaging native terminal scrollback ([@yanmxa](https://github.com/yanmxa) in [#401](https://github.com/genai-io/san/pull/401), [#403](https://github.com/genai-io/san/pull/403), [#405](https://github.com/genai-io/san/pull/405))
+- Retry transient HTTP/2 and opaque stream-termination failures without retrying semantic or client errors ([@yanmxa](https://github.com/yanmxa) in [#406](https://github.com/genai-io/san/pull/406))
+- Make MCP connections safe for concurrent per-agent use and preserve connection intent across reconnects, adoption, and reloads ([@hchenxa](https://github.com/hchenxa) in [#418](https://github.com/genai-io/san/pull/418))
+- Honor globally disabled tools in subagents and avoid delegating clear, bounded work unnecessarily ([@yanmxa](https://github.com/yanmxa) in [#414](https://github.com/genai-io/san/pull/414))
+- Preserve tool-result ordering by releasing queued input only after the complete tool-call batch finishes ([@yanmxa](https://github.com/yanmxa) in [#419](https://github.com/genai-io/san/pull/419))
+
 ## [v1.21.11] - 2026-07-21
 
 ### Added

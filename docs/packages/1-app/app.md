@@ -134,7 +134,7 @@ Sub-model packages:
   `core.Agent` message chain. A replacement agent is seeded from that snapshot
   rather than the UI rendering model; `/clear` and loading another persisted
   session explicitly discard it.
-- On `/plugin install`, `/model`, etc.: `ReloadPluginBackedState()`
+- On `/plugin install`, `/models`, etc.: `ReloadPluginBackedState()`
   re-initializes the affected services and calls `refreshAfterReload`.
 
 ## Tests

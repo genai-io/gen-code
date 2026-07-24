@@ -68,7 +68,7 @@ View 从四种布局里挑一种，自顶向下：
 View()
   1. !m.env.Ready              ──► "\n  Loading..."
   2. 有 popup 活动？           ──► popup.Render() — 全屏
-                                   （slash 命令选择器：/model、
+                                   （slash 命令选择器：/models、
                                    /tools、/skills 等）
   3. 有 modal 活动？           ──► modal.Render() 夹在分隔符之间
                                    （Question modal、Approval modal）

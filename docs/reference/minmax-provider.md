@@ -4,7 +4,7 @@
 
 Integrate MiniMax into `san` as a first-class LLM provider with:
 
-- runtime provider selection through `/provider` and `/model`
+- runtime provider selection through `/provider` and `/models`
 - stable streaming, thinking, and tool-call support
 - correct token usage capture
 - safe model limits for compaction and `max_tokens`
@@ -98,7 +98,7 @@ Reason:
 
 - current `internal/llm/anthropic/client.go` fetches models from the Anthropic Models API
 - MiniMax docs clearly document supported text models, but do not clearly promise a compatible model-list endpoint
-- a static list is enough for `/model` and avoids startup failures
+- a static list is enough for `/models` and avoids startup failures
 
 ## Token Limits
 

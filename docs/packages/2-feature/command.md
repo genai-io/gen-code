@@ -5,7 +5,7 @@ layer: feature
 
 # command
 
-Registry for slash commands: built-in handlers (`/help`, `/model`,
+Registry for slash commands: built-in handlers (`/help`, `/models`,
 `/identity`, …), dynamic provider-supplied entries, builtin prompt
 commands embedded in the binary (`/simplify`), and user-defined markdown
 commands under `commands/` directories. Resolves names, fuzzy prefixes,

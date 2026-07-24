@@ -28,7 +28,7 @@ type TokenLimitDeps struct {
 // HandleTokenLimitCommand processes the /tokenlimit slash command.
 func HandleTokenLimitCommand(deps TokenLimitDeps, args string) (string, tea.Cmd, error) {
 	if deps.CurrentModel == nil {
-		return "No model selected. Use /model to select a model first.", nil, nil
+		return "No model selected. Use /models to select a model first.", nil, nil
 	}
 
 	modelID := deps.CurrentModel.ModelID

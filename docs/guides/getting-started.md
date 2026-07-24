@@ -29,7 +29,7 @@ The binary is a single ~12 MB Go executable; no Node, no runtime.
 san
 ```
 
-On first launch, San drops into the TUI. Type `/model` to connect a
+On first launch, San drops into the TUI. Type `/models` to connect a
 provider — you will be asked for an API key (or routed through Vertex AI
 for Anthropic). Supported providers and the env var each one reads:
 
@@ -74,7 +74,7 @@ approve once, `A` to approve-all for this session.
 | Cancel in-flight turn | `Ctrl+C` |
 | Exit | `Ctrl+D` or `/exit` |
 | List all slash commands | `/help` |
-| Switch model | `/model` |
+| Switch model | `/models` |
 | Switch persona | `/persona` |
 | Save / resume session | `san --continue`, `san --resume` |
 

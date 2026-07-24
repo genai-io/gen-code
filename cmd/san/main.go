@@ -33,7 +33,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/volcengine"
 )
 
-var version = "1.21.11"
+var version = "1.22.0"
 
 // buildTime and commit are set at build time via -X ldflags.
 // When built directly with go build (without ldflags), they remain empty.
@@ -253,7 +253,7 @@ Keybindings:
   Ctrl+C       Clear input / Quit
 
 Slash Commands:
-  /model       Select model and manage provider connections
+  /models      Select model and manage provider connections
   /clear       Clear chat history
   /help        Show help
 

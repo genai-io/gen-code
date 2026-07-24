@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
@@ -77,6 +78,37 @@ func (a *storedCredentialAuthenticator) Login(context.Context, func(string)) err
 func (a *storedCredentialAuthenticator) Logout() error { return nil }
 
 func (a *storedCredentialAuthenticator) HasCredentials() bool { return a.has }
+
+func TestBuiltinCommandHandlersUseModelsAndExcludeRemovedCommands(t *testing.T) {
+	handlers := builtinCommandHandlers()
+	if _, ok := handlers["models"]; !ok {
+		t.Fatal("builtin handlers should include /models")
+	}
+	for _, removed := range []string{"model", "glob"} {
+		if _, ok := handlers[removed]; ok {
+			t.Fatalf("builtin handlers should not include removed /%s", removed)
+		}
+	}
+}
+
+func TestRenderAuthMethodKeepsInfoColumnSeparateFromLongName(t *testing.T) {
+	selector := NewProviderSelector()
+	item := providerListItem{AuthMethod: &providerAuthMethodItem{
+		DisplayName: "ChatGPT Subscription",
+		Status:      llm.StatusNotConfigured,
+		EnvVars:     []string{"OPENAI_API_KEY"},
+	}}
+
+	plain := xansi.Strip(selector.renderAuthMethod(item, false, 0))
+	nameEnd := strings.Index(plain, "ChatGPT Subscription") + len("ChatGPT Subscription")
+	infoStart := strings.Index(plain, "OPENAI_API_KEY")
+	if infoStart < 0 {
+		t.Fatalf("rendered row %q is missing auth info", plain)
+	}
+	if gap := infoStart - nameEnd; gap < 6 {
+		t.Fatalf("auth info gap = %d columns, want at least 6 in row %q", gap, plain)
+	}
+}
 
 func TestUpdateProviderReloadsSharedModelStoreAfterCatalogRefresh(t *testing.T) {
 	reloads := 0

@@ -36,6 +36,18 @@ func withPluginCommandPaths(fn func() []PluginCommandPath) func(*Registry) {
 	}
 }
 
+func TestBuiltinCommandsUseModelsAndExcludeRemovedCommands(t *testing.T) {
+	commands := (&Registry{}).BuiltinNames()
+	if _, ok := commands["models"]; !ok {
+		t.Fatal("builtin commands should include /models")
+	}
+	for _, removed := range []string{"model", "glob"} {
+		if _, ok := commands[removed]; ok {
+			t.Fatalf("builtin commands should not include removed /%s", removed)
+		}
+	}
+}
+
 func TestGetMatchingCommands_IncludesDynamicProviders(t *testing.T) {
 	saveAndRestore(t)
 

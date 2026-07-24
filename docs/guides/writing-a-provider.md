@@ -1,7 +1,7 @@
 # Writing a Provider
 
 Providers connect San to an LLM vendor. Most providers live under
-`internal/llm/<provider>/` and register themselves at startup so `/model`
+`internal/llm/<provider>/` and register themselves at startup so `/models`
 can discover them.
 
 This guide uses `internal/llm/deepseek/` as the reference because it shows
@@ -36,7 +36,7 @@ internal/llm/<provider>/
 
 ### `apikey.go`
 
-Define the provider metadata and factory. The metadata controls what `/model`
+Define the provider metadata and factory. The metadata controls what `/models`
 shows and which environment variables must be present before the provider is
 available.
 
@@ -168,7 +168,7 @@ the provider is new, then import the package for side-effect registration from
 _ "github.com/genai-io/san/internal/llm/<provider>"
 ```
 
-This makes the provider available to `/model` through the global registry.
+This makes the provider available to `/models` through the global registry.
 
 ## Wire Credentials and Docs
 
@@ -199,7 +199,7 @@ environment limitation in the PR body.
 ## Common Pitfalls
 
 - **Skipping registration.** If the package is not imported from
-  `cmd/san/main.go`, `/model` will not discover it.
+  `cmd/san/main.go`, `/models` will not discover it.
 - **Live API tests.** Unit tests should not require a real provider key.
 - **Missing token limits.** Static catalog entries should include useful
   `InputTokenLimit` and `OutputTokenLimit` values when known.

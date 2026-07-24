@@ -45,7 +45,7 @@ type tokenLimitOverride struct {
 }
 
 // CustomProviderConfig stores the user-defined OpenAI-compatible provider added
-// via the /model Providers tab. The API key is not kept here — it lives in the
+// via the /models Providers tab. The API key is not kept here — it lives in the
 // secret store under the provider's env var.
 type CustomProviderConfig struct {
 	ID      string `json:"id"`

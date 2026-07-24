@@ -62,15 +62,15 @@ func NormalizeAPIError(providerName string, err error) error {
 
 	if envVar == "" {
 		if msg == "" {
-			return normalize(fmt.Sprintf("%s authentication failed; reconnect the provider with /model", providerLabel), err)
+			return normalize(fmt.Sprintf("%s authentication failed; reconnect the provider with /models", providerLabel), err)
 		}
-		return normalize(fmt.Sprintf("%s authentication failed: %s. Reconnect the provider with /model", providerLabel, msg), err)
+		return normalize(fmt.Sprintf("%s authentication failed: %s. Reconnect the provider with /models", providerLabel, msg), err)
 	}
 
 	if msg == "" {
-		return normalize(fmt.Sprintf("%s authentication failed; check %s and reconnect the provider with /model", providerLabel, envVar), err)
+		return normalize(fmt.Sprintf("%s authentication failed; check %s and reconnect the provider with /models", providerLabel, envVar), err)
 	}
-	return normalize(fmt.Sprintf("%s authentication failed: %s. Check %s and reconnect the provider with /model", providerLabel, msg, envVar), err)
+	return normalize(fmt.Sprintf("%s authentication failed: %s. Check %s and reconnect the provider with /models", providerLabel, msg, envVar), err)
 }
 
 func apiErrorMessage(apierr *openai.Error) string {

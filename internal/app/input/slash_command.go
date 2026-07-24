@@ -31,7 +31,7 @@ import (
 
 // NoProviderMsg is the canonical "no LLM provider" notice used by any
 // input path that needs to bail before reaching the agent.
-const NoProviderMsg = "No provider connected. Use /model to connect."
+const NoProviderMsg = "No provider connected. Use /models to connect."
 
 type slashCommandHandler func(*SlashCommandController, context.Context, string) (string, tea.Cmd, error)
 
@@ -103,7 +103,7 @@ func NewSlashCommandController(env SlashCommandEnv) SlashCommandController {
 
 func builtinCommandHandlers() map[string]slashCommandHandler {
 	return map[string]slashCommandHandler{
-		"model":          (*SlashCommandController).handleModelCommand,
+		"models":         (*SlashCommandController).handleModelCommand,
 		"clear":          (*SlashCommandController).handleClearCommand,
 		"fork":           (*SlashCommandController).handleForkCommand,
 		"resume":         (*SlashCommandController).handleResumeCommand,

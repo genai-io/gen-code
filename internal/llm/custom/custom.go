@@ -1,7 +1,7 @@
 // Package custom implements a user-defined, OpenAI-compatible provider.
 //
 // Unlike the built-in providers, its baseURL is supplied at runtime through the
-// /model Providers tab and persisted in the llm Store; the API key lives in the
+// /models Providers tab and persisted in the llm Store; the API key lives in the
 // secret store under APIKeyEnvVar. The provider ID is fixed (DefaultID) — there
 // is only one custom provider, so a user-chosen ID would add rename bookkeeping
 // without distinguishing anything. Registration is static (init) since the ID
@@ -52,7 +52,7 @@ func newClient(_ context.Context) (llm.Provider, error) {
 	}
 	cfg := store.CustomProvider()
 	if cfg == nil || cfg.BaseURL == "" {
-		return nil, fmt.Errorf("custom provider not configured: set a base URL under /model > Providers > Custom")
+		return nil, fmt.Errorf("custom provider not configured: set a base URL under /models > Providers > Custom")
 	}
 	return &client{
 		api: openai.NewClient(

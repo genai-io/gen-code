@@ -72,7 +72,7 @@ func ResetDefaultConn()       // test-only
 - Construction: `Initialize(Options{})` loads `~/.san/providers.json`,
   picks the last-used provider (or the first connectable one), and stores
   it.
-- Switching: `/model` slash command calls `SetCurrentModel` + reload.
+- Switching: `/models` slash command calls `SetCurrentModel` + reload.
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 

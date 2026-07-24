@@ -465,7 +465,7 @@ function boot(lt){
   tog($('b-logo'),lt>0.2); tog($('b-tag'),lt>0.9); tog($('b-sub'),lt>1.5); tog($('b-pil'),lt>2.1); tog($('b-prompt'),lt>2.8);
 }
 function model(lt){
-  typeInto($('m-type'),'/model',lt,0.2,0.65);
+  typeInto($('m-type'),'/models',lt,0.2,0.65);
   $('m-cur').style.display = (lt>0.2 && lt<0.9)?'inline-block':'none';
   const open = lt>0.85 && lt<3.6;
   tog($('m-pick'), open);

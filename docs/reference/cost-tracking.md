@@ -101,7 +101,7 @@ tmux capture-pane -t t_cost -p | tail -3
 # Expected: "in: N / out: N / $X.XX" visible with non-zero values
 
 # Test 5: Cost display after model switch
-tmux send-keys -t t_cost '/model' Enter
+tmux send-keys -t t_cost '/models' Enter
 sleep 1
 tmux send-keys -t t_cost Enter
 sleep 1

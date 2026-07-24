@@ -28,7 +28,7 @@ import (
 
 // overlayPanel is a UI element that, while active, takes over both the
 // keyboard (consuming keypresses before the textarea sees them) and the
-// screen. It covers the slash-command pickers (/model, /tools, /skills, ...)
+// screen. It covers the slash-command pickers (/models, /tools, /skills, ...)
 // and the two docked modals (Question, Approval).
 //
 // overlayPanels is the single source of truth for which panel is in front,

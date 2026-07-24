@@ -73,7 +73,7 @@ View() picks one of four layouts, top-down:
 View()
   1. !m.env.Ready              ──► "\n  Loading..."
   2. active popup?             ──► popup.Render() — fullscreen
-                                   (slash-command pickers: /model,
+                                   (slash-command pickers: /models,
                                    /tools, /skills, ...)
   3. active modal?             ──► modal.Render() wrapped between
                                    separator bars

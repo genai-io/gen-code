@@ -6,13 +6,12 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 
 | Command | Function |
 |---------|----------|
-| `/model` | Select model and manage provider connections |
+| `/models` | Select model and manage provider connections |
 | `/persona` | Switch the active persona (alias: `/identity`) |
 | `/clear` | Clear chat history |
 | `/fork` | Fork the current session |
 | `/resume` | Resume a previous session |
 | `/help` | Show available commands |
-| `/glob` | Search files by glob pattern |
 | `/tools` | Enable / disable tools |
 | `/plan` | Enter plan mode |
 | `/skills` | Manage skill states |
@@ -31,7 +30,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 ## UI Interactions
 
 - Commands are matched against the registry as the user types; a suggestion dropdown appears.
-- Selector commands (`/model`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
+- Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/think` cycles through levels and updates the status bar indicator.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
@@ -45,7 +44,8 @@ go test ./internal/command/... -v
 Covered:
 
 ```
-TestHandlerRegistryMatchesBuiltinCommands — all 20 commands registered
+TestBuiltinCommandsUseModelsAndExcludeRemovedCommands
+                                         — /models is registered; /model and /glob are absent
 TestExecuteCommandExit                    — /exit returns quit command
 TestExecuteCommandUnknown                 — unknown commands show error message
 TestHandleInitCommand                     — /init creates .san/SAN.md file
@@ -75,8 +75,8 @@ func TestSlashThink_CyclesLevels(t *testing.T) {
     // /think must cycle off → normal → high → ultra → off
 }
 
-func TestSlashModel_SwitchesModel(t *testing.T) {
-    // /model selection must change active model immediately
+func TestSlashModels_SwitchesModel(t *testing.T) {
+    // /models selection must change active model immediately
 }
 
 func TestSlashSearch_SwitchesEngine(t *testing.T) {
@@ -115,7 +115,7 @@ sleep 2
 tmux send-keys -t t_cmds '/help' Enter
 sleep 2
 tmux capture-pane -t t_cmds -p
-# Expected: all 20 commands listed
+# Expected: all available commands listed
 
 # Test 2: /clear
 tmux send-keys -t t_cmds 'hello' Enter
@@ -131,8 +131,8 @@ sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: thinking level options (off / normal / high / ultra)
 
-# Test 4: /model (tabbed picker for models and providers)
-tmux send-keys -t t_cmds '/model' Enter
+# Test 4: /models (tabbed picker for models and providers)
+tmux send-keys -t t_cmds '/models' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: tabbed picker with Models and Providers tabs
@@ -150,13 +150,7 @@ sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: current token usage and limit
 
-# Test 7: /glob
-tmux send-keys -t t_cmds '/glob *.go' Enter
-sleep 2
-tmux capture-pane -t t_cmds -p
-# Expected: .go files in cwd listed
-
-# Test 8: /init — test in a fresh directory
+# Test 7: /init — test in a fresh directory
 tmux send-keys -t t_cmds C-c
 tmux send-keys -t t_cmds 'mkdir -p /tmp/init_test && cd /tmp/init_test && san' Enter
 sleep 2
@@ -165,16 +159,16 @@ sleep 3
 ls /tmp/init_test/.san/
 # Expected: SAN.md created under .san/
 
-# Test 9: Command suggestion dropdown
+# Test 8: Command suggestion dropdown
 tmux send-keys -t t_cmds C-c
 tmux send-keys -t t_cmds 'san' Enter
 sleep 2
 tmux send-keys -t t_cmds '/mod'
 sleep 1
 tmux capture-pane -t t_cmds -p
-# Expected: suggestion dropdown shows /model as match
+# Expected: suggestion dropdown shows /models as match
 
-# Test 10: /fork
+# Test 9: /fork
 tmux send-keys -t t_cmds C-c
 sleep 0.3
 tmux send-keys -t t_cmds 'hello' Enter
@@ -184,49 +178,49 @@ sleep 2
 tmux capture-pane -t t_cmds -p
 # Expected: new session created with original history
 
-# Test 11: /compact
+# Test 10: /compact
 tmux send-keys -t t_cmds '/compact' Enter
 sleep 5
 tmux capture-pane -t t_cmds -p
 # Expected: compaction triggered; summary shown
 
-# Test 12: /skills
+# Test 11: /skills
 tmux send-keys -t t_cmds '/skills' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: skill selector titled "Manage Skills"
 
-# Test 13: /agents
+# Test 12: /agents
 tmux send-keys -t t_cmds '/agents' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: agent selector titled "Manage Agents"
 
-# Test 14: /mcp
+# Test 13: /mcp
 tmux send-keys -t t_cmds '/mcp' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: MCP selector titled "MCP Servers"
 
-# Test 15: /plugin
+# Test 14: /plugin
 tmux send-keys -t t_cmds '/plugin' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: plugin management panel titled "Plugin Manager"
 
-# Test 16: /memory
+# Test 15: /memory
 tmux send-keys -t t_cmds '/memory' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: loaded memory files displayed
 
-# Test 17: /resume
+# Test 16: /resume
 tmux send-keys -t t_cmds '/resume' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: session picker overlay is shown
 
-# Test 18: /tools
+# Test 17: /tools
 tmux send-keys -t t_cmds '/tools' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p

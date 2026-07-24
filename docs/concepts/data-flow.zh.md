@@ -82,7 +82,7 @@ Update                            update.go
    ├─ case tea.KeyMsg → routeKeypress
    │     │
    │     ├─ tryActivePopup           — 问题 modal、approval modal、或
-   │     │                             slash 命令的 picker（/model、
+   │     │                             slash 命令的 picker（/models、
    │     │                             /tools 等弹出菜单）——敲 'h' 时
    │     │                             没有任何活动
    │     │
@@ -101,7 +101,7 @@ View                              view.go      底部 UI 显示 "h▮"
 ```
 
 `routeKeypress` 里的分发是一个**优先级栈**：当前弹出的 popup（比如
-`/model` 之后的模型选择列表）拥有按键的第一优先权；上层都没接住的，
+`/models` 之后的模型选择列表）拥有按键的第一优先权；上层都没接住的，
 才轮到 textarea 级别的快捷键；都没匹配，最后 textarea 把字符当文本吃掉。
 
 再敲五个字符之后，textarea 里是 `hello`。用户按 **Enter**：

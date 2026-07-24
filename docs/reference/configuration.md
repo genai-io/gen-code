@@ -41,7 +41,7 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   tools ship disabled (currently `Cron`); an explicit `"Cron": false` entry —
   what the panel writes when you enable it — overrides the factory default.
 - **Env vars**: injected into the Bash tool's environment automatically.
-- **Theme**: applied at startup; no restart needed when changed via `/model` or similar commands.
+- **Theme**: applied at startup; no restart needed when changed via `/models` or similar commands.
 
 ## Automated Tests
 

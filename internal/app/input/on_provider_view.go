@@ -256,11 +256,10 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 
 // ── Providers tab rows ──────────────────────────────────────────────────────
 
-// providerNameColumnWidth is the fixed width for provider name alignment.
-// Sized to fit the longest display name ("Z.ai (GLM series)", 17 cols) plus a
-// comfortable gap, so every row's API-key column lines up without crowding —
-// even the longest name keeps ~5 cols of breathing room before its key.
-const providerNameColumnWidth = 22
+// providerNameColumnWidth is the fixed width for provider/auth-method name
+// alignment. It leaves a distinct gap after the longest auth label
+// ("ChatGPT Subscription", 20 cols) before the right-hand connection info.
+const providerNameColumnWidth = 28
 
 func (s *ProviderSelector) renderProviderRow(item providerListItem, isSelected bool, itemIdx int) string {
 	p := item.Provider

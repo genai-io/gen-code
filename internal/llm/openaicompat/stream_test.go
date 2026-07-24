@@ -194,7 +194,7 @@ func TestStreamChatCompletionsNormalizesAuthError(t *testing.T) {
 	if !strings.Contains(msg, "MOONSHOT_API_KEY") {
 		t.Fatalf("error %q missing env var guidance", msg)
 	}
-	if !strings.Contains(msg, "/model") {
+	if !strings.Contains(msg, "/models") {
 		t.Fatalf("error %q missing reconnect guidance", msg)
 	}
 }

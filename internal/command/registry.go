@@ -26,12 +26,11 @@ type Info struct {
 // This is the single source of truth for command names and descriptions.
 func builtinCommands() []Info {
 	return []Info{
-		{Name: "model", Description: "Select model and manage provider connections"},
+		{Name: "models", Description: "Select model and manage provider connections"},
 		{Name: "clear", Description: "Clear chat history"},
 		{Name: "fork", Description: "Fork current conversation into a new session"},
 		{Name: "resume", Description: "Resume a previous session (opens session selector)"},
 		{Name: "help", Description: "Show available commands"},
-		{Name: "glob", Description: "Find files matching a pattern"},
 		{Name: "tools", Description: "Manage available tools (enable/disable)"},
 		{Name: "skills", Description: "Manage skills (enable/disable/activate)"},
 		{Name: "agents", Description: "Manage available agents (enable/disable)"},

@@ -227,7 +227,7 @@ func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
 	}
 	resolved, ok := llm.ResolveProvider(ctx, store)
 	if !ok {
-		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
+		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /models to connect")
 	}
 	modelID := resolved.ModelID
 	if modelID == "" {
@@ -239,7 +239,7 @@ func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
 	if modelID == "" {
 		// Providers without a built-in default model (e.g. a custom provider)
 		// need an explicit selection.
-		return nil, "", fmt.Errorf("no model selected for %s. Run 'san' and use /model to select one", resolved.Provider.Name())
+		return nil, "", fmt.Errorf("no model selected for %s. Run 'san' and use /models to select one", resolved.Provider.Name())
 	}
 	return resolved.Provider, modelID, nil
 }

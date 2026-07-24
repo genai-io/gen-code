@@ -43,7 +43,7 @@ model-driven work, with no Node.js or Python runtime.
 
 </details>
 
-- **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/model`
+- **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/models`
 - **Search** — Exa, Tavily, Brave, Serper. `/search`
 - **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
 - **Self-learning** — opt-in; distills durable memory and reusable skills with configurable cadence and caps. *(Level 1; deeper levels on the way.)*
@@ -123,13 +123,13 @@ san mcp <add|list|remove|...>                 # manage MCP servers
 
 | What | How |
 |---|---|
-| Pick / switch model | `/model` — saved to `~/.san/providers.json` |
+| Pick / switch model | `/models` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
 | Search / persona / memory | `/search` · `/persona` · `/memory` |
 | Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
-| Session / loop / misc | `/fork` · `/compact` · `/loop` · `/glob` · `/init` · `/clear` |
+| Session / loop / misc | `/fork` · `/compact` · `/loop` · `/init` · `/clear` |
 | All slash commands | `/help` |
 | Send · newline · stop | `Enter` · `Alt+Enter` · `Esc` |
 | Expand tool · cancel · exit | `Ctrl+O` · `Ctrl+C` · `Ctrl+D` |
@@ -146,7 +146,7 @@ Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings o
 | Service | Variable |
 |:--------|:---------|
 | **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/model`) |
+| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/models`) |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
 | **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
