@@ -187,7 +187,10 @@ func (s *PersonaSelector) Render() string {
 	sb.WriteString("\n\n")
 
 	const nameCol = 22
-	metaMax := max(16, panel.ContentWidth()-nameCol-12)
+	// A selectable row adds four columns before FormatAlignedRow's marker, and
+	// the panel has four columns of horizontal padding. Reserve both plus the
+	// marker/name gaps so the metadata (including its ellipsis) stays on one row.
+	metaMax := max(16, panel.ContentWidth()-nameCol-13)
 
 	startIdx, endIdx := s.nav.VisibleRange()
 
