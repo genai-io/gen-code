@@ -171,6 +171,79 @@ func Test_imageRefPattern(t *testing.T) {
 	}
 }
 
+func Test_bareImagePathRe(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected [][]string // nil means no match
+	}{
+		{
+			input:    "check /home/user/image.png",
+			expected: [][]string{{"/home/user/image.png", "/home/user/image.png", "png"}},
+		},
+		{
+			input:    "/absolute/path/photo.jpg analyze this",
+			expected: [][]string{{"/absolute/path/photo.jpg", "/absolute/path/photo.jpg", "jpg"}},
+		},
+		{
+			input:    "compare relative/path/a.png with ../other/b.jpeg",
+			expected: [][]string{{"relative/path/a.png", "relative/path/a.png", "png"}, {"../other/b.jpeg", "../other/b.jpeg", "jpeg"}},
+		},
+		{
+			input:    "no images here",
+			expected: nil,
+		},
+		{
+			input:    "just a bare name.png with no path",
+			expected: nil, // no path separator
+		},
+		{
+			input:    "image.png at start",
+			expected: nil, // no path separator
+		},
+		{
+			input:    "/path/to/image.webp end",
+			expected: [][]string{{"/path/to/image.webp", "/path/to/image.webp", "webp"}},
+		},
+		{
+			input:    "./animated.gif nearby",
+			expected: [][]string{{"./animated.gif", "./animated.gif", "gif"}},
+		},
+		{
+			input:    "C:\\Users\\me\\photo.jpeg here",
+			expected: [][]string{{"C:\\Users\\me\\photo.jpeg", "C:\\Users\\me\\photo.jpeg", "jpeg"}},
+		},
+		{
+			input:    "@prefix.png has no path separator",
+			expected: nil, // @ at start but no / in rest of path
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			matches := bareImagePathRe.FindAllStringSubmatch(tt.input, -1)
+			if len(matches) != len(tt.expected) {
+				t.Errorf("FindAllStringSubmatch(%q) got %d matches, want %d", tt.input, len(matches), len(tt.expected))
+				return
+			}
+			for i, match := range matches {
+				if len(match) < 3 {
+					t.Errorf("match[%d] has %d groups, want 3", i, len(match))
+					continue
+				}
+				if match[0] != tt.expected[i][0] {
+					t.Errorf("match[%d][0] = %q, want %q", i, match[0], tt.expected[i][0])
+				}
+				if match[1] != tt.expected[i][1] {
+					t.Errorf("match[%d][1] = %q, want %q", i, match[1], tt.expected[i][1])
+				}
+				if match[2] != tt.expected[i][2] {
+					t.Errorf("match[%d][2] = %q, want %q", i, match[2], tt.expected[i][2])
+				}
+			}
+		})
+	}
+}
+
 func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
 	m := New("", 80, nil, SelectorDeps{})
 	first := m.AddPendingImage(core.Image{FileName: "a.png"})

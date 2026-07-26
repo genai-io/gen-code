@@ -26,6 +26,12 @@ const (
 // imageRefPattern matches @path/to/image.ext references (case-insensitive extension).
 var imageRefPattern = regexp.MustCompile(`(?i)@([^\s]+\.(png|jpg|jpeg|gif|webp))`)
 
+// bareImagePathRe matches standalone image file paths (absolute or relative with a
+// directory separator) that are NOT prefixed with @. This catches drag-drop paste
+// of an image path into the terminal. Only paths containing a separator (/ or \)
+// are matched to avoid treating bare filenames or coincidental text as images.
+var bareImagePathRe = regexp.MustCompile(`(?i)((?:/[^\s]+|[^\s]+[/\\][^\s]*)\.(png|jpg|jpeg|gif|webp))`)
+
 // ImageTokenMatch describes an inline image token found in the textarea value.
 type ImageTokenMatch struct {
 	PendingIdx int
@@ -265,18 +271,44 @@ func (m *Model) HistoryDown() {
 	m.Textarea.CursorEnd()
 }
 
-// ProcessImageRefs extracts @image.png references from input.
-// Returns the cleaned text content and any loaded images.
+// ProcessImageRefs extracts @image.png references and bare image file paths
+// from input. Returns the cleaned text content and any loaded images.
 // Only processes references where the file actually exists on disk;
 // non-existent file references are left in the text as-is.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
-	matches := imageRefPattern.FindAllStringSubmatch(input, -1)
+	content := input
+	var images []core.Image
+
+	// Step 1: Process @-prefixed image references
+	content, imgList, err := processRefs(cwd, content, imageRefPattern, true)
+	if err != nil {
+		return "", nil, err
+	}
+	images = append(images, imgList...)
+
+	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
+	content, imgList, err = processRefs(cwd, content, bareImagePathRe, false)
+	if err != nil {
+		return "", nil, err
+	}
+	images = append(images, imgList...)
+
+	return strings.TrimSpace(content), images, nil
+}
+
+// processRefs finds all matches for pattern in content, loads matching image
+// files, and removes the matched text from the content. If hasPrefix is true,
+// the capture group is group 1 (after the @ prefix); otherwise it's group 0
+// (the full match for bare paths).
+func processRefs(cwd, content string, pattern *regexp.Regexp, hasPrefix bool) (string, []core.Image, error) {
+	matches := pattern.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
-		return input, nil, nil
+		return content, nil, nil
 	}
 
 	var images []core.Image
-	var loadedRefs []string // track which @references were successfully loaded
+	var loadedRefs []string // full matched text to remove from content
+
 	for _, match := range matches {
 		path := match[1]
 		absPath := path
@@ -294,17 +326,15 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 			return "", nil, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
 		images = append(images, img)
-		loadedRefs = append(loadedRefs, match[0]) // full match including @
+		loadedRefs = append(loadedRefs, match[0])
 	}
 
 	// Only remove references that were successfully loaded
-	content := input
 	for _, ref := range loadedRefs {
 		content = strings.ReplaceAll(content, ref, "")
 	}
-	content = strings.TrimSpace(content)
 
-	return content, images, nil
+	return strings.TrimSpace(content), images, nil
 }
 
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.
