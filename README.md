@@ -30,7 +30,7 @@ stays yours to change.
 
 Three properties, and San refuses to trade any one of them for the others.
 
-**Small** — ~2.3k tokens of harness reach the model before your first message, where most agent harnesses ship 20k or more. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
+**Small** — ~2.3k tokens of harness reach the model before your first message; the rest of the context window goes to your work. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
 
 **Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
 
