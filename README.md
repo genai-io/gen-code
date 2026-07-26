@@ -126,11 +126,9 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 | All slash commands | `/help` |
 | Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
 
-For API keys, set the matching env var (see Credentials below) or paste when prompted on first launch. Full walkthrough: [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
+[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
 
 ### Configuration
-
-Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings override user settings). Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
 
 <details>
 <summary><b>Credentials</b></summary>
@@ -158,7 +156,9 @@ Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings o
 </details>
 
 <details>
-<summary><b>Directory layout</b></summary>
+<summary><b>Config files &amp; layout</b></summary>
+
+Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
 
 User-level (`~/.san/`):
 
@@ -206,9 +206,7 @@ Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, s
 
 <sub>*Context overhead is system prompt + tool schemas on an empty first turn, measured separately on San v1.22.0 vs Claude Code v2.1.220 — see [method](docs/operations/benchmark.md#7-context-overhead-first-turn). All other rows are from the v1.13.2 / v2.1.112 run.</sub>
 
-Both tools have comparable features (hooks, skills, plugins, session, MCP, etc.). The performance gap comes from Go's native compilation, minimal architecture design, and lean prompt engineering — vs Node.js V8/JIT/GC runtime overhead.
-
-See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
+Comparable feature sets — the gap is client-side overhead, not capability. [`docs/operations/benchmark.md`](docs/operations/benchmark.md)
 
 ## Documentation
 

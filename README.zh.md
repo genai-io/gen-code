@@ -124,11 +124,9 @@ san --resume                 # 选择历史会话恢复
 | 全部 slash 命令 | `/help` |
 | 快捷键 | `Enter` 发送 · `Alt+Enter` 换行 · `Esc` 停止 · `Ctrl+O` 展开工具 · `Ctrl+C` 取消 · `Ctrl+D` 退出 |
 
-API Key：设置对应的环境变量（见下方凭据表）或在首次启动时按提示粘贴。完整入门：[`docs/guides/getting-started.md`](docs/guides/getting-started.md)。
+[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
 
 ### 配置文件
-
-配置位于 `~/.san/`（用户级）与 `<项目>/.san/`（项目级，覆盖用户级）。项目根目录下的 `SAN.md` 或 `CLAUDE.md` 会被自动加载到系统 prompt。
 
 <details>
 <summary><b>凭据</b></summary>
@@ -156,7 +154,9 @@ API Key：设置对应的环境变量（见下方凭据表）或在首次启动�
 </details>
 
 <details>
-<summary><b>目录结构</b></summary>
+<summary><b>配置文件与目录结构</b></summary>
+
+配置从 `~/.san/`（用户级）与 `<项目>/.san/`（项目级）加载，项目级覆盖用户级。项目指令依次读取 `.san/SAN.md`、`SAN.md`、`.claude/CLAUDE.md`、`CLAUDE.md`。
 
 用户级（`~/.san/`）：
 
@@ -204,9 +204,7 @@ plugins-local/      # 本地插件（git-ignored）
 
 <sub>*上下文开销 = 空回合下的 system prompt + 工具 schema，单独在 San v1.22.0 与 Claude Code v2.1.220 上测量，[方法见此](docs/operations/benchmark.md#7-context-overhead-first-turn)；其余各行来自 v1.13.2 / v2.1.112 那次测试。</sub>
 
-两者特性大体可比（hooks、skills、plugins、session、MCP 等）。性能差距来自 Go 的原生编译、精简的架构设计和克制的 prompt 工程 —— 对比 Node.js 的 V8/JIT/GC 运行时开销。
-
-完整数据见：[docs/operations/benchmark.md](docs/operations/benchmark.md)
+特性大体可比 —— 差距来自客户端开销，不是能力缺斤少两。[`docs/operations/benchmark.md`](docs/operations/benchmark.md)
 
 ## 文档
 
