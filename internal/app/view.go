@@ -173,7 +173,26 @@ func (m model) renderInputView() string {
 		!m.conv.Stream.Active && !m.userInput.Suggestions.IsVisible() {
 		return prompt + ghostTextStyle.Render(m.userInput.PromptSuggestion.Text)
 	}
-	return prompt + m.userInput.RenderTextarea()
+	return prompt + hangComposerRows(m.userInput.RenderTextarea())
+}
+
+// hangComposerRows indents every composer row after the first by the prompt's
+// width, so wrapped and newline-split input hangs under the first row's text
+// instead of falling back to column 0. Two reasons it has to: a committed user
+// message renders the same way in scrollback (RenderUserMessage joins the
+// prompt and the body side by side), and inputCursor shifts the cursor right by
+// that same prompt width on *every* row — without the indent the cursor sits
+// two columns past the character it should precede on every line but the first.
+func hangComposerRows(view string) string {
+	lines := strings.Split(view, "\n")
+	if len(lines) < 2 {
+		return view
+	}
+	gutter := strings.Repeat(" ", lipgloss.Width(conv.InputPrompt))
+	for i := 1; i < len(lines); i++ {
+		lines[i] = gutter + lines[i]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderChatSection assembles the active chat content (uncommitted messages,
