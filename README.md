@@ -34,7 +34,7 @@ Three properties, and San refuses to trade any one of them for the others.
 
 **Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
 
-**Open** — switch models; add skills, subagents, and MCP servers; compose the system prompt yourself; `san inspector` replays exactly what the model saw. Autopilot drives long work toward a goal you set; your self-learning strategy decides what becomes durable memory and reusable skills.
+**Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
 
 **A minimal harness, not a minimal agent.**
 
@@ -57,6 +57,7 @@ Three properties, and San refuses to trade any one of them for the others.
 - **Prompts** — identity, behavior, rules, personas, and project instructions compose into the system prompt ([details](docs/concepts/harness-channels.md)).
 - **Self-learning** — opt-in; distills durable memory and reusable skills with configurable strategy, action limits, and size caps. *(Level 1; deeper levels on the way.)*
 - **Permissions** — you pick the posture: ask, auto-accept, autopilot, or bypass, toggled with `Shift+Tab`; subagents inherit the gate ([details](docs/concepts/permission-model.md)).
+- **Inspector** — replay any run in a local web UI and see the exact prompt, tool calls, and permission decisions the model saw. `san inspector`
 
 
 ## Installation
@@ -110,31 +111,22 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ## Usage
 
 ```bash
-san                              # interactive
-san "explain this function"      # one-shot
-san -p "do something"            # print mode (no TUI), pipe-friendly
-san --continue                   # resume the latest session
-san --resume                     # pick a past session to resume
-
-# Subcommands (run `san <command> --help` for the full list)
-san inspector                    # session transcript viewer
-san agent run --prompt "..."                     # run a headless agent
-san plugin <list|install|enable|...>          # manage plugins
-san mcp <add|list|remove|...>                 # manage MCP servers
+san                          # interactive
+san "explain this function"  # one-shot
+san -p "do something"        # print mode (no TUI), pipe-friendly
+san --continue               # resume the latest session
+san --resume                 # pick a past session to resume
 ```
+
+Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> --help` for each.
 
 | What | How |
 |---|---|
-| Pick / switch model | `/models` — saved to `~/.san/providers.json` |
-| Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| Toggle permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
-| Search / persona / memory | `/search` · `/persona` · `/memory` |
-| Skills / agents / tools | `/skills` · `/agents` · `/tools` |
-| Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
-| Session / loop / misc | `/fork` · `/compact` · `/loop` · `/init` · `/clear` |
+| Model · thinking budget | `/models` · `Ctrl+T` |
+| Permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
+| Long-running work · learning | `/autopilot` · `/goal` · `/evolve` |
 | All slash commands | `/help` |
-| Send · newline · stop | `Enter` · `Alt+Enter` · `Esc` |
-| Expand tool · cancel · exit | `Ctrl+O` · `Ctrl+C` · `Ctrl+D` |
+| Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
 
 For API keys, set the matching env var (see Credentials below) or paste when prompted on first launch. Full walkthrough: [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
 

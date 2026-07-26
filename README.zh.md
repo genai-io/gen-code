@@ -32,7 +32,7 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **快** —— ~0.01s 冷启动，一次完整的工具调用任务端到端 ~3.3s。你等的是模型，不是客户端（[基准测试](#基准测试san-vs-claude-code)）。
 
-**开** —— 切换模型；接入 skills、subagents 与 MCP servers；system prompt 自由拼装；`san inspector` 完整回放模型看到的一切。Autopilot 带着长任务朝你设定的目标推进；你写的自我学习策略决定什么沉淀为持久记忆与可复用技能。
+**开** —— 模型、skills、subagents、MCP servers，想接就接；system prompt、Autopilot 的目标、自我学习的策略，都由你来写；`san inspector` 回放任意一次运行。
 
 **小的是框架，不是 Agent 的能力。**
 
@@ -55,6 +55,7 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 - **Prompt** —— identity、behavior、rules、persona 与项目指令自由组合成 system prompt（[详情](docs/concepts/harness-channels.md)）。
 - **自我学习** —— 可选开启；以可配置策略、操作限制与容量上限，把近期工作沉淀为持久记忆与可复用技能。*（Level 1；更高等级仍在路上。）*
 - **权限** —— 姿态由你决定：询问、自动接受、Autopilot 或 Bypass，`Shift+Tab` 切换；subagent 继承同一道门控（[详情](docs/concepts/permission-model.md)）。
+- **Inspector** —— 本地 Web UI 回放任意一次运行，模型看到的 prompt、工具调用与权限决策一览无余。`san inspector`
 
 
 ## 安装
@@ -108,31 +109,22 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ## 使用
 
 ```bash
-san                              # 交互模式
-san "解释这个函数"               # 一次性运行
-san -p "做某件事"                 # print 模式（无 TUI），可管道
-san --continue                   # 恢复最近的会话
-san --resume                     # 选择历史会话恢复
-
-# 子命令（运行 `san <command> --help` 查看完整列表）
-san inspector                    # 会话转录查看器
-san agent run --prompt "..."                    # 运行 headless agent
-san plugin <list|install|enable|...>          # 管理插件
-san mcp <add|list|remove|...>                 # 管理 MCP 服务器
+san                          # 交互模式
+san "解释这个函数"            # 一次性运行
+san -p "做某件事"             # print 模式（无 TUI），可管道
+san --continue               # 恢复最近的会话
+san --resume                 # 选择历史会话恢复
 ```
+
+子命令：`inspector` · `agent` · `plugin` · `mcp` —— 各自运行 `san <command> --help` 查看。
 
 | 操作 | 命令 / 快捷键 |
 |---|---|
-| 选择 / 切换模型 | `/models` —— 保存到 `~/.san/providers.json` |
-| 切换 thinking 级别 | `Ctrl+T` 或 `/think`（可选级别因提供商而异） |
-| 切换权限模式 | `Shift+Tab`（询问 · 自动接受 · 自动审查） |
-| 搜索 / 人设 / 记忆 | `/search` · `/persona` · `/memory` |
-| 技能 / 代理 / 工具 | `/skills` · `/agents` · `/tools` |
-| 插件 / MCP / 配置 | `/plugin` · `/mcp` · `/config` |
-| 会话 / 循环 / 其他 | `/fork` · `/compact` · `/loop` · `/init` · `/clear` |
+| 模型 · thinking 级别 | `/models` · `Ctrl+T` |
+| 权限模式 | `Shift+Tab`（询问 · 自动接受 · 自动审查） |
+| 长任务 · 自我学习 | `/autopilot` · `/goal` · `/evolve` |
 | 全部 slash 命令 | `/help` |
-| 发送 · 换行 · 停止 | `Enter` · `Alt+Enter` · `Esc` |
-| 展开工具 · 取消 · 退出 | `Ctrl+O` · `Ctrl+C` · `Ctrl+D` |
+| 快捷键 | `Enter` 发送 · `Alt+Enter` 换行 · `Esc` 停止 · `Ctrl+O` 展开工具 · `Ctrl+C` 取消 · `Ctrl+D` 退出 |
 
 API Key：设置对应的环境变量（见下方凭据表）或在首次启动时按提示粘贴。完整入门：[`docs/guides/getting-started.md`](docs/guides/getting-started.md)。
 
