@@ -1,7 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>Minimal harness. Maximum agent.</strong></p>
-  <p>A lean terminal agent runtime — small context, native speed, and every piece open to swap.</p>
+  <p>Small context, native speed, open all the way down.</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>

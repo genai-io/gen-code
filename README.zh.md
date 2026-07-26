@@ -1,7 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>框架最小，Agent 最强。</strong></p>
-  <p>一个精简的终端 Agent 运行时 —— 上下文小、性能原生，每一块都可替换。</p>
+  <p>上下文精简，原生性能，从里到外都开放。</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-0d9488?style=flat-square" alt="官网"></a>
