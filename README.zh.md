@@ -32,7 +32,9 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **快** —— ~0.01s 冷启动，一次完整的工具调用任务端到端 ~3.3s。你等的是模型，不是客户端（[基准测试](#基准测试san-vs-claude-code)）。
 
-**开** —— 会话中随时换模型；接入 MCP servers、subagents、skills、plugins、hooks 与 slash commands；system prompt 自由拼装；`san inspector` 回放任意会话，模型看到了什么一览无余。**小的是框架，不是 Agent 的能力。**
+**开** —— 切换模型；接入 skills、subagents 与 MCP servers；system prompt 自由拼装；`san inspector` 完整回放模型看到的一切。Autopilot 带着长任务朝你设定的目标推进；你写的自我学习策略决定什么沉淀为持久记忆与可复用技能。
+
+**小的是框架，不是 Agent 的能力。**
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 

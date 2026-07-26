@@ -34,7 +34,9 @@ Three properties, and San refuses to trade any one of them for the others.
 
 **Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
 
-**Open** — swap models mid-session; add MCP servers, subagents, skills, plugins, hooks, and slash commands; compose the system prompt yourself; replay any session in `san inspector` to see exactly what the model saw. **A minimal harness, not a minimal agent.**
+**Open** — switch models; add skills, subagents, and MCP servers; compose the system prompt yourself; `san inspector` replays exactly what the model saw. Autopilot drives long work toward a goal you set; your self-learning strategy decides what becomes durable memory and reusable skills.
+
+**A minimal harness, not a minimal agent.**
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
