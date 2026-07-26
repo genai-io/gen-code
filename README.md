@@ -1,6 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>A fast, open agent harness for the terminal, built on a flexible and extensible architecture.</strong></p>
+  <p><strong>Minimal harness. Maximum agent.</strong></p>
+  <p>Small context, native speed, open all the way down.</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
@@ -21,21 +22,28 @@
   </p>
 </div>
 
-San is an open-source terminal agent harness: one native Go binary for
-model-driven work, with no Node.js or Python runtime.
+San is an open-source terminal agent runtime: one native Go binary, no Node.js
+or Python. Everything the model touches — prompt, tools, providers, extensions —
+stays yours to change.
 
-**Why San**
+## Why San
 
-- **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
-- **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
-- **Harness** — configure permissions, autopilot, memory, and skills for your workflow.
+Three properties, and San refuses to trade any one of them for the others.
+
+**Small** — ~2.3k tokens of harness reach the model before your first message; the rest of the context window goes to your work. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
+
+**Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
+
+**Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
+
+**A minimal harness, not a minimal agent.**
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
-## Features
+## Open architecture
 
 <details>
-<summary><b>Open architecture</b> &nbsp;·&nbsp; overview diagram</summary>
+<summary><b>Overview diagram</b></summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
@@ -43,18 +51,11 @@ model-driven work, with no Node.js or Python runtime.
 
 </details>
 
-- **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/models`
-- **Search** — Exa, Tavily, Brave, Serper. `/search`
-- **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
-- **Self-learning** — opt-in; distills durable memory and reusable skills with configurable cadence and caps. *(Level 1; deeper levels on the way.)*
+**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Ollama, and a dozen more; the web search backend of your choice; extensions of every kind — skills, subagents, MCP servers, plugins, hooks.
 
-### Engineering
+**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt ([how](docs/concepts/harness-channels.md)), bundle it into a persona you can switch, give autopilot a goal, set the strategy self-learning follows.
 
-- **Runs anywhere** — one static binary for Windows, macOS, and Linux; the same file runs on a laptop, an edge device, or a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permissions** — three modes (ask · auto-accept · autopilot) toggled with `Shift+Tab`; subagents inherit the gates ([details](docs/concepts/permission-model.md)).
-- **Sessions** — auto-save, resume (`--continue` / `--resume`), fork (`/fork`), auto-compaction (`/compact`), and per-message cost tracking.
-- **Inspector** — replay transcripts and inspect system prompts in a local web UI (`san inspector`).
-- Plus event-driven subagent coordination, TUI themes, and prompt prediction.
+**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run exactly as the model saw it.
 
 
 ## Installation
@@ -108,37 +109,26 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ## Usage
 
 ```bash
-san                              # interactive
-san "explain this function"      # one-shot
-san -p "do something"            # print mode (no TUI), pipe-friendly
-san --continue                   # resume the latest session
-san --resume                     # pick a past session to resume
-
-# Subcommands (run `san <command> --help` for the full list)
-san inspector                    # session transcript viewer
-san agent run --prompt "..."                     # run a headless agent
-san plugin <list|install|enable|...>          # manage plugins
-san mcp <add|list|remove|...>                 # manage MCP servers
+san                          # interactive
+san "explain this function"  # one-shot
+san -p "do something"        # print mode (no TUI), pipe-friendly
+san --continue               # resume the latest session
+san --resume                 # pick a past session to resume
 ```
+
+Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> --help` for each.
 
 | What | How |
 |---|---|
-| Pick / switch model | `/models` — saved to `~/.san/providers.json` |
-| Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| Toggle permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
-| Search / persona / memory | `/search` · `/persona` · `/memory` |
-| Skills / agents / tools | `/skills` · `/agents` · `/tools` |
-| Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
-| Session / loop / misc | `/fork` · `/compact` · `/loop` · `/init` · `/clear` |
+| Model · thinking budget | `/models` · `Ctrl+T` |
+| Permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
+| Long-running work · learning | `/autopilot` · `/goal` · `/evolve` |
 | All slash commands | `/help` |
-| Send · newline · stop | `Enter` · `Alt+Enter` · `Esc` |
-| Expand tool · cancel · exit | `Ctrl+O` · `Ctrl+C` · `Ctrl+D` |
+| Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
 
-For API keys, set the matching env var (see Credentials below) or paste when prompted on first launch. Full walkthrough: [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
+[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
 
 ### Configuration
-
-Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings override user settings). Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
 
 <details>
 <summary><b>Credentials</b></summary>
@@ -166,7 +156,9 @@ Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings o
 </details>
 
 <details>
-<summary><b>Directory layout</b></summary>
+<summary><b>Config files &amp; layout</b></summary>
+
+Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
 
 User-level (`~/.san/`):
 
@@ -210,10 +202,11 @@ Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, s
 | Startup memory | ~32 MB | ~189 MB | **5.8x less** |
 | Simple task | ~2.4s / 39 MB | ~10.4s / 286 MB | **4.3x faster, 7.3x less memory** |
 | Tool-use task | ~3.3s / 39 MB | ~26.0s / 285 MB | **7.9x faster, 7.2x less memory** |
+| Harness context* | ~2.3k tokens | ~20.9k tokens | **~9x leaner** |
 
-Both tools have comparable features (hooks, skills, plugins, session, MCP, etc.). The performance gap comes from Go's native compilation, minimal architecture design, and lean prompt engineering — vs Node.js V8/JIT/GC runtime overhead.
+<sub>*Context overhead is system prompt + tool schemas on an empty first turn, measured separately on San v1.22.0 vs Claude Code v2.1.220 — see [method](docs/operations/benchmark.md#7-context-overhead-first-turn). All other rows are from the v1.13.2 / v2.1.112 run.</sub>
 
-See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
+Comparable feature sets — the gap is client-side overhead, not capability. [`docs/operations/benchmark.md`](docs/operations/benchmark.md)
 
 ## Documentation
 
