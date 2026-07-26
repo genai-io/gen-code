@@ -13,10 +13,94 @@ becomes state; this doc covers how state becomes characters on screen.
 > the alt-screen region. The "rendering pipeline" below is entirely
 > string composition; the terminal does the actual drawing.
 
+## Rendering modes: how a TUI can own a terminal
+
+A terminal program has three ways to put content on screen, and the
+choice decides who owns the history — the terminal, or the app:
+
+| Mode | Who owns the screen | History lives in | Scrolling |
+| --- | --- | --- | --- |
+| **Plain streaming** — write lines to stdout, no managed region | nobody | terminal | terminal |
+| **Inline** — manage the bottom N lines, push finished output above | app owns the bottom strip, terminal owns everything above | terminal | terminal |
+| **Alt-screen** — switch to the alternate buffer and own every cell | app | app | app |
+
+**San's native mode is inline**, and it is what the rest of this document
+describes. Bubble Tea manages only the bottom strip (the live tail plus
+the input area); every finished message is pushed above it with
+`tea.Println`, which is `insertAbove` — it scrolls the terminal and
+writes the lines into the terminal's own scrollback.
+
+That choice buys a lot, and all of it comes from the terminal rather
+than from code San has to write:
+
+- **The transcript is real terminal output.** Native scroll, native
+  search (⌘F), native selection and copy, and it survives the session —
+  quit San and the conversation is still in the buffer, next to the
+  `git status` you ran before it.
+- **Cheap repaints.** Only the bottom strip is redrawn per frame, no
+  matter how long the conversation is. Committed messages are never
+  rendered again.
+- **It composes with the terminal.** Output interleaves normally with
+  anything else that prints, and tmux/iTerm features work as usual.
+
+What inline gives up is the flip side of the same property: **once a
+line is committed, San can never touch it again.**
+
+- A resize cannot re-wrap it — glamour wrapped it at the old width, and
+  the terminal can only re-flow, not re-render.
+- A theme switch cannot re-color it.
+- Nothing in-app can scroll, fold, or search it, because it is not the
+  app's memory any more.
+- The live region is capped at the terminal height. A long streaming
+  reply is truncated to its last lines (`tailLines`) until it commits.
+
+### The desktop surface
+
+The desktop ([`internal/app/desktop`](../../internal/app/desktop)) is
+the alt-screen mode, offered as an **opt-in second surface** rather than
+a replacement — Ctrl-G toggles it. San takes the whole screen and draws
+the transcript into a viewport it controls, so the history is the app's
+data again:
+
+- **The whole conversation scrolls in-app** (pgup/pgdown/home/end),
+  independent of the terminal's scrollback position.
+- **Nothing is truncated.** A reply taller than the screen is scrollable
+  while it streams, instead of showing only its tail.
+- **Committed output stays re-renderable** — it is redrawn from
+  `m.conv.Messages` every time, so width and theme changes apply to all
+  of it, not just the tail.
+- **It is a frame, not a strip.** A stable full-screen rectangle is what
+  a multi-pane layout would need; the surface is built around a `Pane`
+  list for that reason, with the transcript as the first one.
+
+The cost is symmetrical: on the alt-screen there is no native scrollback
+to write to, so nothing the desktop draws survives in the terminal, and
+the transcript must be re-rendered by San instead of by the terminal.
+Neither mode dominates, which is why both exist.
+
+### How the two coexist
+
+They share every renderer — the desktop calls `RenderMessageRange`,
+`RenderActiveContent`, and `renderFooter`, the same functions the inline
+view calls, so the two surfaces read identically. What they cannot share
+is the terminal write: `insertAbove` scrolls and inserts rows into
+whichever buffer is current, so a `tea.Println` issued while the
+alt-screen is up would land inside the desktop's frame and be lost from
+the history below.
+
+One invariant handles that: **while the desktop owns the screen, the
+commit pipeline runs untouched but its terminal writes wait in the
+queue** (`scrollbackSuspended`). Commit offsets and `CommittedCount`
+advance exactly as they would inline, so nothing diverges; the queued
+chunks replay in order when the inline view comes back. The one thing
+the desktop renders differently is the *streaming* message: the inline
+view skips the prefix it already flushed to scrollback, and the desktop
+— which is covering that scrollback — draws the message whole.
+
 ## Mental model: two surfaces
 
-The terminal window has **two surfaces** during a session, and every
-rendered string ends up on exactly one of them:
+Within the inline mode, the terminal window has **two surfaces** during
+a session, and every rendered string ends up on exactly one of them:
 
 ```
 m.conv.Messages = [ msg0, msg1, msg2, msg3 | msg4, msg5 ]
@@ -393,3 +477,5 @@ in [`internal/app/update_resize.go`](../../internal/app/update_resize.go):
 | `MDRenderer` lifecycle | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
 | Resize + reflow | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
+| Desktop surface wiring (toggle, keys, transcript) | [`internal/app/desktop_surface.go`](../../internal/app/desktop_surface.go) |
+| Desktop window manager | [`internal/app/desktop/desktop.go`](../../internal/app/desktop/desktop.go) |

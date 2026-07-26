@@ -17,6 +17,7 @@ the assignment changes.
 | --- | --- | --- |
 | `internal/app` | `app` | Bubble Tea root model, service composition, event routing, session restore, app lifecycle. |
 | `internal/app/conv` | `app` | Conversation rendering state and agent outbox observation. |
+| `internal/app/desktop` | `app` | Alt-screen full-screen surface: scrollable transcript viewport above the input strip. |
 | `internal/app/input` | `app` | Text input, selectors, approvals, user-input flow. |
 | `internal/app/trigger` | `app` | System triggers such as cron and async hook polling. |
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |

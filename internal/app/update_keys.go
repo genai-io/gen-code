@@ -55,6 +55,16 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return c, ok
 	}
 
+	// The desktop surface claims only its own keys (exit + scrolling) and is
+	// routed here, below the overlays that already own pgup/pgdown/home/end while
+	// they are visible. Everything else falls through, so both surfaces share the
+	// same keyboard.
+	if m.desktopActive() {
+		if c, ok := m.handleDesktopKey(msg); ok {
+			return c, true
+		}
+	}
+
 	return m.handleTextareaShortcut(msg)
 }
 
@@ -91,6 +101,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case "alt+t", "alt+T":
 		m.conv.ShowTasks = !m.conv.ShowTasks
 		return nil, true
+
+	case "ctrl+g":
+		return m.enterDesktop(), true
 
 	case "ctrl+o":
 		return m.handleCtrlO(), true

@@ -76,6 +76,7 @@ func newBaseModel() model {
 			},
 		}),
 		conv:                conv.NewModel(defaultWidth),
+		desktop:             newDesktopSurface(),
 		mainNotices:         make(chan mainNotice, 64),
 		selfLearnStarts:     make(chan struct{}, 8),
 		systemInput:         trigger.New(),

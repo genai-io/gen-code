@@ -31,6 +31,9 @@ func (m *model) View() tea.View {
 	if frame, ok := m.scrollbackFrameForPrint(); ok {
 		return frame
 	}
+	if m.desktopActive() {
+		return m.desktopView() // full-screen surface; see desktop_surface.go
+	}
 	content, cursor := m.viewString()
 	v := tea.NewView(content)
 	v.Cursor = cursor
