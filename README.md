@@ -1,6 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>A fast, open agent harness for the terminal, built on a flexible and extensible architecture.</strong></p>
+  <p><strong>Minimize the harness. Maximize what the agent can do.</strong></p>
+  <p>A lean, extensible terminal agent runtime with efficient context, fast native performance, and open building blocks for real work.</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
@@ -21,18 +22,40 @@
   </p>
 </div>
 
-San is an open-source terminal agent harness: one native Go binary for
-model-driven work, with no Node.js or Python runtime.
+San is an open-source terminal agent runtime: one native Go binary that keeps
+the machinery around the model small while leaving the model, prompts, tools,
+and extensions open. No Node.js or Python runtime required.
 
-**Why San**
+## Why San
 
-- **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
-- **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
-- **Harness** — configure permissions, autopilot, memory, and skills for your workflow.
+### Minimize overhead
+
+- **Lean context** — a small, cache-stable system prompt; memory, skills, and agent context are injected only when needed.
+- **Small tool surface** — fewer, more capable tools reduce prompt overhead without reducing what the agent can accomplish.
+- **Native performance** — a ~12 MB Go binary, ~0.01s cold start, and zero runtime dependencies.
+- **Fast response path** — minimal client-side overhead from startup through prompt assembly, tool execution, and rendering.
+
+### Maximize capability
+
+- **Flexible prompts** — compose identities, behavior, rules, personas, and project instructions without locking the runtime to one agent shape.
+- **Managed skills** — discover, enable, invoke, and evolve reusable skills.
+- **Open extensions** — add MCP servers, plugins, hooks, commands, and custom tools without changing the core runtime.
+- **Subagents and tasks** — delegate focused work in the foreground or background, with isolated context and explicit permission boundaries.
+- **Multi-provider by design** — switch between cloud, local, and custom OpenAI- or Claude-compatible providers at runtime.
+
+### Engineering for continuous work
+
+- **Sessions and context** — auto-save, resume, compaction, token accounting, and cache-aware context management.
+- **Autopilot and goals** — steer longer-running work toward a goal without requiring a heavyweight planning ceremony.
+- **Observable by default** — replay transcripts and inspect prompts, tool calls, permissions, hooks, inference, and state changes.
+- **Simple file memory** — portable Markdown memory at user and project scope, readable and editable without a database or proprietary format.
+- **Self-evolving** — opt-in background learning can refine durable memory and reusable skills under a customizable strategy and explicit action limits.
+- **Fork without losing history** — branch a conversation, preserve the original path, and retain Git branch context.
+- **Run anywhere** — the same static binary runs on a laptop, server, edge device, CI runner, or `scratch` container.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
-## Features
+## Open architecture
 
 <details>
 <summary><b>Open architecture</b> &nbsp;·&nbsp; overview diagram</summary>
@@ -46,15 +69,8 @@ model-driven work, with no Node.js or Python runtime.
 - **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/models`
 - **Search** — Exa, Tavily, Brave, Serper. `/search`
 - **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
-- **Self-learning** — opt-in; distills durable memory and reusable skills with configurable cadence and caps. *(Level 1; deeper levels on the way.)*
-
-### Engineering
-
-- **Runs anywhere** — one static binary for Windows, macOS, and Linux; the same file runs on a laptop, an edge device, or a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permissions** — three modes (ask · auto-accept · autopilot) toggled with `Shift+Tab`; subagents inherit the gates ([details](docs/concepts/permission-model.md)).
-- **Sessions** — auto-save, resume (`--continue` / `--resume`), fork (`/fork`), auto-compaction (`/compact`), and per-message cost tracking.
-- **Inspector** — replay transcripts and inspect system prompts in a local web UI (`san inspector`).
-- Plus event-driven subagent coordination, TUI themes, and prompt prediction.
+- **Self-learning** — opt-in; distills durable memory and reusable skills with configurable strategy, action limits, and size caps. *(Level 1; deeper levels on the way.)*
+- **Permissions** — ask, auto-accept, autopilot, and bypass postures toggled with `Shift+Tab`; subagents inherit explicit gates ([details](docs/concepts/permission-model.md)).
 
 
 ## Installation

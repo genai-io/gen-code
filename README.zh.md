@@ -1,6 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>快速、开放的终端 Agent 运行框架</strong></p>
+  <p><strong>让框架尽可能小，让 Agent 能做的事尽可能多。</strong></p>
+  <p>一个精简、可扩展的终端 Agent 运行时：高效利用上下文，获得原生性能，并以开放组件完成真实工作。</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-0d9488?style=flat-square" alt="官网"></a>
@@ -21,17 +22,38 @@
   </p>
 </div>
 
-San 是一个开源的**终端 Agent 运行框架** —— 一个原生 Go 二进制，把任意模型包进一个快速、可检视、受权限管控的循环。自带你的模型与扩展即可，无需另装 Node.js 或 Python 运行时。
+San 是一个开源的终端 Agent 运行时：以一个原生 Go 二进制，将模型周围的机制保持精简，同时开放模型、prompt、工具与扩展。不需要 Node.js 或 Python 运行时。
 
-**为什么选 San**
+## 为什么选 San
 
-- **快速** —— 约 12 MB 单文件，约 0.01s 冷启动，无需额外运行时。
-- **开放** —— 模型、搜索、工具都可在运行时切换；自带你的 persona 人设与扩展。
-- **框架** —— 能调的是策略，不只是零件：自定义 **autopilot** 减少 human-in-the-loop，自定义 **self-learning** —— 在你工作时不断增长与打磨记忆和技能。
+### 尽可能减少开销
+
+- **精简上下文** —— 小而稳定、对缓存友好的 system prompt；仅在需要时注入 memory、skills 和 agent 上下文。
+- **精简工具面** —— 用更少、更通用的工具降低 prompt 开销，而不减少 Agent 能完成的事情。
+- **原生性能** —— 约 12 MB 的 Go 二进制、约 0.01s 冷启动、零运行时依赖。
+- **快速响应链路** —— 从启动、prompt 组装到工具执行和渲染，尽可能减少客户端开销。
+
+### 尽可能扩大能力
+
+- **灵活 Prompt** —— 自由组合 identity、behavior、rules、persona 与项目指令，不把运行时锁定为一种 Agent 形态。
+- **可管理的 Skills** —— 发现、启停、调用并持续演进可复用技能。
+- **开放扩展** —— 无需修改核心运行时，即可接入 MCP servers、plugins、hooks、commands 与自定义工具。
+- **Subagents 与 Tasks** —— 在前台或后台委派聚焦任务，并保有隔离上下文和明确的权限边界。
+- **原生多 Provider** —— 运行时切换云端、本地以及自定义 OpenAI/Claude-compatible provider。
+
+### 为持续工作而设计
+
+- **会话与上下文** —— 自动保存、恢复、压缩、token 统计，以及对缓存友好的上下文管理。
+- **Autopilot 与目标** —— 让较长的工作持续朝目标推进，无需繁重的规划仪式。
+- **默认可观测** —— 回放 transcript，并检视 prompt、工具调用、权限、hooks、推理与状态变化。
+- **简单的文件记忆** —— 用户级和项目级 Markdown memory；无需数据库或专有格式，随时可读可改。
+- **自我演进** —— 可选的后台学习在自定义策略和明确操作限制下，持续打磨持久记忆与复用技能。
+- **Fork 不丢历史** —— 从对话分叉，保留原始路径，并记录 Git branch 上下文。
+- **随处运行** —— 同一个静态二进制可运行在笔记本、服务器、边缘设备、CI runner 或 `scratch` 容器。
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 
-## 特性
+## 开放架构
 
 <details>
 <summary><b>开放架构</b> &nbsp;·&nbsp; 总览图</summary>
@@ -44,16 +66,9 @@ San 是一个开源的**终端 Agent 运行框架** —— 一个原生 Go 二�
 
 - **模型** —— Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）、Agnes-AI。`/models`
 - **搜索** —— Exa、Tavily、Brave、Serper。`/search`
-- **人设与扩展** —— 可复用的 persona 配置，加上 Claude Code 的 skills、plugins、MCP servers、hooks 与沙箱化 subagents —— 全部无需改动即可运行。`/persona`
-- **自我学习** —— 可选开启；把近期工作沉淀为持久记忆与可复用技能，节奏与容量上限均可配置。*（Level 1；更高等级仍在路上。）*
-
-### 工程实现
-
-- **随处运行** —— 面向 Windows、macOS、Linux 的单一静态二进制；同一文件可在笔记本、边缘设备或 `scratch` 容器中运行（[体积](docs/operations/footprint.md) · [基准测试](#基准测试san-vs-claude-code)）。
-- **权限** —— 三种模式（询问 · 自动接受 · 自动审查），`Shift+Tab` 切换；subagent 继承权限门控（[详情](docs/concepts/permission-model.md)）。
-- **会话** —— 自动保存、恢复（`--continue` / `--resume`）、Fork（`/fork`）、自动压缩（`/compact`），以及逐消息成本追踪。
-- **检查器** —— 本地 Web UI，回放转录并检视系统 prompt（`san inspector`）。
-- 另有事件驱动的 subagent 协同、TUI 主题与 prompt 预测。
+- **人设与扩展** —— 可复用的 persona 配置，加上 skills、plugins、MCP servers、hooks 与受权限管控的 subagents。`/persona`
+- **自我学习** —— 可选开启；以可配置策略、操作限制与容量上限，把近期工作沉淀为持久记忆与可复用技能。*（Level 1；更高等级仍在路上。）*
+- **权限** —— 询问、自动接受、Autopilot 和 Bypass 等姿态，通过 `Shift+Tab` 切换；subagent 继承明确的权限门控（[详情](docs/concepts/permission-model.md)）。
 
 
 ## 安装
