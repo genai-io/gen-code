@@ -49,13 +49,14 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 </details>
 
-- **模型** —— Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）、Agnes-AI。`/models`
-- **搜索** —— Exa、Tavily、Brave、Serper。`/search`
-- **人设与扩展** —— 可复用的 persona 配置，加上 skills、plugins、MCP servers、hooks 与受权限管控的 subagents。`/persona`
-- **Prompt** —— identity、behavior、rules、persona 与项目指令自由组合成 system prompt（[详情](docs/concepts/harness-channels.md)）。
-- **自我学习** —— 可选开启；以可配置策略、操作限制与容量上限，把近期工作沉淀为持久记忆与可复用技能。*（Level 1；更高等级仍在路上。）*
-- **权限** —— 姿态由你决定：询问、自动接受、Autopilot 或 Bypass，`Shift+Tab` 切换；subagent 继承同一道门控（[详情](docs/concepts/permission-model.md)）。
-- **Inspector** —— 本地 Web UI 回放任意一次运行，模型看到的 prompt、工具调用与权限决策一览无余。`san inspector`
+**接** —— 模型可选 Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）、Agnes-AI；联网搜索走 Exa、Tavily、Brave 或 Serper；扩展则涵盖 skills、subagents、plugins、MCP servers、hooks 与 slash commands。<br>
+&nbsp;&nbsp;`/models` · `/search` · `/skills` · `/agents` · `/mcp` · `/plugin`
+
+**写** —— system prompt 由 identity、behavior、rules、persona 与项目指令组合而成（[原理](docs/concepts/harness-channels.md)）；persona 把 prompt、skills、agents 与设置打包成可随时切换的档案；Autopilot 朝你说出的目标推进；可选的自我学习按你设定的策略沉淀持久记忆与可复用技能。*（Level 1；更高等级仍在路上。）*<br>
+&nbsp;&nbsp;`/persona` · `/goal` · `/autopilot` · `/evolve`
+
+**看** —— 每一次工具调用都要过你选定的权限门，subagent 继承同一道（[模型](docs/concepts/permission-model.md)）。Inspector 用本地 Web UI 回放任意一次运行，模型看到的 prompt、工具调用与决策一览无余。<br>
+&nbsp;&nbsp;`Shift+Tab`（询问 · 自动接受 · Autopilot · 可选 Bypass） · `san inspector`
 
 
 ## 安装

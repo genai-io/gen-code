@@ -51,13 +51,14 @@ Three properties, and San refuses to trade any one of them for the others.
 
 </details>
 
-- **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/models`
-- **Search** — Exa, Tavily, Brave, Serper. `/search`
-- **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
-- **Prompts** — identity, behavior, rules, personas, and project instructions compose into the system prompt ([details](docs/concepts/harness-channels.md)).
-- **Self-learning** — opt-in; distills durable memory and reusable skills with configurable strategy, action limits, and size caps. *(Level 1; deeper levels on the way.)*
-- **Permissions** — you pick the posture: ask, auto-accept, autopilot, or bypass, toggled with `Shift+Tab`; subagents inherit the gate ([details](docs/concepts/permission-model.md)).
-- **Inspector** — replay any run in a local web UI and see the exact prompt, tool calls, and permission decisions the model saw. `san inspector`
+**Plug in** — models from Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), and Agnes-AI; web search through Exa, Tavily, Brave, or Serper; and extensions of every kind — skills, subagents, plugins, MCP servers, hooks, and slash commands.<br>
+&nbsp;&nbsp;`/models` · `/search` · `/skills` · `/agents` · `/mcp` · `/plugin`
+
+**Write** — the system prompt composes from identity, behavior, rules, personas, and project instructions ([how](docs/concepts/harness-channels.md)); a persona bundles prompt, skills, agents, and settings into a profile you can switch; autopilot drives toward a goal you state; opt-in self-learning distills durable memory and reusable skills under a strategy you set. *(Level 1; deeper levels on the way.)*<br>
+&nbsp;&nbsp;`/persona` · `/goal` · `/autopilot` · `/evolve`
+
+**Oversee** — every tool call passes a permission gate you choose, and subagents inherit it ([model](docs/concepts/permission-model.md)). The inspector replays any run in a local web UI with the exact prompt, tool calls, and decisions the model saw.<br>
+&nbsp;&nbsp;`Shift+Tab` (ask · auto-accept · autopilot · optional bypass) · `san inspector`
 
 
 ## Installation
