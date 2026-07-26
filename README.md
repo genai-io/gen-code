@@ -1,7 +1,7 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>Minimize the harness. Maximize what the agent can do.</strong></p>
-  <p>A lean, extensible terminal agent runtime with efficient context, fast native performance, and open building blocks for real work.</p>
+  <p><strong>Minimal harness. Maximum agent.</strong></p>
+  <p>A lean terminal agent runtime — small context, native speed, and every piece open to swap.</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
@@ -22,43 +22,26 @@
   </p>
 </div>
 
-San is an open-source terminal agent runtime: one native Go binary that keeps
-the machinery around the model small while leaving the model, prompts, tools,
-and extensions open. No Node.js or Python runtime required.
+San is an open-source terminal agent runtime: one native Go binary, no Node.js
+or Python. Everything the model touches — prompt, tools, providers, extensions —
+stays yours to change.
 
 ## Why San
 
-### Minimize overhead
+Three properties, and San refuses to trade any one of them for the others.
 
-- **Lean context** — a small, cache-stable system prompt; memory, skills, and agent context are injected only when needed.
-- **Small tool surface** — fewer, more capable tools reduce prompt overhead without reducing what the agent can accomplish.
-- **Native performance** — a ~12 MB Go binary, ~0.01s cold start, and zero runtime dependencies.
-- **Fast response path** — minimal client-side overhead from startup through prompt assembly, tool execution, and rendering.
+**Small** — about **2.3k tokens** of harness reach the model before your first message: a 262-token system prompt plus 9 tool schemas, stable across turns so the cache holds. Rarely-used tools ship disabled rather than taxing every conversation, and memory, skills, and project instructions load only when they are actually used. Claude Code sends ~21k for the same empty turn — **~9x more** ([method](docs/operations/benchmark.md#7-context-overhead-first-turn)).
 
-### Maximize capability
+**Fast** — **~0.01s** cold start, ~32 MB resident, a **12 MB** single binary with zero runtime deps. On an identical tool-use task the full round trip is **~3.3s vs ~26s** — that gap is client-side overhead, not model time ([benchmark](#benchmark-san-vs-claude-code) · [footprint](docs/operations/footprint.md)).
 
-- **Flexible prompts** — compose identities, behavior, rules, personas, and project instructions without locking the runtime to one agent shape.
-- **Managed skills** — discover, enable, invoke, and evolve reusable skills.
-- **Open extensions** — add MCP servers, plugins, hooks, commands, and custom tools without changing the core runtime.
-- **Subagents and tasks** — delegate focused work in the foreground or background, with isolated context and explicit permission boundaries.
-- **Multi-provider by design** — switch between cloud, local, and custom OpenAI- or Claude-compatible providers at runtime.
-
-### Engineering for continuous work
-
-- **Sessions and context** — auto-save, resume, compaction, token accounting, and cache-aware context management.
-- **Autopilot and goals** — steer longer-running work toward a goal without requiring a heavyweight planning ceremony.
-- **Observable by default** — replay transcripts and inspect prompts, tool calls, permissions, hooks, inference, and state changes.
-- **Simple file memory** — portable Markdown memory at user and project scope, readable and editable without a database or proprietary format.
-- **Self-evolving** — opt-in background learning can refine durable memory and reusable skills under a customizable strategy and explicit action limits.
-- **Fork without losing history** — branch a conversation, preserve the original path, and retain Git branch context.
-- **Run anywhere** — the same static binary runs on a laptop, server, edge device, CI runner, or `scratch` container.
+**Open** — swap models mid-session; add MCP servers, subagents, skills, plugins, hooks, and slash commands; compose the system prompt yourself from identity, behavior, rules, personas, and project instructions; replay any session in `san inspector` to see exactly what the model saw. **A minimal harness, not a minimal agent.**
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
 ## Open architecture
 
 <details>
-<summary><b>Open architecture</b> &nbsp;·&nbsp; overview diagram</summary>
+<summary><b>Overview diagram</b></summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
@@ -69,8 +52,9 @@ and extensions open. No Node.js or Python runtime required.
 - **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/models`
 - **Search** — Exa, Tavily, Brave, Serper. `/search`
 - **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
+- **Prompts** — identity, behavior, rules, personas, and project instructions compose into the system prompt ([details](docs/concepts/harness-channels.md)).
 - **Self-learning** — opt-in; distills durable memory and reusable skills with configurable strategy, action limits, and size caps. *(Level 1; deeper levels on the way.)*
-- **Permissions** — ask, auto-accept, autopilot, and bypass postures toggled with `Shift+Tab`; subagents inherit explicit gates ([details](docs/concepts/permission-model.md)).
+- **Permissions** — you pick the posture: ask, auto-accept, autopilot, or bypass, toggled with `Shift+Tab`; subagents inherit the gate ([details](docs/concepts/permission-model.md)).
 
 
 ## Installation
@@ -226,6 +210,9 @@ Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, s
 | Startup memory | ~32 MB | ~189 MB | **5.8x less** |
 | Simple task | ~2.4s / 39 MB | ~10.4s / 286 MB | **4.3x faster, 7.3x less memory** |
 | Tool-use task | ~3.3s / 39 MB | ~26.0s / 285 MB | **7.9x faster, 7.2x less memory** |
+| Harness context* | ~2.3k tokens | ~20.9k tokens | **~9x leaner** |
+
+<sub>*Context overhead is system prompt + tool schemas on an empty first turn, measured separately on San v1.22.0 vs Claude Code v2.1.220 — see [method](docs/operations/benchmark.md#7-context-overhead-first-turn). All other rows are from the v1.13.2 / v2.1.112 run.</sub>
 
 Both tools have comparable features (hooks, skills, plugins, session, MCP, etc.). The performance gap comes from Go's native compilation, minimal architecture design, and lean prompt engineering — vs Node.js V8/JIT/GC runtime overhead.
 

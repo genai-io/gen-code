@@ -108,6 +108,40 @@ Requires a Bash tool call + counting + response.
 
 ---
 
+## 7. Context Overhead (First Turn)
+
+Measured separately from the runs above, on **San v1.22.0** and **Claude Code v2.1.220** (2026-07-26). This is the fixed cost the harness itself imposes on every conversation: the system prompt plus the tool schemas, sent before the user's first message.
+
+Both were measured in an empty directory with no project instructions (`CLAUDE.md` / `SAN.md`), no MCP servers, and no plugins, so the numbers reflect the harness alone.
+
+| Component | San | Claude Code |
+|-----------|-----|-------------|
+| System prompt | 262 tokens (1,224 chars) | — |
+| Tool schemas | 2,047 tokens (9 default-enabled tools, 9.4 KB JSON) | — |
+| **Total first-turn input** | **~2.3k tokens** | **20,908 tokens** |
+
+San is **~9x leaner** in context before any work begins.
+
+Only the tools that ship enabled are counted. Six of the fifteen registered tools — `Cron`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `SendMessage`, `AgentStop` — are disabled by default precisely so their schemas do not tax every conversation; enabling all of them from `/tools` raises the total to ~3.8k tokens.
+
+**Method**
+
+- **San** — the system prompt is the committed golden fixture `internal/core/system/testdata/main_session.txt`; the tool schemas are the default model-facing set, `(&tool.Set{Disabled: setting.WithDefaultDisabledTools(nil)}).Tools()`, JSON-marshalled exactly as they go on the wire. Both counted with `tiktoken` (`cl100k_base`).
+- **Claude Code** — `claude -p "hi" --output-format json` in an empty directory, reading `usage.cache_creation_input_tokens` from its own reported usage (20,908 on `claude-opus-5[1m]`).
+
+**Caveats**
+
+- The two sides use different counting paths: San's is a static count with `cl100k_base`, Claude Code's is the provider's own tokenizer on a live request. Claude's tokenizer typically yields modestly more tokens for the same text, so San's real figure is likely somewhat above 2.3k — the ratio is approximate, not exact.
+- San's `Agent` schema embeds the available-agent directory at runtime, so a project with many subagent definitions adds to the static figure above.
+- Claude Code's total includes anything else it injects on turn one (skill and agent listings, environment blocks). That is the point of the measurement: it is the cost of the harness as shipped, not just of a prompt file.
+- Both numbers grow once you add MCP servers, project instructions, or plugins. Those additions are user-chosen and roughly comparable on both sides.
+
+**Why it matters**
+
+Harness tokens are paid on every request that misses cache, and they permanently reduce the window left for the actual work. San keeps the fixed block small and cache-stable across turns, and loads memory, skills, and project instructions only when they are used.
+
+---
+
 ## Summary
 
 | Metric | San | Claude Code | San Advantage |
@@ -122,6 +156,7 @@ Requires a Bash tool call + counting + response.
 | File read task memory | ~39 MB | ~282 MB | **7.3x less** |
 | Tool-use task time | ~3.3s | ~26.0s | **7.9x faster** |
 | Tool-use task memory | ~39 MB | ~285 MB | **7.2x less** |
+| Harness context (first turn) | ~2.3k tokens | ~20.9k tokens | **~9x leaner** |
 
 ### Why the difference?
 
