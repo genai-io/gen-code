@@ -51,14 +51,11 @@ Three properties, and San refuses to trade any one of them for the others.
 
 </details>
 
-**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), and Agnes-AI; web search through Exa, Tavily, Brave, or Serper; extensions of every kind — skills, subagents, plugins, MCP servers, hooks, and slash commands.<br>
-&nbsp;&nbsp;`/models` · `/search` · `/skills` · `/agents` · `/mcp` · `/plugin`
+**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Ollama, and a dozen more; the web search backend of your choice; extensions of every kind — skills, subagents, MCP servers, plugins, hooks. `/models` · `/search`
 
-**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt from identity, behavior, rules, personas, and project instructions ([how](docs/concepts/harness-channels.md)); bundle a persona you can switch; give autopilot a goal; set the strategy self-learning follows. *(Level 1; deeper levels on the way.)*<br>
-&nbsp;&nbsp;`/persona` · `/goal` · `/autopilot` · `/evolve`
+**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt ([how](docs/concepts/harness-channels.md)), bundle it into a persona you can switch, give autopilot a goal, set the strategy self-learning follows. `/persona` · `/goal` · `/evolve`
 
-**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run with the exact prompt, tool calls, and decisions the model saw.<br>
-&nbsp;&nbsp;`Shift+Tab` (ask · auto-accept · autopilot · optional bypass) · `san inspector`
+**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run exactly as the model saw it. `Shift+Tab` · `san inspector`
 
 
 ## Installation
