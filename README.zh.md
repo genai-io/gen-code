@@ -28,11 +28,11 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **三** —— 三个特性，谁也不为谁让路。
 
-**小** —— 你的第一句话之前，只有约 **2.3k token** 的框架开销：262 token 的 system prompt 加 9 个工具 schema，且跨轮次稳定、缓存命中。不常用的工具默认关闭，不去摊薄每一次对话；memory、skills 与项目指令也只在真正用到时才加载。同样一个空回合，Claude Code 要发 ~21k —— **多约 9 倍**（[测量方法](docs/operations/benchmark.md#7-context-overhead-first-turn)）。
+**小** —— 你的第一句话之前，只有约 2.3k token 的框架开销；同样的空回合，Claude Code 要发 ~21k。不常用的工具默认关闭；memory、skills 与项目指令也只在真正用到时才加载。
 
-**快** —— **~0.01s** 冷启动，常驻约 32 MB，**12 MB** 单文件、零运行时依赖。同一个工具调用任务，端到端 **~3.3s vs ~26s** —— 这个差距来自客户端开销，不是模型推理（[基准测试](#基准测试san-vs-claude-code) · [体积](docs/operations/footprint.md)）。
+**快** —— 同一个工具调用任务，端到端 ~3.3s，Claude Code 要 ~26s。这个差距来自客户端开销，不是模型推理（[基准测试](#基准测试san-vs-claude-code)）。
 
-**开** —— 会话中随时换模型；接入 MCP servers、subagents、skills、plugins、hooks 与 slash commands；system prompt 由 identity、behavior、rules、persona 与项目指令自由拼装；`san inspector` 回放任意会话，模型看到了什么一览无余。**小的是框架，不是 Agent 的能力。**
+**开** —— 会话中随时换模型；接入 MCP servers、subagents、skills、plugins、hooks 与 slash commands；system prompt 自由拼装；`san inspector` 回放任意会话，模型看到了什么一览无余。**小的是框架，不是 Agent 的能力。**
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 

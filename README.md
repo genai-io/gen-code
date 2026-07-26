@@ -30,11 +30,11 @@ stays yours to change.
 
 Three properties, and San refuses to trade any one of them for the others.
 
-**Small** — about **2.3k tokens** of harness reach the model before your first message: a 262-token system prompt plus 9 tool schemas, stable across turns so the cache holds. Rarely-used tools ship disabled rather than taxing every conversation, and memory, skills, and project instructions load only when they are actually used. Claude Code sends ~21k for the same empty turn — **~9x more** ([method](docs/operations/benchmark.md#7-context-overhead-first-turn)).
+**Small** — ~2.3k tokens of harness reach the model before your first message, against ~21k for Claude Code. Rarely-used tools ship disabled; memory, skills, and project instructions load only when they are used.
 
-**Fast** — **~0.01s** cold start, ~32 MB resident, a **12 MB** single binary with zero runtime deps. On an identical tool-use task the full round trip is **~3.3s vs ~26s** — that gap is client-side overhead, not model time ([benchmark](#benchmark-san-vs-claude-code) · [footprint](docs/operations/footprint.md)).
+**Fast** — the same tool-use task takes ~3.3s end to end where Claude Code takes ~26s. That gap is client-side overhead, not model time ([benchmark](#benchmark-san-vs-claude-code)).
 
-**Open** — swap models mid-session; add MCP servers, subagents, skills, plugins, hooks, and slash commands; compose the system prompt yourself from identity, behavior, rules, personas, and project instructions; replay any session in `san inspector` to see exactly what the model saw. **A minimal harness, not a minimal agent.**
+**Open** — swap models mid-session; add MCP servers, subagents, skills, plugins, hooks, and slash commands; compose the system prompt yourself; replay any session in `san inspector` to see exactly what the model saw. **A minimal harness, not a minimal agent.**
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
