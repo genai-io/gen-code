@@ -28,9 +28,9 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **三** —— 三个特性，谁也不为谁让路。
 
-**小** —— 你的第一句话之前，只有约 2.3k token 的框架开销；同样的空回合，Claude Code 要发 ~21k。不常用的工具默认关闭；memory、skills 与项目指令也只在真正用到时才加载。
+**小** —— 你的第一句话之前，只有约 2.3k token 的框架开销，而主流 Agent 大多在 20k 以上。落到磁盘上是一个 12 MB 的二进制、零运行时依赖 —— 笔记本、CI runner、`scratch` 容器，丢进去就能跑。
 
-**快** —— 同一个工具调用任务，端到端 ~3.3s，Claude Code 要 ~26s。这个差距来自客户端开销，不是模型推理（[基准测试](#基准测试san-vs-claude-code)）。
+**快** —— ~0.01s 冷启动，一次完整的工具调用任务端到端 ~3.3s。你等的是模型，不是客户端（[基准测试](#基准测试san-vs-claude-code)）。
 
 **开** —— 会话中随时换模型；接入 MCP servers、subagents、skills、plugins、hooks 与 slash commands；system prompt 自由拼装；`san inspector` 回放任意会话，模型看到了什么一览无余。**小的是框架，不是 Agent 的能力。**
 

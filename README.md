@@ -30,9 +30,9 @@ stays yours to change.
 
 Three properties, and San refuses to trade any one of them for the others.
 
-**Small** — ~2.3k tokens of harness reach the model before your first message, against ~21k for Claude Code. Rarely-used tools ship disabled; memory, skills, and project instructions load only when they are used.
+**Small** — ~2.3k tokens of harness reach the model before your first message, where most agent harnesses ship 20k or more. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
 
-**Fast** — the same tool-use task takes ~3.3s end to end where Claude Code takes ~26s. That gap is client-side overhead, not model time ([benchmark](#benchmark-san-vs-claude-code)).
+**Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
 
 **Open** — swap models mid-session; add MCP servers, subagents, skills, plugins, hooks, and slash commands; compose the system prompt yourself; replay any session in `san inspector` to see exactly what the model saw. **A minimal harness, not a minimal agent.**
 
