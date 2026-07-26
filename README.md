@@ -51,13 +51,13 @@ Three properties, and San refuses to trade any one of them for the others.
 
 </details>
 
-**Plug in** — models from Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), and Agnes-AI; web search through Exa, Tavily, Brave, or Serper; and extensions of every kind — skills, subagents, plugins, MCP servers, hooks, and slash commands.<br>
+**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), and Agnes-AI; web search through Exa, Tavily, Brave, or Serper; extensions of every kind — skills, subagents, plugins, MCP servers, hooks, and slash commands.<br>
 &nbsp;&nbsp;`/models` · `/search` · `/skills` · `/agents` · `/mcp` · `/plugin`
 
-**Write** — the system prompt composes from identity, behavior, rules, personas, and project instructions ([how](docs/concepts/harness-channels.md)); a persona bundles prompt, skills, agents, and settings into a profile you can switch; autopilot drives toward a goal you state; opt-in self-learning distills durable memory and reusable skills under a strategy you set. *(Level 1; deeper levels on the way.)*<br>
+**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt from identity, behavior, rules, personas, and project instructions ([how](docs/concepts/harness-channels.md)); bundle a persona you can switch; give autopilot a goal; set the strategy self-learning follows. *(Level 1; deeper levels on the way.)*<br>
 &nbsp;&nbsp;`/persona` · `/goal` · `/autopilot` · `/evolve`
 
-**Oversee** — every tool call passes a permission gate you choose, and subagents inherit it ([model](docs/concepts/permission-model.md)). The inspector replays any run in a local web UI with the exact prompt, tool calls, and decisions the model saw.<br>
+**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run with the exact prompt, tool calls, and decisions the model saw.<br>
 &nbsp;&nbsp;`Shift+Tab` (ask · auto-accept · autopilot · optional bypass) · `san inspector`
 
 

@@ -49,13 +49,13 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 </details>
 
-**接** —— 模型可选 Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）、Agnes-AI；联网搜索走 Exa、Tavily、Brave 或 Serper；扩展则涵盖 skills、subagents、plugins、MCP servers、hooks 与 slash commands。<br>
+**接** —— 没有一块是焊死的。模型可选 Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）、Agnes-AI；联网搜索走 Exa、Tavily、Brave 或 Serper；扩展涵盖 skills、subagents、plugins、MCP servers、hooks 与 slash commands。<br>
 &nbsp;&nbsp;`/models` · `/search` · `/skills` · `/agents` · `/mcp` · `/plugin`
 
-**写** —— system prompt 由 identity、behavior、rules、persona 与项目指令组合而成（[原理](docs/concepts/harness-channels.md)）；persona 把 prompt、skills、agents 与设置打包成可随时切换的档案；Autopilot 朝你说出的目标推进；可选的自我学习按你设定的策略沉淀持久记忆与可复用技能。*（Level 1；更高等级仍在路上。）*<br>
+**写** —— Agent 怎么做事，是你能改的文本，不是编死在二进制里的东西。system prompt 由 identity、behavior、rules、persona 与项目指令组合（[原理](docs/concepts/harness-channels.md)）；persona 打包成可随时切换的档案；给 Autopilot 一个目标；自我学习按你定的策略走。*（Level 1；更高等级仍在路上。）*<br>
 &nbsp;&nbsp;`/persona` · `/goal` · `/autopilot` · `/evolve`
 
-**看** —— 每一次工具调用都要过你选定的权限门，subagent 继承同一道（[模型](docs/concepts/permission-model.md)）。Inspector 用本地 Web UI 回放任意一次运行，模型看到的 prompt、工具调用与决策一览无余。<br>
+**看** —— 没有一步是暗箱。San 能自作主张到什么程度由你定，subagent 继承同一个选择（[权限模型](docs/concepts/permission-model.md)）；Inspector 回放任意一次运行，模型看到的 prompt、工具调用与决策一览无余。<br>
 &nbsp;&nbsp;`Shift+Tab`（询问 · 自动接受 · Autopilot · 可选 Bypass） · `san inspector`
 
 
