@@ -452,7 +452,26 @@ func (m *model) seedAgentMessages(pendingSend string) []core.Message {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}
-	return coreMessages
+	return m.dropImagesTextOnlyModelRejects(coreMessages)
+}
+
+// dropImagesTextOnlyModelRejects removes image attachments from a seeded chain
+// the active model can't accept, keeping the surrounding text. imagesBlockedForModel
+// holds back new turns carrying images, but history predating the current model
+// still holds them — switch a conversation from a vision-capable model to a
+// text-only one and every later turn replays those images, which the provider
+// rejects outright. Every rebuild passes through here, so the switch itself
+// (which stops the session) is enough to clear them.
+func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Message {
+	if llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
+		return msgs
+	}
+	stripped := make([]core.Message, len(msgs))
+	for i, msg := range msgs {
+		msg.Images = nil
+		stripped[i] = msg
+	}
+	return stripped
 }
 
 func (m *model) sendToAgent(content string, images []core.Image) tea.Cmd {

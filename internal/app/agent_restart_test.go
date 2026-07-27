@@ -143,3 +143,58 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
 	}
 }
+
+// textOnlyStubProvider declares itself unable to accept image input, the way
+// DeepSeek does. Seeding never streams, so Stream is left unimplemented.
+type textOnlyStubProvider struct{ restartStubProvider }
+
+func (*textOnlyStubProvider) Name() string               { return "text-only-stub" }
+func (*textOnlyStubProvider) SupportsImages(string) bool { return false }
+
+func chainWithImage() []core.Message {
+	return []core.Message{
+		{
+			ID:      "u1",
+			Role:    core.RoleUser,
+			Content: "what is in this screenshot?",
+			Images:  []core.Image{{MediaType: "image/png", Data: "aW1n", FileName: "shot.png", Size: 3}},
+		},
+		{ID: "a1", Role: core.RoleAssistant, Content: "a terminal"},
+	}
+}
+
+// A conversation that began on a vision-capable model carries its images in the
+// chain. Handing them to a text-only model replays image parts the provider
+// rejects on every later turn, so the seed has to drop them — keeping the text.
+func TestSeedAgentMessagesDropsImagesForTextOnlyModel(t *testing.T) {
+	original := chainWithImage()
+	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m.env.LLMProvider = &textOnlyStubProvider{}
+
+	seeded := m.seedAgentMessages("")
+	if len(seeded) != len(original) {
+		t.Fatalf("seedAgentMessages() length = %d, want %d", len(seeded), len(original))
+	}
+	if len(seeded[0].Images) != 0 {
+		t.Errorf("seeded user message kept %d image(s), want none", len(seeded[0].Images))
+	}
+	if seeded[0].Content != original[0].Content {
+		t.Errorf("seeded user message content = %q, want %q", seeded[0].Content, original[0].Content)
+	}
+	// The retained snapshot must survive intact: switching back to a
+	// vision-capable model has to restore the images.
+	if len(m.agentRestartMessages[0].Images) != 1 {
+		t.Error("stripping mutated the retained restart chain")
+	}
+}
+
+// Vision-capable providers are the common case and must see the chain untouched.
+func TestSeedAgentMessagesKeepsImagesForVisionModel(t *testing.T) {
+	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m.env.LLMProvider = &restartStubProvider{}
+
+	seeded := m.seedAgentMessages("")
+	if len(seeded[0].Images) != 1 {
+		t.Errorf("seeded user message has %d image(s), want the original 1", len(seeded[0].Images))
+	}
+}
