@@ -128,8 +128,8 @@ func (s *State) UpdateSuggestions(input string) {
 }
 
 const (
-	fileScanMaxResults        = 500
-	fileScanMaxDirsVisited    = 2000
+	fileScanMaxResults        = 2000
+	fileScanMaxDirsVisited    = 8000
 	fileScanMaxDepth          = 6
 	fileSuggestionViewSize    = 8
 	commandSuggestionViewSize = 8
