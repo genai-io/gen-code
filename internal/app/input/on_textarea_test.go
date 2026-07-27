@@ -1,6 +1,7 @@
 package input
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -239,6 +240,95 @@ func Test_bareImagePathRe(t *testing.T) {
 				if match[2] != tt.expected[i][2] {
 					t.Errorf("match[%d][2] = %q, want %q", i, match[2], tt.expected[i][2])
 				}
+			}
+		})
+	}
+}
+
+func TestProcessImageRefs(t *testing.T) {
+	// Create a real image file for testing (1x1 transparent PNG)
+	tmpDir := t.TempDir()
+	pngData := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG header
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
+		0x54, 0x08, 0xD7, 0x63, 0x60, 0x60, 0x00, 0x00,
+		0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33, // IEND chunk
+		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+		0xAE, 0x42, 0x60, 0x82,
+	}
+	pngPath := tmpDir + "/test.png"
+	if err := os.WriteFile(pngPath, pngData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	badPath := tmpDir + "/corrupt.png"
+	if err := os.WriteFile(badPath, []byte("not an image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		input     string
+		wantText  string // expected output text
+		wantImage int    // expected number of images loaded
+		wantErr   bool
+	}{
+		{
+			name:      "@-prefixed path loads image and strips text",
+			input:     "describe @" + pngPath,
+			wantText:  "describe",
+			wantImage: 1,
+		},
+		{
+			name:      "bare absolute path loads image and keeps text",
+			input:     "check " + pngPath + " for details",
+			wantText:  "check " + pngPath + " for details",
+			wantImage: 1,
+		},
+		{
+			name:      "bare path with corrupt image skips silently",
+			input:     "see " + badPath,
+			wantText:  "see " + badPath,
+			wantImage: 0,
+			wantErr:   false,
+		},
+		{
+			name:      "non-existent bare path is left as-is",
+			input:     "missing /nonexistent/image.png file",
+			wantText:  "missing /nonexistent/image.png file",
+			wantImage: 0,
+		},
+		{
+			name:      "@ with corrupt image returns error",
+			input:     "@" + badPath,
+			wantText:  "",
+			wantImage: 0,
+			wantErr:   true,
+		},
+		{
+			name:      "no image references",
+			input:     "just text no images",
+			wantText:  "just text no images",
+			wantImage: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, images, err := ProcessImageRefs(tmpDir, tt.input)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.wantText {
+				t.Errorf("ProcessImageRefs() text = %q, want %q", got, tt.wantText)
+			}
+			if len(images) != tt.wantImage {
+				t.Errorf("ProcessImageRefs() got %d images, want %d", len(images), tt.wantImage)
 			}
 		})
 	}

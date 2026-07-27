@@ -275,52 +275,29 @@ func (m *Model) HistoryDown() {
 // from input. Returns the cleaned text content and any loaded images.
 // Only processes references where the file actually exists on disk;
 // non-existent file references are left in the text as-is.
+//
+// @-prefixed references are removed from the content after loading, and a
+// failed load aborts the entire send — both are right because the user
+// deliberately typed @. Bare paths (drag-drop, absolute paths) are treated
+// more leniently: the text stays in the message, and a failed load is
+// silently skipped so a mere mention of a path doesn't block the send.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	content := input
 	var images []core.Image
 
-	// Step 1: Process @-prefixed image references
-	content, imgList, err := processRefs(cwd, content, imageRefPattern, true)
-	if err != nil {
-		return "", nil, err
-	}
-	images = append(images, imgList...)
-
-	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
-	content, imgList, err = processRefs(cwd, content, bareImagePathRe, false)
-	if err != nil {
-		return "", nil, err
-	}
-	images = append(images, imgList...)
-
-	return strings.TrimSpace(content), images, nil
-}
-
-// processRefs finds all matches for pattern in content, loads matching image
-// files, and removes the matched text from the content. If hasPrefix is true,
-// the capture group is group 1 (after the @ prefix); otherwise it's group 0
-// (the full match for bare paths).
-func processRefs(cwd, content string, pattern *regexp.Regexp, hasPrefix bool) (string, []core.Image, error) {
-	matches := pattern.FindAllStringSubmatch(content, -1)
-	if len(matches) == 0 {
-		return content, nil, nil
-	}
-
-	var images []core.Image
-	var loadedRefs []string // full matched text to remove from content
-
+	// Step 1: Process @-prefixed image references — remove from text,
+	// abort on load failure.
+	matches := imageRefPattern.FindAllStringSubmatch(content, -1)
+	var loadedRefs []string
 	for _, match := range matches {
 		path := match[1]
 		absPath := path
 		if !filepath.IsAbs(absPath) {
 			absPath = filepath.Join(cwd, absPath)
 		}
-
-		// Skip references to files that don't exist
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			continue
 		}
-
 		img, err := image.Load(absPath)
 		if err != nil {
 			return "", nil, fmt.Errorf("loading image %s: %w", absPath, err)
@@ -328,10 +305,29 @@ func processRefs(cwd, content string, pattern *regexp.Regexp, hasPrefix bool) (s
 		images = append(images, img)
 		loadedRefs = append(loadedRefs, match[0])
 	}
-
-	// Only remove references that were successfully loaded
 	for _, ref := range loadedRefs {
 		content = strings.ReplaceAll(content, ref, "")
+	}
+
+	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
+	// Keep the text in the message, skip silently on load failure.
+	bareMatches := bareImagePathRe.FindAllStringSubmatch(content, -1)
+	for _, match := range bareMatches {
+		path := match[1]
+		absPath := path
+		if !filepath.IsAbs(absPath) {
+			absPath = filepath.Join(cwd, absPath)
+		}
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			continue
+		}
+		img, err := image.Load(absPath)
+		if err != nil {
+			// Bare paths are more lenient: skip silently instead of aborting,
+			// since the user may have just mentioned a path in a sentence.
+			continue
+		}
+		images = append(images, img)
 	}
 
 	return strings.TrimSpace(content), images, nil
