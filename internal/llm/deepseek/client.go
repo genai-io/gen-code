@@ -46,14 +46,14 @@ func (c *Client) ThinkingEfforts(model string) []string {
 	if !supportsThinking(model) {
 		return nil
 	}
-	return []string{"off", "high", "max"}
+	return []string{"off", "low", "medium", "high", "max"}
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
 	if !supportsThinking(model) {
 		return ""
 	}
-	return "off"
+	return "medium"
 }
 
 // Stream sends a completion request and returns a channel of streaming chunks.
