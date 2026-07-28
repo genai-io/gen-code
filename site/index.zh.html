@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>San — 开源的统一智能体运行时</title>
-<meta name="description" content="San 是一个终端原生的统一智能体运行时：一个 ~12 MB 的 Go 二进制文件，可插拔的 LLM 提供商，完全兼容 Claude Code 技能、插件和 MCP。~0.01 秒冷启动，零运行时依赖。">
-<meta property="og:title" content="San — 终端的统一智能体运行时">
-<meta property="og:description" content="单一 Go 二进制文件。可插拔 LLM 提供商。兼容 Claude Code。~0.01 秒冷启动，~12 MB。">
+<title>San — 开销最小，Agent 最强。</title>
+<meta name="description" content="San 是一个开源的终端 Agent 运行时：一个 12 MB 的 Go 二进制，约 2.3k token 框架开销，不需要 Node.js 或 Python。prompt、工具、provider、扩展都留给你替换。">
+<meta property="og:title" content="San — 开销最小，Agent 最强。">
+<meta property="og:description" content="上下文精简，原生性能，从里到外都开放。一个 12 MB Go 二进制的开源终端 Agent 运行时。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://genai-io.github.io/san/">
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
@@ -23,13 +23,12 @@
     <span class="logo"><a href="#top">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
     <button class="nav-toggle" aria-label="切换菜单" aria-expanded="false" onclick="toggleNav(this)">≡</button>
     <div class="nav-links" id="nav-links">
-      <a href="#features">功能</a>
-      <a href="#deploy">部署</a>
-      <a href="#footprint">性能</a>
+      <a href="#why">为什么</a>
+      <a href="#benchmark">基准</a>
       <a href="#community">社区</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <a href="intro.html">介绍</a>
-      <a href="getting-started.zh.html">快速开始</a>
+      <a href="getting-started.zh.html">开始</a>
       <a href="docs.zh.html">文档</a>
       <span class="lang-switch">
         <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -38,7 +37,7 @@
         </button>
         <div class="lang-menu" id="lang-menu" role="listbox"></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ 在 GitHub 标星</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
     </div>
   </div>
 </nav>
@@ -46,120 +45,170 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div class="hero-head">
-      <span class="kicker load-up d1">开源智能体运行时 · Apache-2.0</span>
-      <h1 class="load-up d2">San — 统一智能体<br>在你的<span class="grad">终端中进化</span></h1>
-      <p class="sub load-up d3">一个运行时，多种智能体——<strong>与你一起成长</strong></p>
-    </div>
-
-    <div class="screen-frame load-up d4">
-      <div class="intro-embed">
-        <iframe src="intro.html?theme=dark" title="San — 动画介绍" loading="lazy" allow="fullscreen"></iframe>
+      <span class="kicker load-up d1">开源 · Apache-2.0</span>
+      <h1 class="load-up d2">开销最小，<br>Agent <em>最强</em>。</h1>
+      <p class="sub load-up d3">San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不需要 Node.js 或 Python。模型碰到的一切 —— prompt、工具、provider、扩展 —— 都留给你替换。</p>
+      <div class="metrics load-up d4">
+        <span><b>~0.01s</b> 冷启动</span>
+        <span><b>~12 MB</b> 单文件</span>
+        <span><b>~2.3k</b> token 框架开销</span>
+        <span><b>零</b>运行时依赖</span>
       </div>
     </div>
-    <p class="intro-cap load-up d4"><a href="intro.html" target="_blank" rel="noopener">全屏观看 ↗</a></p>
 
-    <div class="hero-actions load-up d5">
-      <a class="btn btn-primary" href="getting-started.zh.html">快速开始 →</a>
-      <a class="btn btn-ghost" href="https://github.com/genai-io/san">在 GitHub 上查看</a>
+    <div class="install load-up d5">
+      <div class="install-tabs" role="tablist" aria-label="安装方式">
+        <button class="install-tab active" role="tab" aria-selected="true" data-cmd="curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash">curl</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-cmd="irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex">powershell</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-cmd="go install github.com/genai-io/san/cmd/san@latest">go install</button>
+      </div>
+      <div class="install-body">
+        <span class="prompt">$</span>
+        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copyInstall(this)">复制</button>
+      </div>
     </div>
 
-    <div class="install-bar load-up d6">
-      <span class="prompt">$</span>
-      <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-      <button class="copy-btn" onclick="copyInstall(this)">复制</button>
+    <div class="hero-actions load-up d6">
+      <a class="btn btn-primary" href="getting-started.zh.html">快速开始</a>
+      <a class="btn btn-ghost" href="intro.html">看动画介绍</a>
+      <a class="btn btn-ghost" href="https://github.com/genai-io/san">GitHub</a>
     </div>
 
     <div class="badges load-up d6">
-      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488" alt="版本"></a>
-      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=14b8a6" alt="星标"></a>
-      <img src="https://img.shields.io/badge/license-Apache%202.0-0b7d72?style=flat-square" alt="许可协议">
+      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="版本"></a>
+      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="星标"></a>
+      <img src="https://img.shields.io/badge/license-Apache%202.0-0d9488?style=flat-square&labelColor=f1efe9" alt="许可协议">
     </div>
   </div>
 </header>
 
-<section id="features">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="kicker">功能特性</span>
-      <h2 class="section-title">开放 <em>设计</em></h2>
-      <p class="section-sub">每一层都可以在运行时替换。无供应商锁定。</p>
+<section id="demo" style="padding-top: 24px;">
+  <div class="wrap wide">
+    <div class="stage-tabs" role="tablist" aria-label="演示">
+      <button class="stage-tab active" role="tab" aria-selected="true" data-stage="intro">看动画介绍</button>
+      <button class="stage-tab" role="tab" aria-selected="false" data-stage="turn">跑一个 turn</button>
     </div>
-    <div class="grid">
-      <div class="card reveal">
-        <span class="idx">01</span>
-        <h3><span class="ico">🔌</span> 多 LLM 提供商</h3>
-        <p>使用任何 LLM —— 从 Anthropic 到 Z.ai。通过 <code>/models</code> 随时切换。</p>
+
+    <div id="stage-intro">
+      <div class="intro-embed">
+        <iframe src="intro.html?theme=dark" title="San — 动画介绍" loading="lazy" allow="fullscreen"></iframe>
       </div>
-      <div class="card reveal">
-        <span class="idx">02</span>
-        <h3><span class="ico">🔍</span> 可插拔搜索</h3>
-        <p>Exa、Tavily、Brave 或 Serper。通过 <code>/search</code> 随时切换。</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">03</span>
-        <h3><span class="ico">🧩</span> 技能与扩展</h3>
-        <p>技能、插件、MCP 服务器和子智能体——兼容 Claude Code，无需修改即可运行。</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">04</span>
-        <h3><span class="ico">🎭</span> 角色系统</h3>
-        <p>Markdown 定义的角色——系统提示、技能和配置按用户或项目打包，通过 <code>/persona</code> 切换。</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">05</span>
-        <h3><span class="ico">⚡</span> 原生性能</h3>
-        <p>单一 Go 二进制文件。12 MB，~0.01 秒启动，零运行时依赖。</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">06</span>
-        <h3><span class="ico">💾</span> 会话持久化</h3>
-        <p>会话自动保存、恢复和分支，支持自动上下文压缩。</p>
-      </div>
-      <div class="card wide reveal">
-        <span class="idx">07</span>
-        <div>
-          <h3><span class="ico">✦</span> 自我进化 <span class="soon">Lv.1 · 已上线</span></h3>
-          <p>每经过几轮交互，后台审核者会将你最近的工作提炼为持久化记忆和可复用技能——智能体在你工作中不断升级，无需手动调优。Lv.1 现已上线；更深层级即将推出。</p>
+      <p class="panel-cap"><a href="intro.html" target="_blank" rel="noopener">打开高清完整版 ↗</a> · 54 秒，无声</p>
+    </div>
+
+    <div id="stage-turn" hidden>
+      <div class="term">
+        <div class="term-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="where">san — ~/acme-api</span>
+          <span class="model">◆ <b>sonnet-4-6</b></span>
         </div>
-        <div class="levels">
-          <span class="level live"><b>Lv.1</b> 好奇</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.10</b> 更优</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.50</b> 更强</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.∞</b> 传奇</span>
+        <div class="term-out" id="term-out"></div>
+        <div class="term-ask">
+          <form class="term-line" id="term-form" autocomplete="off">
+            <span class="q">❯</span>
+            <input id="term-in" type="text" placeholder="问 San 点什么…" aria-label="问 San 点什么">
+            <span class="enter">↵ 运行</span>
+          </form>
+          <div class="term-chips" id="term-chips"></div>
         </div>
       </div>
+      <p class="panel-cap">脚本演示，示例仓库 · 一个真实 San turn 的样子</p>
     </div>
   </div>
 </section>
 
-<section id="deploy" style="background: var(--bg-soft);">
+<section id="why">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker">随处部署</span>
-      <h2 class="section-title">一个二进制。<em>随处运行。</em></h2>
-      <p class="section-sub">一个 ~12 MB 的二进制文件，零运行时依赖——同一文件可在笔记本、云节点或 256 MB 边缘设备上无需修改即可运行。</p>
+      <span class="kicker">为什么选 San</span>
+      <h2 class="section-title">小的是开销，<br><em>不是 Agent 的能力</em>。</h2>
+      <p class="section-sub">三个特性 —— 小、快、开 —— 谁也不为谁让路。三笔，正好一个「三」。</p>
     </div>
-    <div class="deploy-targets">
-      <span class="pill">💻 macOS 和 Linux 笔记本</span>
-      <span class="pill">☁️ 云节点和虚拟机</span>
-      <span class="pill">📟 ARM 边缘设备</span>
-      <span class="pill">🐳 <code>scratch</code> 容器</span>
-      <span class="pill">⚙️ CI 步骤和生命周期钩子</span>
-      <span class="pill">🔒 离线隔离环境</span>
+
+    <div class="trigram">
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">一</span>
+          <span class="name">小</span>
+        </div>
+        <div class="body">
+          <h3>上下文窗口留给你的正事</h3>
+          <p>你的第一句话之前，框架占的那点上下文很小，窗口留给手上的任务。落到磁盘上就一个文件，不用再装别的东西。</p>
+          <dl class="rows">
+            <dt>框架开销</dt><dd>~2.3k token</dd>
+            <dt>二进制</dt><dd>12 MB <span class="dim">· macos · linux · windows</span></dd>
+            <dt>运行时依赖</dt><dd>无</dd>
+          </dl>
+          <div class="pills">
+            <span class="pill"><span class="ico">💻</span> 笔记本</span>
+            <span class="pill"><span class="ico">☁️</span> 云主机</span>
+            <span class="pill"><span class="ico">📟</span> ARM 边缘设备</span>
+            <span class="pill"><span class="ico">🐳</span> 容器</span>
+            <span class="pill"><span class="ico">⚙️</span> CI 步骤</span>
+            <span class="pill"><span class="ico">🔒</span> 离线隔离环境</span>
+          </div>
+          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">为什么小很重要</a></p>
+        </div>
+      </article>
+
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">二</span>
+          <span class="name">快</span>
+        </div>
+        <div class="body">
+          <h3>你等的是模型，不是客户端</h3>
+          <p>原生 Go：按键之前没有解释器要启动，也不用先把 <code>node_modules</code> 读一遍。你等的是模型。</p>
+          <dl class="rows">
+            <dt>冷启动</dt><dd>~0.01s</dd>
+            <dt>简单任务</dt><dd>~2.4s</dd>
+            <dt>工具调用任务</dt><dd>~3.3s</dd>
+            <dt>内存</dt><dd>空载 ~32 MB <span class="dim">· 负载下 ~39 MB</span></dd>
+          </dl>
+          <p class="more"><a href="#benchmark">看数据</a></p>
+        </div>
+      </article>
+
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">三</span>
+          <span class="name">开</span>
+        </div>
+        <div class="body">
+          <h3>从里到外都开放</h3>
+          <p>模型看到什么、能做什么，都由你写 —— 事后还能原样回放。</p>
+          <div class="trio">
+            <div class="facet">
+              <h4>接得上</h4>
+              <p>Anthropic、OpenAI、Google、DeepSeek、Ollama 等十余家 provider；搜索后端随你挑；skills、plugins、MCP servers、subagents、hooks 一律无需修改就能跑。</p>
+              <div class="keys"><span>/models</span><span>/search</span></div>
+            </div>
+            <div class="facet">
+              <h4>写得了</h4>
+              <p>system prompt 自己拼，打包成可切换的 persona，给 autopilot 一个目标，自我学习跟哪套策略也由你定。</p>
+              <div class="keys"><span>/identity</span><span>/goal</span><span>/evolve</span></div>
+            </div>
+            <div class="facet">
+              <h4>看得住</h4>
+              <p>San 不问就能做到哪一步由你决定，subagent 继承这个选择。inspector 把一次运行按模型看到的原样回放。</p>
+              <div class="keys"><span>Shift+Tab</span><span>san inspector</span></div>
+            </div>
+          </div>
+          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">怎么拼 system prompt</a></p>
+        </div>
+      </article>
     </div>
-    <p class="bench-note">无需 Node.js，无需 Python，无需 <code>node_modules</code>。<a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">为什么小很重要及运行环境 →</a></p>
   </div>
 </section>
 
-<section id="footprint">
+<section id="benchmark" class="band">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker">性能对比</span>
-      <h2 class="section-title">小而快，<em>设计使然</em></h2>
-      <p class="section-sub">相同模型（<span class="mono">claude-sonnet-4-6</span>），相同任务，Apple Silicon——以 Claude Code 为参考基准。</p>
+      <span class="kicker">基准测试</span>
+      <h2 class="section-title">小而快，<em>有数可依</em>。</h2>
+      <p class="section-sub">对比 Claude Code v2.1.112，Apple Silicon，相同模型（<span class="mono">claude-sonnet-4-6</span>）、相同任务。</p>
     </div>
     <div class="bench-wrap reveal">
       <table>
@@ -173,24 +222,11 @@
           <tr><td>启动内存</td><td>~32 MB</td><td>~189 MB</td><td class="adv">少 5.8 倍</td></tr>
           <tr><td>简单任务</td><td>~2.4 秒 / 39 MB</td><td>~10.4 秒 / 286 MB</td><td class="adv">快 4.3 倍</td></tr>
           <tr><td>工具调用任务</td><td>~3.3 秒 / 39 MB</td><td>~26.0 秒 / 285 MB</td><td class="adv">快 7.9 倍</td></tr>
+          <tr><td>框架上下文</td><td>~2.3k token</td><td>~20.9k token</td><td class="adv">精简 ~9 倍</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="bench-note">San 无需修改即可运行 Claude Code 的技能、插件和 MCP——差距在于原生 Go 二进制与 Node.js 运行时的差异。<a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">复现数据 →</a></p>
-  </div>
-</section>
-
-<section style="background: var(--bg-soft);">
-  <div class="wrap">
-    <div class="cta-box reveal">
-      <span class="kicker" style="justify-content:center;">开始使用</span>
-      <h2>30 秒内体验</h2>
-      <p>基于 Apache 2.0 开源。如果对你有用，请给仓库标星——这真的很有帮助。</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="https://github.com/genai-io/san">★ 在 GitHub 标星</a>
-        <a class="btn btn-ghost" href="getting-started.zh.html">快速开始</a>
-      </div>
-    </div>
+    <p class="bench-note">能力集相当 —— San 无需修改即可运行 Claude Code 的 skills、plugins 和 MCP servers —— 差距在客户端开销，不在能力。<a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">测量方法与复现 →</a></p>
   </div>
 </section>
 
@@ -198,17 +234,17 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">社区</span>
-      <h2 class="section-title">加入 <em>对话</em></h2>
-      <p class="section-sub">两种方式——微信面向中文社区，Slack 面向全球用户。</p>
+      <h2 class="section-title">两个<em>入口</em>。</h2>
+      <p class="section-sub">微信面向中文社区，Slack 面向其他地方。</p>
     </div>
     <div class="qr-row reveal">
       <div class="qr-card">
-        <img src="wechat.jpg" alt="微信官方公众号 极客外传 二维码" width="200" height="200" loading="lazy">
+        <img src="wechat.jpg" alt="微信官方公众号 极客外传 二维码" width="190" height="190" loading="lazy">
         <p class="qr-cap">关注公众号「极客外传」· 回复 <span class="mono">san</span> 或 <span class="mono">三</span> 入群</p>
       </div>
       <div class="qr-card">
-        <img src="slack.png" alt="San Slack 二维码" width="200" height="200" loading="lazy">
-        <p class="qr-cap">扫描二维码或<a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">加入 Slack</a></p>
+        <img src="slack.png" alt="San Slack 二维码" width="190" height="190" loading="lazy">
+        <p class="qr-cap">扫描二维码，或<a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">加入 Slack</a></p>
       </div>
     </div>
   </div>
@@ -220,7 +256,7 @@
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="https://github.com/genai-io/san/tree/main/docs">文档</a> ·
-      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">贡献指南</a>
+      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">参与贡献</a>
     </span>
   </div>
 </footer>
@@ -231,13 +267,24 @@
     const text = document.getElementById('install-cmd').innerText;
     navigator.clipboard.writeText(text).then(() => {
       const old = btn.innerText;
-      btn.innerText = '已复制！';
+      btn.innerText = '已复制';
       setTimeout(() => btn.innerText = old, 1500);
     });
   }
   document.getElementById('year').innerText = new Date().getFullYear();
 
-  // 移动端导航切换
+  // 安装方式标签页 —— 每个标签自带命令
+  document.querySelectorAll('.install-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.install-tab').forEach(t => {
+        t.classList.toggle('active', t === tab);
+        t.setAttribute('aria-selected', t === tab);
+      });
+      document.getElementById('install-cmd').innerText = tab.dataset.cmd;
+    });
+  });
+
+  // 移动端导航
   function toggleNav(btn) {
     const nav = document.getElementById('nav');
     const open = nav.classList.toggle('open');
@@ -246,19 +293,19 @@
   document.querySelectorAll('#nav-links a').forEach(a =>
     a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
 
+  // 滚动后导航栏出现发丝分隔线
   const nav = document.getElementById('nav');
   const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
 
+  // 滚动淡入
   const io = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
   }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  document.querySelectorAll('.reveal').forEach((el, i) => {
-    el.style.transitionDelay = (i % 6) * 60 + 'ms';
-    io.observe(el);
-  });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 
+  // 高亮当前所在小节
   const spyLinks = [...document.querySelectorAll('#nav-links a[href^="#"]')];
   const sections = spyLinks
     .map(a => document.getElementById(a.getAttribute('href').slice(1)))
@@ -273,15 +320,209 @@
   }, { rootMargin: '-45% 0px -50% 0px' });
   sections.forEach(s => spy.observe(s));
 
+  // intro 是固定 1280x720 的页面，整体缩放到容器宽度，保证舞台完整可见
   (function () {
     const box = document.querySelector('.intro-embed');
     if (!box) return;
     const frame = box.querySelector('iframe');
-    const scaleFrame = () => { frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')'; };
+    // 标签页藏起来时盒子没有宽度，这时保持原缩放不动
+    const scaleFrame = () => {
+      if (!box.clientWidth) return;
+      frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+    };
     scaleFrame();
     new ResizeObserver(scaleFrame).observe(box);
   })();
-  // Language switcher — custom dropdown
+
+  // 演示位：同一块黑屏，两个标签页各看一面
+  document.querySelectorAll('.stage-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.stage-tab').forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on);
+        document.getElementById('stage-' + t.dataset.stage).hidden = !on;
+      });
+    });
+  });
+
+  // 一个 San turn 在终端里跑完：你问的话、每个工具一行，然后 San 说了什么。
+  // turn 都是脚本写死的 —— 你自己打字进去，它会直说这一点，而不是编一个答案。
+  (function () {
+    const out   = document.getElementById('term-out');
+    const form  = document.getElementById('term-form');
+    const input = document.getElementById('term-in');
+    const chips = document.getElementById('term-chips');
+    if (!out) return;
+
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const TURNS = [
+      {
+        chip: '加一个接口',
+        ask: '加一个 /healthz 接口，带测试',
+        steps: [
+          { tool: 'bash',  arg: 'rg -n "func register" internal/server', meta: '3 处 · 9ms' },
+          { tool: 'read',  arg: 'internal/server/router.go',             meta: '148 行 · 11ms' },
+          { tool: 'edit',  arg: 'internal/server/router.go',             meta: '+9 −0' },
+          { tool: 'write', arg: 'internal/server/healthz_test.go',       meta: '+24' },
+          { tool: 'bash',  arg: 'go test ./internal/server',             meta: 'ok · 0.42s', wait: 800 },
+          { say: ['/healthz 已经和 router.go 里其他路由放在一起。它会报出构建版本号，数据库连接池还在预热时返回 503 —— 这样滚动发布不会把流量打到冷进程上。测试覆盖了两种状态。'] },
+          { done: '5 个工具 · 2.1s · 118 tok/s' },
+        ],
+      },
+      {
+        chip: '查一个偶发失败的测试',
+        ask: 'TestQueueDrain 大概二十次跑挂一次，为什么？',
+        steps: [
+          { tool: 'bash', arg: 'rg -n "TestQueueDrain" internal/queue',  meta: '1 处 · 7ms' },
+          { tool: 'read', arg: 'internal/queue/drain_test.go',           meta: '96 行 · 9ms' },
+          { tool: 'read', arg: 'internal/queue/drain.go',                meta: '212 行 · 10ms' },
+          { say: ['测试 sleep 了 10ms 就去断言 q.pending。而 Drain() 要等 ticker 再触发一次才清掉最后一批，ticker 间隔是 5ms —— 机器一忙，第二次 tick 就落在断言后面，于是还剩一个没排空。问题在这个 sleep，不在 drainer。'] },
+          { tool: 'edit', arg: 'internal/queue/drain_test.go',           meta: '+4 −2' },
+          { tool: 'bash', arg: 'go test -run TestQueueDrain -count 50',  meta: '50/50 ok · 1.2s', wait: 900 },
+          { done: '5 个工具 · 4.7s' },
+        ],
+      },
+      {
+        chip: '讲讲这个代码库',
+        ask: '这个服务是干什么的？三行说清，别绕',
+        steps: [
+          { tool: 'bash', arg: 'rg --files -g "*.go"',       meta: '38 个文件 · 6ms' },
+          { tool: 'read', arg: 'cmd/api/main.go',            meta: '64 行 · 7ms' },
+          { tool: 'read', arg: 'internal/order/service.go',  meta: '241 行 · 9ms' },
+          { say: [
+            '一个 HTTP 订单服务：cmd/api 装配配置、Postgres 连接池和路由，然后把请求全交给 internal/order。',
+            '订单和它的明细在同一个事务里写入；扣款是单独一步，由一张 outbox 表驱动。',
+            '重试、对账、metrics 接口都挂在这张 outbox 上 —— 所以写路径始终只有一次往返。',
+          ] },
+          { done: '3 个工具 · 1.6s' },
+        ],
+      },
+    ];
+
+    const FALLBACK = [
+      { say: [
+        '这个终端是脚本写死的 —— 页面背后没有模型，也没有仓库，所以这句它答不了。',
+        '装上 San，在你自己的项目里问它：',
+      ] },
+      { cmd: 'curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash' },
+      { say: ['或者点下面任意一个脚本 turn。'] },
+    ];
+
+    const sleep = (ms) => new Promise(done => setTimeout(done, still ? 0 : ms));
+    const toBottom = () => { out.scrollTop = out.scrollHeight; };
+
+    function addRow(kind) {
+      const el = document.createElement('div');
+      el.className = 'row ' + kind;
+      out.appendChild(el);
+      toBottom();
+      return el;
+    }
+    function addSpan(parent, kind, text) {
+      const el = document.createElement('span');
+      el.className = kind;
+      el.textContent = text;
+      parent.appendChild(el);
+      return el;
+    }
+
+    // San 是流式输出的，所以答案跟在光标后面一个字一个字出来
+    async function stream(el, text, alive) {
+      const node = document.createTextNode('');
+      el.appendChild(node);
+      if (still) { node.data = text; return; }
+      const caret = addSpan(el, 'caret', '');
+      for (let i = 1; i <= text.length; i++) {
+        if (!alive()) { caret.remove(); return; }
+        node.data = text.slice(0, i);
+        if (i % 2 === 0) { await sleep(14); toBottom(); }
+      }
+      caret.remove();
+    }
+
+    async function playTool(step, alive) {
+      const el = addRow('tool');
+      const mark = addSpan(el, 'spin', '✦');
+      addSpan(el, 'tn', step.tool);
+      const rest = addSpan(el, 'rest', '');
+      addSpan(rest, 'arg', step.arg);
+      await sleep(step.wait || 340);
+      if (!alive()) return;
+      mark.textContent = '⏺';
+      mark.classList.add('settled');
+      addSpan(rest, 'meta' + (/^[+−]/.test(step.meta) ? ' diff' : ''), step.meta);
+    }
+
+    async function playSay(lines, alive) {
+      for (let i = 0; i < lines.length; i++) {
+        if (!alive()) return;
+        const el = addRow(i === 0 ? 'say' : 'say cont');
+        if (i === 0) addSpan(el, 'mk', '●');
+        await stream(addSpan(el, 'text', ''), lines[i], alive);
+      }
+    }
+
+    function playCmd(command) {
+      const el = addRow('cmd');
+      addSpan(el, 'prompt', '$');
+      el.appendChild(document.createTextNode(command));
+    }
+
+    function playDone(summary) {
+      const el = addRow('done');
+      addSpan(el, 'ok', '✓');
+      el.appendChild(document.createTextNode(' 完成 · ' + summary));
+    }
+
+    let generation = 0;
+
+    async function play(turn) {
+      const mine = ++generation;
+      const alive = () => mine === generation;
+
+      out.textContent = '';
+      const asked = addRow('you');
+      addSpan(asked, 'q', '❯');
+      asked.appendChild(document.createTextNode(turn.ask));
+      await sleep(380);
+
+      for (const step of turn.steps) {
+        if (!alive()) return;
+        if (step.tool)      await playTool(step, alive);
+        else if (step.say)  await playSay(step.say, alive);
+        else if (step.cmd)  playCmd(step.cmd);
+        else if (step.done) playDone(step.done);
+        toBottom();
+        await sleep(90);
+      }
+    }
+
+    TURNS.forEach(turn => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'term-chip';
+      chip.textContent = turn.chip;
+      chip.addEventListener('click', () => play(turn));
+      chips.appendChild(chip);
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const asked = input.value.trim();
+      if (!asked) return;
+      input.value = '';
+      play({ ask: asked, steps: FALLBACK });
+    });
+
+    // 终端藏在标签页后面，所以第一个 turn 等这个标签页被打开再跑；只跑这一次，
+    // 再切回来时保留屏幕上已有的内容
+    document.querySelector('.stage-tab[data-stage="turn"]')
+      .addEventListener('click', () => play(TURNS[0]), { once: true });
+  })();
+
+  // 语言切换
   (function() {
     const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
     const PAGES = new Set(['index', 'getting-started', 'docs']);

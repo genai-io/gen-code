@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>San — Fast, open agent harness for the terminal</title>
-<meta name="description" content="San is a fast, open terminal agent harness: one ~12 MB Go binary connecting models, tools, permissions, memory, persona bundles, skills, plugins, MCP, and subagents.">
-<meta property="og:title" content="San — Fast, open agent harness for the terminal">
-<meta property="og:description" content="One small Go binary. Bring any model and extension; San gives them a fast, inspectable agent loop in your terminal.">
+<title>San — Minimal overhead. Maximum agent.</title>
+<meta name="description" content="San is an open-source terminal agent runtime: one 12 MB Go binary, ~2.3k tokens of harness, no Node.js or Python. Prompt, tools, providers and extensions all stay yours to change.">
+<meta property="og:title" content="San — Minimal overhead. Maximum agent.">
+<meta property="og:description" content="Small context, native speed, open all the way down. An open-source terminal agent runtime in one 12 MB Go binary.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://genai-io.github.io/san/">
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
@@ -23,13 +23,12 @@
     <span class="logo"><a href="#top">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
     <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
     <div class="nav-links" id="nav-links">
-      <a href="#features">Features</a>
-      <a href="#deploy">Deploy</a>
-      <a href="#footprint">Footprint</a>
+      <a href="#why">Why</a>
+      <a href="#benchmark">Benchmark</a>
       <a href="#community">Community</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <a href="intro.html">Intro</a>
-      <a href="getting-started.html">Get Started</a>
+      <a href="getting-started.html">Start</a>
       <a href="docs.html">Docs</a>
       <span class="lang-switch">
         <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -38,7 +37,7 @@
         </button>
         <div class="lang-menu" id="lang-menu" role="listbox"></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ Star on GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
     </div>
   </div>
 </nav>
@@ -46,125 +45,175 @@
 <header class="hero" id="top">
   <div class="wrap">
     <div class="hero-head">
-      <span class="kicker load-up d1">Open-source agent harness · Apache-2.0</span>
-      <h1 class="load-up d2">San — the open harness<br>for <span class="grad">terminal agents</span></h1>
-      <p class="sub load-up d3">One small Go binary — a fast, open harness that runs any model and extension in an inspectable, permission-gated loop.</p>
-    </div>
-
-    <div class="screen-frame load-up d4">
-      <div class="intro-embed">
-        <iframe src="intro.html?theme=dark" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
+      <span class="kicker load-up d1">Open source · Apache-2.0</span>
+      <h1 class="load-up d2">Minimal overhead.<br>Maximum <em>agent</em>.</h1>
+      <p class="sub load-up d3">San is an open-source terminal agent runtime: one native Go binary, no Node.js or Python. Everything the model touches — prompt, tools, providers, extensions — stays yours to change.</p>
+      <div class="metrics load-up d4">
+        <span><b>~0.01s</b> cold start</span>
+        <span><b>~12 MB</b> binary</span>
+        <span><b>~2.3k</b> tokens of harness</span>
+        <span><b>zero</b> runtime deps</span>
       </div>
     </div>
-    <p class="intro-cap load-up d4"><a href="intro.html" target="_blank" rel="noopener">Watch full screen ↗</a></p>
 
-    <div class="hero-actions load-up d5">
-      <a class="btn btn-primary" href="getting-started.html">Get started →</a>
-      <a class="btn btn-ghost" href="https://github.com/genai-io/san">View on GitHub</a>
+    <div class="install load-up d5">
+      <div class="install-tabs" role="tablist" aria-label="Install method">
+        <button class="install-tab active" role="tab" aria-selected="true" data-cmd="curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash">curl</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-cmd="irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex">powershell</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-cmd="go install github.com/genai-io/san/cmd/san@latest">go install</button>
+      </div>
+      <div class="install-body">
+        <span class="prompt">$</span>
+        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+      </div>
     </div>
 
-    <div class="install-bar load-up d6">
-      <span class="prompt">$</span>
-      <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-      <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+    <div class="hero-actions load-up d6">
+      <a class="btn btn-primary" href="getting-started.html">Get started</a>
+      <a class="btn btn-ghost" href="intro.html">Watch the intro</a>
+      <a class="btn btn-ghost" href="https://github.com/genai-io/san">GitHub</a>
     </div>
 
     <div class="badges load-up d6">
-      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488" alt="Release"></a>
-      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=14b8a6" alt="Stars"></a>
-      <img src="https://img.shields.io/badge/license-Apache%202.0-0b7d72?style=flat-square" alt="License">
+      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="Release"></a>
+      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="Stars"></a>
+      <img src="https://img.shields.io/badge/license-Apache%202.0-0d9488?style=flat-square&labelColor=f1efe9" alt="License">
     </div>
   </div>
 </header>
 
-<section id="features">
-  <div class="wrap">
-    <div class="section-head">
-      <span class="kicker">Features</span>
-      <h2 class="section-title">Open <em>by design</em></h2>
-      <p class="section-sub">Every layer is swappable at runtime. No lock-in.</p>
+<section id="demo" style="padding-top: 24px;">
+  <div class="wrap wide">
+    <div class="stage-tabs" role="tablist" aria-label="Demo">
+      <button class="stage-tab active" role="tab" aria-selected="true" data-stage="intro">Watch the intro</button>
+      <button class="stage-tab" role="tab" aria-selected="false" data-stage="turn">Run a turn</button>
     </div>
-    <div class="grid">
-      <div class="card reveal">
-        <span class="idx">01</span>
-        <h3><span class="ico">🔌</span> Multi-LLM providers</h3>
-        <p>Bring any LLM — from Anthropic to Z.ai. Switch with <code>/models</code>.</p>
+
+    <div id="stage-intro">
+      <div class="intro-embed">
+        <iframe src="intro.html?theme=dark" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
       </div>
-      <div class="card reveal">
-        <span class="idx">02</span>
-        <h3><span class="ico">🔍</span> Pluggable search</h3>
-        <p>Exa, Tavily, Brave, or Serper. Switch with <code>/search</code>.</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">03</span>
-        <h3><span class="ico">🧩</span> Skills &amp; extensions</h3>
-        <p>Skills, plugins, MCP servers, and subagents — Claude Code compatible, run unmodified.</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">04</span>
-        <h3><span class="ico">🎭</span> Personas</h3>
-        <p>Persona bundles define reusable profiles with system prompt parts, skills, subagent visibility, and config overlays.</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">05</span>
-        <h3><span class="ico">⚡</span> Native performance</h3>
-        <p>A single Go binary. 12 MB, ~0.01s startup, no runtime.</p>
-      </div>
-      <div class="card reveal">
-        <span class="idx">06</span>
-        <h3><span class="ico">💾</span> Session persistence</h3>
-        <p>Sessions auto-save, resume, and fork, with automatic context compaction.</p>
-      </div>
-      <div class="card wide reveal">
-        <span class="idx">07</span>
-        <div>
-          <h3><span class="ico">✦</span> Self-evolving <span class="soon">Level 1 · live</span></h3>
-          <p>Every few turns, a background reviewer distills your recent work into durable memory and reusable skills — so the agent levels up as you work, no manual tuning. Level 1 is live today; deeper levels are on the way.</p>
+      <p class="panel-cap"><a href="intro.html" target="_blank" rel="noopener">Open the full-quality intro ↗</a> · 54s, no sound</p>
+    </div>
+
+    <div id="stage-turn" hidden>
+      <div class="term">
+        <div class="term-bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="where">san — ~/acme-api</span>
+          <span class="model">◆ <b>sonnet-4-6</b></span>
         </div>
-        <div class="levels">
-          <span class="level live"><b>Lv.1</b> Curious</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.10</b> Better</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.50</b> Stronger</span>
-          <span class="arrow">→</span>
-          <span class="level"><b>Lv.∞</b> Legendary</span>
+        <div class="term-out" id="term-out"></div>
+        <div class="term-ask">
+          <form class="term-line" id="term-form" autocomplete="off">
+            <span class="q">❯</span>
+            <input id="term-in" type="text" placeholder="ask San something…" aria-label="Ask San something">
+            <span class="enter">↵ run</span>
+          </form>
+          <div class="term-chips" id="term-chips"></div>
         </div>
       </div>
+      <p class="panel-cap">Scripted turn, example repo · what a real San run looks like</p>
     </div>
   </div>
 </section>
 
-<section id="deploy" style="background: var(--bg-soft);">
+<section id="why">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker">Deploy anywhere</span>
-      <h2 class="section-title">One binary. <em>Runs anywhere.</em></h2>
-      <p class="section-sub">A single ~12&nbsp;MB binary, zero runtime dependencies — the same file runs unchanged on a laptop, a cloud node, or a 256&nbsp;MB edge device.</p>
+      <span class="kicker">Why San</span>
+      <h2 class="section-title">Minimal overhead,<br><em>not a minimal agent</em>.</h2>
+      <p class="section-sub">Three properties — 小 small, 快 fast, 开 open — and San refuses to trade any one of them for the others. Three strokes, one 三.</p>
     </div>
-    <div class="deploy-targets">
-      <span class="pill">💻 macOS &amp; Linux laptops</span>
-      <span class="pill">☁️ Cloud nodes &amp; VMs</span>
-      <span class="pill">📟 ARM edge devices</span>
-      <span class="pill">🐳 <code>scratch</code> containers</span>
-      <span class="pill">⚙️ CI steps &amp; lifecycle hooks</span>
-      <span class="pill">🔒 Air-gapped &amp; locked-down hosts</span>
+
+    <div class="trigram">
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">一</span>
+          <span class="name">Small</span>
+        </div>
+        <div class="body">
+          <h3>The context window is for your work</h3>
+          <p>What the harness sends before your first message stays small, so the window belongs to the task at hand. On disk it is one file that needs nothing else installed.</p>
+          <dl class="rows">
+            <dt>harness context</dt><dd>~2.3k tokens</dd>
+            <dt>binary</dt><dd>12 MB <span class="dim">· macos · linux · windows</span></dd>
+            <dt>runtime deps</dt><dd>none</dd>
+          </dl>
+          <div class="pills">
+            <span class="pill"><span class="ico">💻</span> Laptop</span>
+            <span class="pill"><span class="ico">☁️</span> Cloud VM</span>
+            <span class="pill"><span class="ico">📟</span> ARM edge</span>
+            <span class="pill"><span class="ico">🐳</span> Container</span>
+            <span class="pill"><span class="ico">⚙️</span> CI step</span>
+            <span class="pill"><span class="ico">🔒</span> Air-gapped host</span>
+          </div>
+          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">Why small matters</a></p>
+        </div>
+      </article>
+
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">二</span>
+          <span class="name">Fast</span>
+        </div>
+        <div class="body">
+          <h3>What you wait on is the model</h3>
+          <p>Native Go, so nothing boots before you type: no interpreter, no <code>node_modules</code> to read off disk. What you wait on is the model.</p>
+          <dl class="rows">
+            <dt>cold start</dt><dd>~0.01s</dd>
+            <dt>simple task</dt><dd>~2.4s</dd>
+            <dt>tool-use task</dt><dd>~3.3s</dd>
+            <dt>memory</dt><dd>~32 MB idle <span class="dim">· ~39 MB under load</span></dd>
+          </dl>
+          <p class="more"><a href="#benchmark">See the numbers</a></p>
+        </div>
+      </article>
+
+      <article class="stroke">
+        <div class="rail">
+          <span class="glyph" aria-hidden="true">三</span>
+          <span class="name">Open</span>
+        </div>
+        <div class="body">
+          <h3>Open all the way down</h3>
+          <p>What the model sees and what it may do are both yours to write — and to replay afterwards.</p>
+          <div class="trio">
+            <div class="facet">
+              <h4>Plug in</h4>
+              <p>Anthropic, OpenAI, Google, DeepSeek, Ollama and a dozen more providers; the search backend of your choice; skills, plugins, MCP servers, subagents and hooks, all unmodified.</p>
+              <div class="keys"><span>/models</span><span>/search</span></div>
+            </div>
+            <div class="facet">
+              <h4>Write</h4>
+              <p>Compose the system prompt, bundle it into a persona you can switch, hand autopilot a goal, set the strategy self-learning follows.</p>
+              <div class="keys"><span>/identity</span><span>/goal</span><span>/evolve</span></div>
+            </div>
+            <div class="facet">
+              <h4>Oversee</h4>
+              <p>You choose how much San may do without asking, and subagents inherit that choice. The inspector replays a run exactly as the model saw it.</p>
+              <div class="keys"><span>Shift+Tab</span><span>san inspector</span></div>
+            </div>
+          </div>
+          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">Compose the system prompt</a></p>
+        </div>
+      </article>
     </div>
-    <p class="bench-note">No Node.js, no Python, no <code>node_modules</code>. <a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">Why small matters &amp; where it runs →</a></p>
   </div>
 </section>
 
-<section id="footprint">
+<section id="benchmark" class="band">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker">Footprint</span>
-      <h2 class="section-title">Small and fast, <em>by design</em></h2>
-      <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>), same tasks, on Apple Silicon — measured against Claude Code for reference.</p>
+      <span class="kicker">Benchmark</span>
+      <h2 class="section-title">Small and fast, <em>measured</em>.</h2>
+      <p class="section-sub">Against Claude Code v2.1.112 on Apple Silicon, same model (<span class="mono">claude-sonnet-4-6</span>), same tasks.</p>
     </div>
     <div class="bench-wrap reveal">
       <table>
         <thead>
-          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Difference</th></tr>
+          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Advantage</th></tr>
         </thead>
         <tbody>
           <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller</td></tr>
@@ -173,24 +222,11 @@
           <tr><td>Startup memory</td><td>~32 MB</td><td>~189 MB</td><td class="adv">5.8× less</td></tr>
           <tr><td>Simple task</td><td>~2.4s / 39 MB</td><td>~10.4s / 286 MB</td><td class="adv">4.3× faster</td></tr>
           <tr><td>Tool-use task</td><td>~3.3s / 39 MB</td><td>~26.0s / 285 MB</td><td class="adv">7.9× faster</td></tr>
+          <tr><td>Harness context</td><td>~2.3k tokens</td><td>~20.9k tokens</td><td class="adv">~9× leaner</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="bench-note">San runs Claude Code's skills, plugins, and MCP unmodified — the gap is a native Go binary vs a Node.js runtime. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
-  </div>
-</section>
-
-<section style="background: var(--bg-soft);">
-  <div class="wrap">
-    <div class="cta-box reveal">
-      <span class="kicker" style="justify-content:center;">Get started</span>
-      <h2>Try it in 30 seconds</h2>
-      <p>Open source under Apache 2.0. Star the repo if it's useful — it genuinely helps.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="https://github.com/genai-io/san">★ Star on GitHub</a>
-        <a class="btn btn-ghost" href="getting-started.html">Get started</a>
-      </div>
-    </div>
+    <p class="bench-note">Comparable feature sets — San runs Claude Code's skills, plugins and MCP servers unmodified — so the gap is client-side overhead, not capability. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Method and how to reproduce →</a></p>
   </div>
 </section>
 
@@ -198,17 +234,17 @@
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">Community</span>
-      <h2 class="section-title">Join the <em>conversation</em></h2>
-      <p class="section-sub">Two ways in — WeChat for the Chinese community, Slack for everyone else.</p>
+      <h2 class="section-title">Two ways <em>in</em>.</h2>
+      <p class="section-sub">WeChat for the Chinese community, Slack for everyone else.</p>
     </div>
     <div class="qr-row reveal">
       <div class="qr-card">
-        <img src="wechat.jpg" alt="WeChat official account 极客外传 QR code" width="200" height="200" loading="lazy">
+        <img src="wechat.jpg" alt="WeChat official account 极客外传 QR code" width="190" height="190" loading="lazy">
         <p class="qr-cap">关注公众号「极客外传」· 回复 <span class="mono">san</span> 或 <span class="mono">三</span> 入群</p>
       </div>
       <div class="qr-card">
-        <img src="slack.png" alt="San Slack QR code" width="200" height="200" loading="lazy">
-        <p class="qr-cap">Scan or <a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join us on Slack</a></p>
+        <img src="slack.png" alt="San Slack QR code" width="190" height="190" loading="lazy">
+        <p class="qr-cap">Scan, or <a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join us on Slack</a></p>
       </div>
     </div>
   </div>
@@ -231,11 +267,22 @@
     const text = document.getElementById('install-cmd').innerText;
     navigator.clipboard.writeText(text).then(() => {
       const old = btn.innerText;
-      btn.innerText = 'Copied!';
+      btn.innerText = 'Copied';
       setTimeout(() => btn.innerText = old, 1500);
     });
   }
   document.getElementById('year').innerText = new Date().getFullYear();
+
+  // Install method tabs — each tab carries its own command
+  document.querySelectorAll('.install-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.install-tab').forEach(t => {
+        t.classList.toggle('active', t === tab);
+        t.setAttribute('aria-selected', t === tab);
+      });
+      document.getElementById('install-cmd').innerText = tab.dataset.cmd;
+    });
+  });
 
   // Mobile nav toggle
   function toggleNav(btn) {
@@ -247,7 +294,7 @@
   document.querySelectorAll('#nav-links a').forEach(a =>
     a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
 
-  // Nav gains a solid background once the page scrolls
+  // Nav gains a hairline rule once the page scrolls
   const nav = document.getElementById('nav');
   const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
   onScroll();
@@ -257,10 +304,7 @@
   const io = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
   }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  document.querySelectorAll('.reveal').forEach((el, i) => {
-    el.style.transitionDelay = (i % 6) * 60 + 'ms';
-    io.observe(el);
-  });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 
   // Scroll-spy: highlight the active in-page nav link
   const spyLinks = [...document.querySelectorAll('#nav-links a[href^="#"]')];
@@ -283,10 +327,204 @@
     const box = document.querySelector('.intro-embed');
     if (!box) return;
     const frame = box.querySelector('iframe');
-    const scaleFrame = () => { frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')'; };
+    // the box has no width while its tab is hidden — leave the scale alone
+    const scaleFrame = () => {
+      if (!box.clientWidth) return;
+      frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+    };
     scaleFrame();
     new ResizeObserver(scaleFrame).observe(box);
   })();
+
+  // The demo slot: one tab per view of the same dark screen
+  document.querySelectorAll('.stage-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.stage-tab').forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on);
+        document.getElementById('stage-' + t.dataset.stage).hidden = !on;
+      });
+    });
+  });
+
+  // A San turn, played out in the terminal: the ask, one row per tool, then
+  // what San said. The turns are scripted — typing anything says so plainly
+  // rather than inventing an answer.
+  (function () {
+    const out   = document.getElementById('term-out');
+    const form  = document.getElementById('term-form');
+    const input = document.getElementById('term-in');
+    const chips = document.getElementById('term-chips');
+    if (!out) return;
+
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const TURNS = [
+      {
+        chip: 'add an endpoint',
+        ask: 'add a /healthz endpoint with a test',
+        steps: [
+          { tool: 'bash',  arg: 'rg -n "func register" internal/server', meta: '3 hits · 9ms' },
+          { tool: 'read',  arg: 'internal/server/router.go',             meta: '148 lines · 11ms' },
+          { tool: 'edit',  arg: 'internal/server/router.go',             meta: '+9 −0' },
+          { tool: 'write', arg: 'internal/server/healthz_test.go',       meta: '+24' },
+          { tool: 'bash',  arg: 'go test ./internal/server',             meta: 'ok · 0.42s', wait: 800 },
+          { say: ['/healthz now sits with the other routes in router.go. It reports the build revision, and returns 503 while the database pool is still warming — so a rolling deploy will not send traffic to a cold process. The test covers both states.'] },
+          { done: '5 tools · 2.1s · 118 tok/s' },
+        ],
+      },
+      {
+        chip: 'chase a flaky test',
+        ask: 'TestQueueDrain fails about one run in twenty — why?',
+        steps: [
+          { tool: 'bash', arg: 'rg -n "TestQueueDrain" internal/queue',        meta: '1 hit · 7ms' },
+          { tool: 'read', arg: 'internal/queue/drain_test.go',                 meta: '96 lines · 9ms' },
+          { tool: 'read', arg: 'internal/queue/drain.go',                      meta: '212 lines · 10ms' },
+          { say: ['The test sleeps 10ms and then asserts on q.pending. Drain() only clears the last batch once its ticker fires again, and that ticker runs every 5ms — so on a loaded machine the second tick lands after the assertion and one item is still pending. The sleep is the bug, not the drainer.'] },
+          { tool: 'edit', arg: 'internal/queue/drain_test.go',                 meta: '+4 −2' },
+          { tool: 'bash', arg: 'go test -run TestQueueDrain -count 50',        meta: '50/50 ok · 1.2s', wait: 900 },
+          { done: '5 tools · 4.7s' },
+        ],
+      },
+      {
+        chip: 'explain the codebase',
+        ask: 'what does this service do? three lines, no fluff',
+        steps: [
+          { tool: 'bash', arg: 'rg --files -g "*.go"',        meta: '38 files · 6ms' },
+          { tool: 'read', arg: 'cmd/api/main.go',             meta: '64 lines · 7ms' },
+          { tool: 'read', arg: 'internal/order/service.go',   meta: '241 lines · 9ms' },
+          { say: [
+            'An HTTP order service: cmd/api wires the config, a Postgres pool and the router, then hands every request to internal/order.',
+            'An order and its line items are written in one transaction; taking payment is a separate step, driven off an outbox table.',
+            'Retries, the reconciler and the metrics endpoint all hang off that outbox — so the write path stays a single round trip.',
+          ] },
+          { done: '3 tools · 1.6s' },
+        ],
+      },
+    ];
+
+    const FALLBACK = [
+      { say: [
+        'This terminal is scripted — there is no model and no repo behind the page, so that one it cannot answer.',
+        'Install San and ask it inside your own project:',
+      ] },
+      { cmd: 'curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash' },
+      { say: ['Or run one of the scripted turns below.'] },
+    ];
+
+    const sleep = (ms) => new Promise(done => setTimeout(done, still ? 0 : ms));
+    const toBottom = () => { out.scrollTop = out.scrollHeight; };
+
+    function addRow(kind) {
+      const el = document.createElement('div');
+      el.className = 'row ' + kind;
+      out.appendChild(el);
+      toBottom();
+      return el;
+    }
+    function addSpan(parent, kind, text) {
+      const el = document.createElement('span');
+      el.className = kind;
+      el.textContent = text;
+      parent.appendChild(el);
+      return el;
+    }
+
+    // San streams, so the answer arrives a character at a time behind a caret
+    async function stream(el, text, alive) {
+      const node = document.createTextNode('');
+      el.appendChild(node);
+      if (still) { node.data = text; return; }
+      const caret = addSpan(el, 'caret', '');
+      for (let i = 1; i <= text.length; i++) {
+        if (!alive()) { caret.remove(); return; }
+        node.data = text.slice(0, i);
+        if (i % 2 === 0) { await sleep(9); toBottom(); }
+      }
+      caret.remove();
+    }
+
+    async function playTool(step, alive) {
+      const el = addRow('tool');
+      const mark = addSpan(el, 'spin', '✦');
+      addSpan(el, 'tn', step.tool);
+      const rest = addSpan(el, 'rest', '');
+      addSpan(rest, 'arg', step.arg);
+      await sleep(step.wait || 340);
+      if (!alive()) return;
+      mark.textContent = '⏺';
+      mark.classList.add('settled');
+      addSpan(rest, 'meta' + (/^[+−]/.test(step.meta) ? ' diff' : ''), step.meta);
+    }
+
+    async function playSay(lines, alive) {
+      for (let i = 0; i < lines.length; i++) {
+        if (!alive()) return;
+        const el = addRow(i === 0 ? 'say' : 'say cont');
+        if (i === 0) addSpan(el, 'mk', '●');
+        await stream(addSpan(el, 'text', ''), lines[i], alive);
+      }
+    }
+
+    function playCmd(command) {
+      const el = addRow('cmd');
+      addSpan(el, 'prompt', '$');
+      el.appendChild(document.createTextNode(command));
+    }
+
+    function playDone(summary) {
+      const el = addRow('done');
+      addSpan(el, 'ok', '✓');
+      el.appendChild(document.createTextNode(' done · ' + summary));
+    }
+
+    let generation = 0;
+
+    async function play(turn) {
+      const mine = ++generation;
+      const alive = () => mine === generation;
+
+      out.textContent = '';
+      const asked = addRow('you');
+      addSpan(asked, 'q', '❯');
+      asked.appendChild(document.createTextNode(turn.ask));
+      await sleep(380);
+
+      for (const step of turn.steps) {
+        if (!alive()) return;
+        if (step.tool)      await playTool(step, alive);
+        else if (step.say)  await playSay(step.say, alive);
+        else if (step.cmd)  playCmd(step.cmd);
+        else if (step.done) playDone(step.done);
+        toBottom();
+        await sleep(90);
+      }
+    }
+
+    TURNS.forEach(turn => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'term-chip';
+      chip.textContent = turn.chip;
+      chip.addEventListener('click', () => play(turn));
+      chips.appendChild(chip);
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const asked = input.value.trim();
+      if (!asked) return;
+      input.value = '';
+      play({ ask: asked, steps: FALLBACK });
+    });
+
+    // the terminal sits behind a tab, so the first turn waits for that tab to
+    // open — once only, so coming back keeps whatever is already on screen
+    document.querySelector('.stage-tab[data-stage="turn"]')
+      .addEventListener('click', () => play(TURNS[0]), { once: true });
+  })();
+
   // Language switcher — custom dropdown
   (function() {
     const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };

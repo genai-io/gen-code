@@ -1,6 +1,6 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>Minimal harness. Maximum agent.</strong></p>
+  <p><strong>Minimal overhead. Maximum agent.</strong></p>
   <p>Small context, native speed, open all the way down.</p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
@@ -36,7 +36,7 @@ Three properties, and San refuses to trade any one of them for the others.
 
 **Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
 
-**A minimal harness, not a minimal agent.**
+**Minimal overhead, not a minimal agent.**
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
