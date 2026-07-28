@@ -26,6 +26,12 @@ const (
 // imageRefPattern matches @path/to/image.ext references (case-insensitive extension).
 var imageRefPattern = regexp.MustCompile(`(?i)@([^\s]+\.(png|jpg|jpeg|gif|webp))`)
 
+// bareImagePathRe matches standalone image file paths (absolute or relative with a
+// directory separator) that are NOT prefixed with @. This catches drag-drop paste
+// of an image path into the terminal. Only paths containing a separator (/ or \)
+// are matched to avoid treating bare filenames or coincidental text as images.
+var bareImagePathRe = regexp.MustCompile(`(?i)((?:/[^\s]+|[^\s]+[/\\][^\s]*)\.(png|jpg|jpeg|gif|webp))`)
+
 // ImageTokenMatch describes an inline image token found in the textarea value.
 type ImageTokenMatch struct {
 	PendingIdx int
@@ -265,46 +271,66 @@ func (m *Model) HistoryDown() {
 	m.Textarea.CursorEnd()
 }
 
-// ProcessImageRefs extracts @image.png references from input.
-// Returns the cleaned text content and any loaded images.
+// ProcessImageRefs extracts @image.png references and bare image file paths
+// from input. Returns the cleaned text content and any loaded images.
 // Only processes references where the file actually exists on disk;
 // non-existent file references are left in the text as-is.
+//
+// @-prefixed references are removed from the content after loading, and a
+// failed load aborts the entire send — both are right because the user
+// deliberately typed @. Bare paths (drag-drop, absolute paths) are treated
+// more leniently: the text stays in the message, and a failed load is
+// silently skipped so a mere mention of a path doesn't block the send.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
-	matches := imageRefPattern.FindAllStringSubmatch(input, -1)
-	if len(matches) == 0 {
-		return input, nil, nil
-	}
-
+	content := input
 	var images []core.Image
-	var loadedRefs []string // track which @references were successfully loaded
+
+	// Step 1: Process @-prefixed image references — remove from text,
+	// abort on load failure.
+	matches := imageRefPattern.FindAllStringSubmatch(content, -1)
+	var loadedRefs []string
 	for _, match := range matches {
 		path := match[1]
 		absPath := path
 		if !filepath.IsAbs(absPath) {
 			absPath = filepath.Join(cwd, absPath)
 		}
-
-		// Skip references to files that don't exist
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			continue
 		}
-
 		img, err := image.Load(absPath)
 		if err != nil {
 			return "", nil, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
 		images = append(images, img)
-		loadedRefs = append(loadedRefs, match[0]) // full match including @
+		loadedRefs = append(loadedRefs, match[0])
 	}
-
-	// Only remove references that were successfully loaded
-	content := input
 	for _, ref := range loadedRefs {
 		content = strings.ReplaceAll(content, ref, "")
 	}
-	content = strings.TrimSpace(content)
 
-	return content, images, nil
+	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
+	// Keep the text in the message, skip silently on load failure.
+	bareMatches := bareImagePathRe.FindAllStringSubmatch(content, -1)
+	for _, match := range bareMatches {
+		path := match[1]
+		absPath := path
+		if !filepath.IsAbs(absPath) {
+			absPath = filepath.Join(cwd, absPath)
+		}
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			continue
+		}
+		img, err := image.Load(absPath)
+		if err != nil {
+			// Bare paths are more lenient: skip silently instead of aborting,
+			// since the user may have just mentioned a path in a sentence.
+			continue
+		}
+		images = append(images, img)
+	}
+
+	return strings.TrimSpace(content), images, nil
 }
 
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.
