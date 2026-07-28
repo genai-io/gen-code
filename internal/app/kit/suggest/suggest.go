@@ -128,8 +128,8 @@ func (s *State) UpdateSuggestions(input string) {
 }
 
 const (
-	fileScanMaxResults        = 500
-	fileScanMaxDirsVisited    = 2000
+	fileScanMaxResults        = 2000
+	fileScanMaxDirsVisited    = 8000
 	fileScanMaxDepth          = 6
 	fileSuggestionViewSize    = 8
 	commandSuggestionViewSize = 8
@@ -160,15 +160,6 @@ func (s *State) updatefileSuggestions(query string) {
 	s.clampViewStart()
 }
 
-var supportedFileExtensions = map[string]bool{
-	".md":   true,
-	".png":  true,
-	".jpg":  true,
-	".jpeg": true,
-	".gif":  true,
-	".webp": true,
-}
-
 func (s *State) scanAllFiles() []fileSuggestion {
 	seen := make(map[string]bool)
 	var results []fileSuggestion
@@ -179,6 +170,9 @@ func (s *State) scanAllFiles() []fileSuggestion {
 	}
 	queue := []queueItem{{s.cwd, 0}}
 	dirsVisited := 0
+
+	// Load gitignore patterns for filtering
+	gi := loadGitignore(s.cwd)
 
 	for len(queue) > 0 && len(results) < fileScanMaxResults && dirsVisited < fileScanMaxDirsVisited {
 		item := queue[0]
@@ -202,6 +196,20 @@ func (s *State) scanAllFiles() []fileSuggestion {
 			name := entry.Name()
 			fullPath := filepath.Join(item.dir, name)
 
+			// Check gitignore before adding directories or files
+			relPath, err := filepath.Rel(s.cwd, fullPath)
+			if err == nil && gi != nil && gi.Matches(relPath, entry.IsDir()) {
+				// If this is a directory that's gitignored, skip it entirely
+				if entry.IsDir() {
+					// Still descend into .san directory even if gitignored
+					if name != ".san" {
+						continue
+					}
+				} else {
+					continue
+				}
+			}
+
 			if entry.IsDir() {
 				if !shouldSkipDirectory(name) && item.depth < fileScanMaxDepth {
 					queue = append(queue, queueItem{fullPath, item.depth + 1})
@@ -209,12 +217,7 @@ func (s *State) scanAllFiles() []fileSuggestion {
 				continue
 			}
 
-			ext := strings.ToLower(filepath.Ext(name))
-			if !supportedFileExtensions[ext] {
-				continue
-			}
-
-			relPath, err := filepath.Rel(s.cwd, fullPath)
+			relPath, err = filepath.Rel(s.cwd, fullPath)
 			if err != nil || seen[relPath] {
 				continue
 			}
@@ -269,6 +272,153 @@ func shouldSkipDirectory(name string) bool {
 		return true
 	}
 	return false
+}
+
+// --- .gitignore support ---
+
+// gitignore holds compiled gitignore patterns for a directory.
+type gitignore struct {
+	patterns []gitignorePattern
+}
+
+type gitignorePattern struct {
+	raw     string
+	negate  bool
+	dirOnly bool
+	rooted  bool
+	glob    string // the glob to match against
+}
+
+// loadGitignore reads and parses .gitignore from dir. Returns nil when
+// the file doesn't exist or is empty.
+func loadGitignore(dir string) *gitignore {
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		return nil
+	}
+	gi := &gitignore{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		p := gitignorePattern{raw: line}
+
+		// Negation
+		if strings.HasPrefix(line, "!") {
+			p.negate = true
+			line = line[1:]
+		}
+
+		// Trailing slash = directory-only
+		if strings.HasSuffix(line, "/") {
+			p.dirOnly = true
+			line = strings.TrimSuffix(line, "/")
+		}
+
+		// Leading slash = anchored to root
+		if strings.HasPrefix(line, "/") {
+			p.rooted = true
+			line = line[1:]
+		}
+
+		p.glob = line
+		gi.patterns = append(gi.patterns, p)
+	}
+	if len(gi.patterns) == 0 {
+		return nil
+	}
+	return gi
+}
+
+// Matches reports whether the given relative path (from repo root) matches
+// any gitignore pattern. isDir indicates whether the path refers to a directory.
+func (gi *gitignore) Matches(relPath string, isDir bool) bool {
+	if gi == nil {
+		return false
+	}
+	matched := false
+	for _, p := range gi.patterns {
+		if p.dirOnly && !isDir {
+			continue
+		}
+		if matchGitignorePattern(relPath, p) {
+			matched = !p.negate
+		}
+	}
+	return matched
+}
+
+// matchGitignorePattern checks whether relPath matches a single gitignore pattern.
+func matchGitignorePattern(relPath string, p gitignorePattern) bool {
+	glob := p.glob
+
+	// Convert ** to a temp placeholder for filepath.Match compatibility
+	// ** matches everything including path separators
+	if strings.Contains(glob, "**") {
+		return matchDoubleStar(relPath, glob)
+	}
+
+	if p.rooted {
+		// Anchored: match against the full relative path
+		ok, _ := filepath.Match(glob, relPath)
+		return ok
+	}
+
+	// Not anchored: match against any path component (basename or subpath)
+	if !strings.Contains(glob, "/") {
+		// No slash in pattern = match basename only
+		base := filepath.Base(relPath)
+		ok, _ := filepath.Match(glob, base)
+		if ok {
+			return true
+		}
+	}
+
+	// Match against the full relative path
+	ok, _ := filepath.Match(glob, relPath)
+	if ok {
+		return true
+	}
+
+	// Match against any subpath (e.g., pattern "foo/bar" matches "a/foo/bar")
+	for p := relPath; p != "." && p != "/"; p = filepath.Dir(p) {
+		parent := filepath.Dir(p)
+		if parent == "." || parent == "/" {
+			break
+		}
+		sub := strings.TrimPrefix(relPath, parent+string(filepath.Separator))
+		if sub == relPath {
+			continue
+		}
+		ok, _ := filepath.Match(glob, sub)
+		if ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchDoubleStar handles ** globs by splitting on ** and matching segments.
+func matchDoubleStar(relPath string, glob string) bool {
+	parts := strings.SplitN(glob, "**", 2)
+	// ** can appear at start, middle, or end
+	if parts[0] != "" {
+		// Prefix must match
+		if !strings.HasPrefix(relPath, parts[0]) {
+			return false
+		}
+		relPath = relPath[len(parts[0]):]
+	}
+	if len(parts) == 2 && parts[1] != "" {
+		// Suffix must match
+		suffix := strings.TrimPrefix(parts[1], "/")
+		if !strings.HasSuffix(relPath, suffix) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *State) SetCwd(cwd string) {
