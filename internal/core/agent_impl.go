@@ -135,6 +135,11 @@ func (a *agent) Run(ctx context.Context) error {
 		}
 		glog.QueueLog("agent.Run: waitForInput received message")
 
+		// A fresh message supersedes a latched interrupt: an Esc that landed
+		// while the agent sat idle here had no turn to stop, and keeping the
+		// latch made runOneTurn swallow this message.
+		a.interruptPending.Store(false)
+
 		for {
 			glog.QueueLog("agent.Run: starting ThinkAct")
 			result, err, interrupted := a.runOneTurn(ctx)
@@ -512,10 +517,17 @@ func (a *agent) execTools(ctx context.Context, calls []ToolCall) int {
 		return 0
 	}
 
-	// Phase 2: Execute (parallel only for read-only batches)
+	// Phase 2: Execute (parallel only for read-only batches). The sequential
+	// path re-checks ctx between calls — nothing obliges a tool to consult ctx
+	// before doing its work, so without it an Esc during the first of three
+	// Edits still applied the other two.
 	results := make([]toolTaskOutput, len(tasks))
 	if len(tasks) == 1 || !canExecuteToolBatchInParallel(tasks) {
 		for i, t := range tasks {
+			if ctx.Err() != nil {
+				results[i] = toolTaskOutput{"", ctx.Err()}
+				continue
+			}
 			results[i] = executeToolTask(ctx, t)
 		}
 	} else {

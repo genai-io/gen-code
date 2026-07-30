@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -396,11 +397,10 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	}
 }
 
-// TestInterruptBetweenTurnsIsLatched verifies that an interrupt fired
-// in the window between turns (when the turn pointer is nil) is not
-// silently dropped — the next iteration of Run's inner loop must see
-// the latch and bail back to waitForInput instead of starting a fresh
-// ThinkAct the user already asked not to run.
+// TestInterruptBetweenTurnsIsLatched verifies that an interrupt fired between
+// two of Run's inner-loop iterations (turn pointer nil) is not dropped — the
+// next runOneTurn must see the latch and bail. Driven through runOneTurn
+// directly because that window is only a few instructions wide.
 func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 	llm := newBlockingLLM(4)
 	ag := NewAgent(Config{
@@ -408,22 +408,13 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 		LLM:    llm,
 		System: NewSystem(),
 		Tools:  NewTools(),
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	runDone := make(chan error, 1)
-	go func() { runDone <- ag.Run(ctx) }()
+	}).(*agent)
 	go func() {
 		for range ag.Outbox() {
 		}
 	}()
 
-	// Set the latch BEFORE the agent ever starts a turn. The agent is
-	// blocked in waitForInput, so turn pointer is nil and Swap returns
-	// nil — the only thing that should keep the cancel alive is the
-	// pendingInterrupt latch.
+	// No turn in flight, so only the latch can carry this interrupt.
 	done := ag.InterruptCurrentTurn()
 	select {
 	case <-done:
@@ -431,19 +422,56 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 		t.Fatal("between-turn interrupt should return an already-closed done channel")
 	}
 
-	// Send a message. Inner loop should consume the latch and bail
-	// back to waitForInput WITHOUT starting Infer — i.e. without
-	// reading `release`.
-	ag.Inbox() <- Message{Role: RoleUser, Content: "should be ignored"}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	// Give the agent time to either bail (correct) or wedge in Infer
-	// (broken). If broken, release was never read and turn pointer is
-	// non-nil.
-	waitFor(t, "agent to consume latch and re-enter waitForInput", func() bool {
-		return ag.(*agent).turn.Load() == nil && !ag.(*agent).interruptPending.Load()
+	result, err, interrupted := ag.runOneTurn(ctx)
+	if !interrupted {
+		t.Fatal("runOneTurn ran a turn the latch should have stopped")
+	}
+	if result != nil || err != nil {
+		t.Fatalf("latched turn returned result=%v err=%v, want both nil", result, err)
+	}
+	if ag.interruptPending.Load() {
+		t.Error("latch should be consumed by the runOneTurn that acted on it")
+	}
+}
+
+// TestIdleInterruptDoesNotEatTheNextMessage pins the other half of the latch
+// rule. InterruptCurrentTurn latches unconditionally, so an Esc landing while
+// the agent sits idle in waitForInput left the latch set with no turn to
+// consume it — and the next user message was dropped without inferring.
+func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
+	llm := newBlockingLLM(4)
+	llm.release <- struct{}{}
+	ag := NewAgent(Config{
+		ID:     "test",
+		LLM:    llm,
+		System: NewSystem(),
+		Tools:  NewTools(),
+	})
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- ag.Run(ctx) }()
+
+	// Interrupt while the agent is parked in waitForInput.
+	<-ag.InterruptCurrentTurn()
+
+	ag.Inbox() <- Message{Role: RoleUser, Content: "answer me"}
+
+	// blockingLLM only replies once its release token is read, so a consumed
+	// token proves Infer was reached.
+	waitFor(t, "the message after an idle interrupt to reach inference", func() bool {
+		return len(llm.release) == 0
 	})
 
-	// Clean shutdown.
 	ag.Inbox() <- Message{Signal: SigStop}
 	select {
 	case err := <-runDone:
@@ -527,3 +555,78 @@ type stubContextExceeded struct{}
 
 func (stubContextExceeded) Error() string    { return "prompt too long" }
 func (stubContextExceeded) ContextExceeded() {}
+
+// cancelOnRunTool counts its executions and how many ran on an already-dead
+// ctx — a tool that works before consulting ctx, which nothing forbids.
+type cancelOnRunTool struct {
+	name      string
+	ran       *atomic.Int32
+	ranOnDead *atomic.Int32
+	onRun     func()
+}
+
+func (c cancelOnRunTool) Name() string        { return c.name }
+func (c cancelOnRunTool) Description() string { return "records its execution" }
+func (c cancelOnRunTool) Schema() ToolSchema  { return ToolSchema{Name: c.name} }
+func (c cancelOnRunTool) Execute(ctx context.Context, _ map[string]any) (string, error) {
+	c.ran.Add(1)
+	if ctx.Err() != nil {
+		c.ranOnDead.Add(1)
+	}
+	if c.onRun != nil {
+		c.onRun()
+	}
+	return "ok", nil
+}
+
+// batchLLM answers with three side-effecting calls, so execTools runs the
+// batch sequentially.
+type batchLLM struct{}
+
+func (batchLLM) InputLimit() int { return 0 }
+func (batchLLM) Infer(context.Context, InferRequest) (<-chan Chunk, error) {
+	ch := make(chan Chunk, 1)
+	ch <- Chunk{Done: true, Response: &InferResponse{
+		StopReason: StopToolUse,
+		ToolCalls: []ToolCall{
+			{ID: "c1", Name: "first", Input: "{}"},
+			{ID: "c2", Name: "second", Input: "{}"},
+			{ID: "c3", Name: "third", Input: "{}"},
+		},
+	}}
+	close(ch)
+	return ch, nil
+}
+
+// A cancel landing mid-batch must stop the rest of the batch, not just the
+// call it interrupted.
+func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
+	var ran, ranOnDead atomic.Int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ag := NewAgent(Config{
+		ID: "test", LLM: batchLLM{}, System: NewSystem(),
+		Tools: NewTools(
+			cancelOnRunTool{name: "first", ran: &ran, ranOnDead: &ranOnDead, onRun: cancel},
+			cancelOnRunTool{name: "second", ran: &ran, ranOnDead: &ranOnDead},
+			cancelOnRunTool{name: "third", ran: &ran, ranOnDead: &ranOnDead},
+		),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	result, err := ag.ThinkAct(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ThinkAct err = %v, want context.Canceled", err)
+	}
+	if result.StopReason != StopCancelled {
+		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
+	}
+	if n := ranOnDead.Load(); n != 0 {
+		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
+	}
+}
