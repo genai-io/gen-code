@@ -140,28 +140,33 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 
-	if cmd, found := m.drainTurnQueues(); found {
-		log.QueueLog("OnTurnEnd: drained queued message, skipping hooks")
-		if cmd != nil {
+	// User-initiated cancel surfaces here as a Result with StopCancelled now
+	// that ThinkAct returns a phantom Result on context.Canceled. It precedes
+	// the queue drain because draining submits a fresh turn — the input queue,
+	// a cron prompt, an async hook or a parked agent notice — which is how Esc
+	// stopped one inference and left the loop running. Each queue has its own
+	// later drain, so holding them here loses nothing.
+	//
+	// Stop / idle-notification hooks would otherwise fire on every Esc —
+	// confusing for the user and for hooks that template result.Content (which
+	// is empty for a cancelled turn). We still persist so the [Interrupted]
+	// marker and cancelled tool_result rows survive a crash/quit, and
+	// re-arm prompt suggestions for the now-idle textarea.
+	if result.StopReason == core.StopCancelled {
+		log.QueueLog("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
+		if cmd := m.persistAfterTurn(); cmd != nil {
+			commitCmds = append(commitCmds, cmd)
+		}
+		if cmd := m.startPromptSuggestion(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
 		commitCmds = append(commitCmds, m.ContinueOutbox())
 		return tea.Batch(commitCmds...)
 	}
 
-	// User-initiated cancel surfaces here as a Result with StopCancelled now
-	// that ThinkAct returns a phantom Result on context.Canceled. Stop /
-	// idle-notification hooks would otherwise fire on every Esc — confusing
-	// for the user and for hooks that template result.Content (which is
-	// empty for a cancelled turn). We still persist so the [Interrupted]
-	// marker and cancelled tool_result rows survive a crash/quit, and
-	// re-arm prompt suggestions for the now-idle textarea.
-	if result.StopReason == core.StopCancelled {
-		log.QueueLog("OnTurnEnd: turn was cancelled, skipping idle hooks")
-		if cmd := m.persistAfterTurn(); cmd != nil {
-			commitCmds = append(commitCmds, cmd)
-		}
-		if cmd := m.startPromptSuggestion(); cmd != nil {
+	if cmd, found := m.drainTurnQueues(); found {
+		log.QueueLog("OnTurnEnd: drained queued message, skipping hooks")
+		if cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
 		commitCmds = append(commitCmds, m.ContinueOutbox())
