@@ -3,6 +3,21 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.1] - 2026-07-30
+
+### Added
+- Detect bare image paths when files are dragged into the terminal ([@hsain9357](https://github.com/hsain9357) in [#429](https://github.com/genai-io/san/pull/429))
+- Show all files in `@` autocomplete while respecting `.gitignore` ([@hsain9357](https://github.com/hsain9357) in [#430](https://github.com/genai-io/san/pull/430))
+
+### Changed
+- Rebuild the website homepage around 三 ([@yanmxa](https://github.com/yanmxa) in [#426](https://github.com/genai-io/san/pull/426))
+- Restructure the README around San's small, fast, and open design ([@yanmxa](https://github.com/yanmxa) in [#424](https://github.com/genai-io/san/pull/424))
+
+### Fixed
+- Make cancellation stop the agent loop ([@yanmxa](https://github.com/yanmxa) in [#434](https://github.com/genai-io/san/pull/434))
+- Drop history images when the active model is text-only ([@hsain9357](https://github.com/hsain9357) in [#432](https://github.com/genai-io/san/pull/432))
+- Align the composer cursor with wrapped input rows ([@yanmxa](https://github.com/yanmxa) in [#425](https://github.com/genai-io/san/pull/425))
+
 ## [v1.22.0] - 2026-07-24
 
 ### Added
