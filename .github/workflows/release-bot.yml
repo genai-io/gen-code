@@ -40,7 +40,7 @@ jobs:
   create-release-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@7eab6e2c2a5ff3d41e7e4953b5e16818b347d86f # v7.0.0
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
