@@ -67,15 +67,51 @@ func Load(path string) (core.Image, error) {
 		return core.Image{}, fmt.Errorf("file is not a valid image")
 	}
 
-	return newImage(mediaType, filepath.Base(absPath), data), nil
+	return newImage(mediaType, filepath.Base(absPath), absPath, data), nil
 }
 
 // newImage builds a core.Image from raw bytes, base64-encoding the data.
-func newImage(mediaType, fileName string, data []byte) core.Image {
+func newImage(mediaType, fileName, path string, data []byte) core.Image {
 	return core.Image{
 		MediaType: mediaType,
 		Data:      base64.StdEncoding.EncodeToString(data),
 		FileName:  fileName,
+		Path:      path,
 		Size:      len(data),
 	}
+}
+
+// ResolvePath returns a filesystem path for an image. Images loaded from a
+// file keep their original path; images without a backing file (e.g.
+// clipboard pastes) are materialized to a temporary file so tools such as MCP
+// image describers can read them.
+func ResolvePath(img core.Image) (string, error) {
+	if img.Path != "" {
+		return img.Path, nil
+	}
+	if img.Data == "" {
+		return img.FileName, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(img.Data)
+	if err != nil {
+		return "", fmt.Errorf("decoding image data: %w", err)
+	}
+	f, err := os.CreateTemp("", "san-image-*"+extForMediaType(img.MediaType))
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+func extForMediaType(mediaType string) string {
+	for ext, mt := range supportedTypes {
+		if mt == mediaType {
+			return ext
+		}
+	}
+	return ".png"
 }
