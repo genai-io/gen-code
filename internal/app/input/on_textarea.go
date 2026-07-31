@@ -271,6 +271,36 @@ func (m *Model) HistoryDown() {
 	m.Textarea.CursorEnd()
 }
 
+// LeadingImagePath returns the first whitespace-delimited token of input when
+// that token is a path to an existing image file (absolute, or relative to
+// cwd), and "" otherwise. It is used to keep a leading image path in a prompt
+// from being misread as a slash command — /home/user/photo.png is a file, not
+// a command — and to decide whether that leading path should be consumed as an
+// image reference rather than kept as text.
+func LeadingImagePath(cwd, input string) string {
+	trimmed := strings.TrimSpace(input)
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return ""
+	}
+	first := fields[0]
+	// Only tokens that look like an image path (never a bare filename), and
+	// only when the whole token is the path — trailing punctuation like a
+	// comma must disqualify it.
+	m := bareImagePathRe.FindStringSubmatch(first)
+	if m == nil || m[1] != first {
+		return ""
+	}
+	absPath := first
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(cwd, absPath)
+	}
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return ""
+	}
+	return first
+}
+
 // ProcessImageRefs extracts @image.png references and bare image file paths
 // from input. Returns the cleaned text content and any loaded images.
 // Only processes references where the file actually exists on disk;
@@ -281,6 +311,10 @@ func (m *Model) HistoryDown() {
 // deliberately typed @. Bare paths (drag-drop, absolute paths) are treated
 // more leniently: the text stays in the message, and a failed load is
 // silently skipped so a mere mention of a path doesn't block the send.
+// One exception: when the bare image path is the first token of the prompt
+// (an "upload first" paste), it is consumed as an image reference and removed
+// from the text, mirroring @-prefixed behavior — otherwise the leading path
+// would reach the agent as text that reads like an unknown command.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	content := input
 	var images []core.Image
@@ -312,6 +346,7 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
 	// Keep the text in the message, skip silently on load failure.
 	bareMatches := bareImagePathRe.FindAllStringSubmatch(content, -1)
+	leadingLoaded := false
 	for _, match := range bareMatches {
 		path := match[1]
 		absPath := path
@@ -328,6 +363,17 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 			continue
 		}
 		images = append(images, img)
+		if !leadingLoaded && LeadingImagePath(cwd, content) == path {
+			leadingLoaded = true
+		}
+	}
+	if leadingLoaded {
+		// The image came first in the prompt: consume the leading path as an
+		// image reference so the agent receives the image plus the rest of the
+		// prompt, not a leading path that reads like an unknown command.
+		lead := LeadingImagePath(cwd, content)
+		trimmed := strings.TrimSpace(content)
+		content = strings.TrimSpace(trimmed[len(lead):])
 	}
 
 	return strings.TrimSpace(content), images, nil

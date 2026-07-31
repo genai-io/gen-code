@@ -100,8 +100,14 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 
 	m.userInput.RecordSubmission(m.env.CWD, raw)
 
-	if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
-		return cmd
+	// A leading absolute path to an existing image (e.g. a drag-drop paste of
+	// "upload an image first") starts with "/" and would otherwise parse as a
+	// slash command. Bypass command matching so it flows through the normal
+	// message path, where ProcessImageRefs attaches it as an image.
+	if input.LeadingImagePath(m.env.CWD, raw) == "" {
+		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
+			return cmd
+		}
 	}
 
 	msg, ok := m.buildUserMessage(raw)
