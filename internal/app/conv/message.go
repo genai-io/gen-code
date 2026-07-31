@@ -486,6 +486,9 @@ type ToolCallsParams struct {
 	ToolCallsExpanded bool
 	ResultMap         map[string]ToolResultData
 	ParallelMode      bool
+	// DockedModalActive marks the frames where a Question / Approval modal
+	// owns the screen; the call it is asking about holds still until answered.
+	DockedModalActive bool
 	TaskActivity      map[int][]string
 	PendingCalls      []core.ToolCall
 	CurrentIdx        int
@@ -575,7 +578,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				}
 			}
 		} else {
-			icon := toolCallIcon(tc, params.PendingCalls, params.CurrentIdx, params.ParallelMode, params.SpinnerView)
+			icon := toolCallIcon(tc, params)
 			if _, hasResult := params.ResultMap[tc.ID]; hasResult {
 				icon = "●"
 			}
@@ -619,9 +622,19 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int, parallelMode bool, spinnerView string) string {
+// toolCallIcon picks a call's row glyph: the spinner while it is in flight, a
+// static bullet otherwise. Under a docked modal every row is static — the turn
+// is parked on the user's answer. The call the modal is asking about was marked
+// current and stamped as started by its PreToolEvent, which fires *before* the
+// permission request, so it would otherwise spin as if it had been allowed to
+// run; siblings in the same batch are just as stuck behind the same answer.
+func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
+	if params.DockedModalActive {
+		return "●"
+	}
+
 	idx := -1
-	for i, pending := range pendingCalls {
+	for i, pending := range params.PendingCalls {
 		if pending.ID == tc.ID {
 			idx = i
 			break
@@ -633,8 +646,8 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 
 	// In parallel mode every in-flight call spins; sequentially, only the
 	// current call does.
-	if parallelMode || idx == currentIdx {
-		return spinnerView
+	if params.ParallelMode || idx == params.CurrentIdx {
+		return params.SpinnerView
 	}
 
 	return "●"
@@ -649,6 +662,9 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 // a not-yet-current sequential call has no entry and shows nothing.
 func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
+		return ""
+	}
+	if params.DockedModalActive {
 		return ""
 	}
 	started, ok := params.ToolStartedAt[tc.ID]
