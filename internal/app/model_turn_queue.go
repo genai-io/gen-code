@@ -49,8 +49,8 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 // releaseQueuedMessage hands the next queued user message to the running agent
 // and returns (cmd, true) when one was released, or (nil, false) when the queue
 // is empty or its head is under edit (SelectIdx 0 — dispatching would send
-// pre-edit text and orphan the user's changes). An image-blocked item is diverted
-// back to the textarea with a notice instead of sent.
+// pre-edit text and orphan the user's changes). A text-only model receives the
+// queued images' paths inlined into the content instead of the attachments.
 //
 // The message is shown in the conversation now, at release time, so it never
 // vanishes between the queue and the flow; the agent addresses it once it ingests
@@ -65,14 +65,11 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
-	if m.imagesBlockedForModel(item.Images) {
-		// Hand the message back instead of dropping it — the notice tells the
-		// user to remove the image or switch models.
-		m.userInput.ReturnToTextarea(item.Content, item.Images)
-		return tea.Batch(m.CommitMessages()...), true
-	}
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})
-	svc, content, images := m.services.Agent, item.Content, item.Images
+	// Text-only models can't receive image parts; inline each image's path so
+	// the model can decide how to use it (e.g. via an MCP tool).
+	content, images := m.adaptImagesForModel(item.Content, item.Images)
+	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: images})
+	svc := m.services.Agent
 	send := func() tea.Msg {
 		svc.Send(content, images)
 		return nil
