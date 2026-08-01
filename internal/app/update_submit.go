@@ -104,7 +104,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// "upload an image first") starts with "/" and would otherwise parse as a
 	// slash command. Bypass command matching so it flows through the normal
 	// message path, where ProcessImageRefs attaches it as an image.
-	if input.LeadingImagePath(m.env.CWD, raw) == "" {
+	if input.LeadingImagePath(m.env.ProjectRoot, raw) == "" {
 		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
 			return cmd
 		}
@@ -136,7 +136,7 @@ func (m *model) runSlashCommandIfMatched(raw string) (tea.Cmd, bool) {
 // ready to append. Returns ok=false if image resolution failed (in which
 // case a notice has already been appended to conv).
 func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
-	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, raw)
+	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, raw)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
 		return core.ChatMessage{}, false
@@ -159,6 +159,10 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 // Text-only models cannot receive image parts, so each image's path is inlined
 // into the content instead — the model then decides how to use it (e.g. call
 // an MCP image-description tool) rather than the app refusing the turn.
+// The original images are kept on the returned message so they remain visible
+// in the transcript and survive a later switch to a vision-capable model;
+// the agent layer (dropImagesTextOnlyModelRejects) strips them before sending
+// to a text-only provider.
 func (m *model) adaptImagesForModel(content string, images []core.Image) (string, []core.Image) {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
 		return content, images
@@ -174,9 +178,14 @@ func (m *model) adaptImagesForModel(content string, images []core.Image) (string
 		if err != nil {
 			path = img.FileName
 		}
+		if img.Path == "" {
+			// Clipboard-originated image — ResolvePath materialized a temp
+			// file. Track it for cleanup at turn end.
+			m.tempImageFiles = append(m.tempImageFiles, path)
+		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}
-	return strings.TrimSpace(sb.String()), nil
+	return strings.TrimSpace(sb.String()), images
 }
 
 // drainInputQueueWhileIdle pops one queued item (if any) and runs it

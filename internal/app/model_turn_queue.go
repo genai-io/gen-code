@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
@@ -65,13 +66,27 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
+	// Process image references (leading image paths, @-references, bare paths)
+	// just like the normal submit path does in buildUserMessage. The raw queued
+	// content hasn't been through ProcessImageRefs yet.
+	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, item.Content)
+	if err != nil {
+		m.conv.AddNotice("Image error: " + err.Error())
+		m.userInput.Reset()
+		return tea.Batch(m.CommitMessages()...), true
+	}
+	content, inlineImages := m.userInput.ExtractInlineImages(content)
+	allImages := make([]core.Image, 0, len(inlineImages)+len(fileImages)+len(item.Images))
+	allImages = append(allImages, inlineImages...)
+	allImages = append(allImages, fileImages...)
+	allImages = append(allImages, item.Images...)
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
-	content, images := m.adaptImagesForModel(item.Content, item.Images)
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: images})
+	content, allImages = m.adaptImagesForModel(content, allImages)
+	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: allImages})
 	svc := m.services.Agent
 	send := func() tea.Msg {
-		svc.Send(content, images)
+		svc.Send(content, allImages)
 		return nil
 	}
 	return tea.Batch(append(m.CommitMessages(), send)...), true

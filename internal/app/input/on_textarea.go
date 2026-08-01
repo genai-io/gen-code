@@ -295,7 +295,7 @@ func LeadingImagePath(cwd, input string) string {
 	if !filepath.IsAbs(absPath) {
 		absPath = filepath.Join(cwd, absPath)
 	}
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+	if _, err := os.Stat(absPath); err != nil {
 		return ""
 	}
 	return first
@@ -344,9 +344,12 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	}
 
 	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
-	// Keep the text in the message, skip silently on load failure.
+	// Keep the text in the message, skip silently on load failure, unless
+	// the path is the first token — then it gets consumed as an image reference
+	// (mirroring @-prefixed behavior) with a notice on load failure.
 	bareMatches := bareImagePathRe.FindAllStringSubmatch(content, -1)
-	leadingLoaded := false
+	leadPath := LeadingImagePath(cwd, content)
+	leadingConsumed := false
 	for _, match := range bareMatches {
 		path := match[1]
 		absPath := path
@@ -358,22 +361,31 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 		}
 		img, err := image.Load(absPath)
 		if err != nil {
-			// Bare paths are more lenient: skip silently instead of aborting,
-			// since the user may have just mentioned a path in a sentence.
+			if !leadingConsumed && leadPath == path {
+				// The leading image path exists (stat passed) but failed to load
+				// (e.g. oversized or corrupt). Consume it from the text so the
+				// agent doesn't see the bare path as an unknown command.
+				leadingConsumed = true
+				// Strip the leading path from content before returning the error,
+				// so the caller can surface a notice while the remaining text
+				// survives.
+				trimmed := strings.TrimSpace(content)
+				content = strings.TrimSpace(trimmed[len(leadPath):])
+				return strings.TrimSpace(content), images, fmt.Errorf("loading image %s: %w", absPath, err)
+			}
 			continue
 		}
 		images = append(images, img)
-		if !leadingLoaded && LeadingImagePath(cwd, content) == path {
-			leadingLoaded = true
+		if !leadingConsumed && leadPath == path {
+			leadingConsumed = true
 		}
 	}
-	if leadingLoaded {
+	if leadingConsumed && leadPath != "" {
 		// The image came first in the prompt: consume the leading path as an
 		// image reference so the agent receives the image plus the rest of the
 		// prompt, not a leading path that reads like an unknown command.
-		lead := LeadingImagePath(cwd, content)
 		trimmed := strings.TrimSpace(content)
-		content = strings.TrimSpace(trimmed[len(lead):])
+		content = strings.TrimSpace(trimmed[len(leadPath):])
 	}
 
 	return strings.TrimSpace(content), images, nil
@@ -431,18 +443,6 @@ func (m *Model) RestoreImages(images []core.Image) {
 		m.Images.Pending = append(m.Images.Pending, PendingImage{ID: id, Data: img})
 	}
 	m.Images.NextID += len(images)
-}
-
-// ReturnToTextarea hands a message the app could not send back to the user:
-// the content rejoins any in-progress typing on its own line and the images
-// become pending again, so nothing is silently dropped.
-func (m *Model) ReturnToTextarea(content string, images []core.Image) {
-	if existing := m.Textarea.Value(); existing != "" {
-		content = content + "\n" + existing
-	}
-	m.Textarea.SetValue(content)
-	m.Textarea.CursorEnd()
-	m.RestoreImages(images)
 }
 
 func (m *Model) HasContent() bool {

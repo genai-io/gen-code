@@ -53,7 +53,7 @@ func (c *Client) DefaultThinkingEffort(model string) string {
 	if !supportsThinking(model) {
 		return ""
 	}
-	return "medium"
+	return "off"
 }
 
 // Stream sends a completion request and returns a channel of streaming chunks.

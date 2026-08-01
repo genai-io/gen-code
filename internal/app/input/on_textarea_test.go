@@ -300,10 +300,11 @@ func TestProcessImageRefs(t *testing.T) {
 			wantImage: 1,
 		},
 		{
-			name:      "leading bare corrupt path keeps text leniently",
+			name:      "leading bare corrupt path is consumed with error",
 			input:     badPath + " explain",
-			wantText:  badPath + " explain",
+			wantText:  "explain",
 			wantImage: 0,
+			wantErr:   true,
 		},
 		{
 			name:      "bare path with corrupt image skips silently",

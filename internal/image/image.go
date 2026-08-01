@@ -84,7 +84,8 @@ func newImage(mediaType, fileName, path string, data []byte) core.Image {
 // ResolvePath returns a filesystem path for an image. Images loaded from a
 // file keep their original path; images without a backing file (e.g.
 // clipboard pastes) are materialized to a temporary file so tools such as MCP
-// image describers can read them.
+// image describers can read them. The caller must remove the returned file
+// (via os.Remove) when it is no longer needed.
 func ResolvePath(img core.Image) (string, error) {
 	if img.Path != "" {
 		return img.Path, nil
@@ -102,6 +103,7 @@ func ResolvePath(img core.Image) (string, error) {
 	}
 	defer f.Close()
 	if _, err := f.Write(data); err != nil {
+		os.Remove(f.Name())
 		return "", err
 	}
 	return f.Name(), nil
