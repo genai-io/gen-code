@@ -372,7 +372,7 @@ CommittedCount = 3                           // 追上
 | User / Assistant / Notice 渲染 | [`internal/app/conv/message.go`](../../internal/app/conv/message.go) |
 | Markdown 渲染 | [`internal/app/conv/markdown.go`](../../internal/app/conv/markdown.go) |
 | 工具调用 / 结果渲染 | [`internal/app/conv/tool_render.go`](../../internal/app/conv/tool_render.go) |
-| Compact / 进度 / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go)、[`progress.go`](../../internal/app/conv/progress.go)、[`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
+| Compact / 智能体活动 / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go)、[`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go)、[`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
 | `MDRenderer` 生命周期 | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
 | Resize + reflow | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |

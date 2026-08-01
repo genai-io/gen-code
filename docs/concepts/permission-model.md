@@ -2,7 +2,7 @@
 
 Every tool call passes through one gate: `setting.HasPermissionToUseTool`.
 This page documents the inputs, the decision pipeline, and how the
-foreground TUI, subagents, and plan-mode differ.
+foreground TUI and subagents differ.
 
 For the Claude-Code-compatible rule syntax see
 [`reference/claude-permission-compat.md`](../reference/claude-permission-compat.md).
@@ -13,24 +13,61 @@ For the Claude-Code-compatible rule syntax see
 |---|---|
 | **Behavior** | The intent: `allow`, `deny`, or `ask`. |
 | **Decision** | Behavior + reason + suggested rule edits. The runtime returns one of these per call. |
-| **Mode** | Session-wide policy: `default`, `acceptEdits`, `bypassPermissions`, `plan`. |
+| **Mode** | Session-wide policy. See the mode table below. |
 | **Rule** | A pattern matched against `toolName + args`. E.g. `Bash(git status:*)`, `Write(./src/**)`. |
 | **Session permissions** | Per-session rules accumulated from hook responses and approval modals. Reset on session end. |
+| **Confirmation tier** | Why a call needs a human: *unrecoverable* (real destruction, sensitive paths, data exfiltration) or *recoverable* (work-discarding git, out-of-working-dir writes). Only the recoverable tier may be delegated to the judge. |
 
-## Sources of Authority
+## Modes
 
-Five sources are consulted in this order; the first to produce a
-non-`ask` behavior wins:
+`setting.OperationMode` (`internal/setting/settings.go`) has six values:
 
-1. **Settings rules** — `settings.json` `permissions.allow / deny / ask`,
-   merged across user and project tiers.
-2. **Session permissions** — rules added during the run (via approval
-   modals or hook updates).
-3. **Hook responses** — `PermissionRequest` hook (if any) may force
-   `allow` or `deny`, or rewrite the request.
-4. **Mode policy** — `bypassPermissions` forces allow; `plan` forces deny
-   for any write-class tool.
-5. **Default** — `ask`.
+| Mode | `String()` | Behavior |
+|---|---|---|
+| `ModeNormal` | `normal` | Safe tools auto-allow; everything else prompts. |
+| `ModeAutoAccept` | `accept edits` | Edit/Write auto-allow; other gated tools prompt. |
+| `ModeAutoPilot` | `autopilot` | Edits auto-allow; every other gated call becomes a **reviewable** prompt the judge may answer. |
+| `ModeBypassPermissions` | `bypass permissions` | Allow everything except deny rules and the circuit breaker. |
+| `ModeDontAsk` | `don't ask` | Coerce `ask` → `deny`; never prompt. |
+| `ModeReadOnly` | `read-only` | Safe tools only; everything else denied. |
+
+The first four make up the user-facing cycle: `cycleModes` steps through
+normal / accept-edits / autopilot, and `cycleModesWithBypass` adds bypass
+when it is explicitly enabled. `ModeDontAsk` and `ModeReadOnly` are
+entered programmatically (headless runs, the subagent explore mode), not
+by cycling.
+
+## Decision Pipeline
+
+`HasPermissionToUseTool` walks nine steps in order; the first to produce a
+decision wins. The step list here mirrors the comment block above the
+function in `internal/setting/permission.go` — keep the two in sync.
+
+1. **Deny rules** — `permissions.deny`, merged across user and project tiers.
+2. **Circuit breaker** — a recursive removal of the filesystem root or the
+   home directory. The one check no mode may skip, bypass included.
+3. **BypassPermissions mode** — allow everything that got past 1 and 2.
+4. **Confirmation checks** (skipped by bypass) — the unrecoverable tier
+   (destructive bash, sensitive paths, data exfiltration; never
+   judge-reviewable) and the recoverable tier (work-discarding git,
+   out-of-working-dir writes; the AutoPilot judge may weigh the git case).
+5. **Session permissions** — rules accumulated during the run from approval
+   modals and hook updates.
+6. **Ask rules** — `permissions.ask`.
+7. **Allow rules** — `permissions.allow`.
+8. **Mode default** — `setting.ModeDefault`, the mode table above. This is
+   where AutoPilot marks a prompt `Reviewable`.
+9. **Headless / DontAsk coercion** — `ask` becomes `deny` when nobody can
+   answer.
+
+Hooks sit on either side of this gate rather than inside it:
+
+- A **`PreToolUse`** hook runs before the gate. It can block the call,
+  rewrite the input, force a prompt, or answer `allow`. An `allow` only
+  waives the routine prompt — `setting.ResolveHookAllow` re-checks it, so a
+  deny rule, the circuit breaker, either confirmation tier or an explicit
+  ask rule still sends the call through the gate.
+- A **`PermissionRequest`** hook fires when a call has reached a prompt.
 
 The pipeline lives in `internal/setting/permission.go`. Bash gets special
 treatment: `bash_ast.go` parses the command and matches per-argv patterns
@@ -57,7 +94,7 @@ foreground requests may use settings, session rules, hooks, and the approval
 bridge, while subagents apply their `deny_tools`/`allow_tools` rules and deny
 requests that would require a user prompt.
 
-- Foreground: yes. `agent.PermissionBridge` synchronously waits for the
+- Foreground: yes. `agent.PermissionGate` synchronously waits for the
   TUI approval, then routes the answer back into the running tool call.
 - Subagent: no. There's no user attached to the subagent's loop, so `ask`
   collapses to `deny`. What remains is the mode's own auto-allow surface:
@@ -79,15 +116,29 @@ One subagent-specific rule composes with the pipeline:
   running subagent) follows the ordinary mode pipeline like any other tool.
   See [`packages/broker.md`](../packages/2-feature/broker.md).
 
-## Plan Mode
+## The Gray Zone: Auto-Review
 
-A read-only conversation. Write-class tools (`Write`, `Edit`,
-`NotebookEdit`, certain Bash patterns) are auto-denied with a synthetic
-reason `"plan mode: read-only"`. The user can exit plan mode with
-`/plan-off` or by approving an `ExitPlanMode` tool call.
+In `ModeAutoPilot`, a call that would prompt is offered to a review agent
+before it is offered to the user. One flag decides which calls those are,
+and the reviewer has no say in it:
 
-Plan mode is a **policy filter**, not a separate code path. The same
-`HasPermissionToUseTool` returns `deny(plan-mode)` early.
+- `PermissionDecision.Reviewable` (`internal/setting/permission.go`) marks a
+  prompt the judge may weigh.
+- `setting.ModeDefault` sets it **only** for the AutoPilot non-edit default
+  (step 8). Nothing else in the pipeline sets it.
+- `PermissionGate.Check` (`internal/agent/permission.go`) offers a reviewable
+  prompt to the judge; `allow` short-circuits, anything else falls through to
+  the human prompt.
+- The judge fails closed: `PermReviewFunc` must return the zero value on any
+  error, so a broken or slow reviewer escalates rather than approves.
+
+The load-bearing safety property is which prompts never reach the judge.
+`ConfirmationTier` splits the confirmation reasons in two, and only the
+**recoverable** tier is reviewable. The unrecoverable tier — real
+destruction, sensitive paths, data exfiltration — and the circuit breaker
+stay the human's call in every mode.
+
+The reviewer itself lives in `internal/reviewer/`.
 
 ## Hooks Can Mutate Permissions
 
@@ -108,9 +159,12 @@ mutation payload.
 
 - Decision gate: `internal/setting/permission.go` → `HasPermissionToUseTool`.
 - Rule parser + Bash AST: `internal/setting/bash_ast.go`.
-- Approval modal flow: `internal/agent/permission.go` (`PermissionBridge`).
+- Approval modal flow: `internal/agent/permission.go` (`PermissionGate`).
+- Gray-zone judge: `internal/reviewer/`.
+- Hook-allow invariant: `internal/setting/permission.go` → `ResolveHookAllow`,
+  applied in `internal/tool/pretool_hook.go`.
 - Subagent permission resolution: `internal/subagent/executor.go`.
-- Hook integration: `internal/hook/engine.go` → `getPermissionRequestOutcome`.
+- Hook integration: `internal/hook/executor.go` → `applyPermissionDecision`.
 
 ## See Also
 
