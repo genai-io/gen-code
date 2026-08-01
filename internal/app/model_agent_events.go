@@ -24,7 +24,7 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 		return
 	}
 	// PostInfer starts a new step: re-arm the one-per-step queue release that
-	// this step's PostTool events will use (see DrainQueuedAtStep).
+	// this step's PostTool events will use (see DrainStepQueues).
 	m.drainedThisStep = false
 
 	if m.userInput.Provider.StatusMessage == "compacted" {
@@ -64,20 +64,22 @@ func (m *model) OnAgentMessage(core.Message) tea.Cmd {
 	return nil
 }
 
-// DrainQueuedAtStep releases one queued user message to the running agent at a
-// step boundary (a PostTool, where the turn continues), so a following LLM
-// response addresses it — the message stays editable in the queue right up to
-// this release. One release per step (drainedThisStep). The shared release
-// mechanics live in releaseQueuedMessage, shared with the turn-boundary drain.
-func (m *model) DrainQueuedAtStep() tea.Cmd {
-	if m.drainedThisStep || !m.services.Agent.Active() {
+// DrainStepQueues releases pending work into a still-running turn at a step
+// boundary (a PostTool, where the turn continues): notices a streaming tail
+// held back, plus one queued user message — the cap is what keeps the queue
+// editable until release. Counterpart to drainTurnQueues, which runs once the
+// turn has ended.
+func (m *model) DrainStepQueues() tea.Cmd {
+	if !m.services.Agent.Active() {
 		return nil
 	}
-	cmd, released := m.releaseQueuedMessage()
-	if released {
-		m.drainedThisStep = true
+	notices := m.releaseParkedNotices()
+	if m.drainedThisStep {
+		return notices
 	}
-	return cmd
+	queued, released := m.releaseQueuedMessage()
+	m.drainedThisStep = released
+	return tea.Batch(notices, queued)
 }
 
 func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {

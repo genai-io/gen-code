@@ -1,14 +1,23 @@
-// Main-loop notifications: the small events that wake the TUI's Update loop
-// between turns — a finished background subagent, an interim message from a
-// running one, a self-learn review tick. They arrive on m.mainNotices and are
-// drained at turn boundaries (see model_turn_queue.go).
+// Main-loop notifications: the small events that wake the TUI's Update loop —
+// a finished background subagent, an interim message from a running one, a
+// self-learn review tick. They arrive on m.mainNotices, and this is where their
+// delivery timing is defined; the mechanics live in model_turn_queue.go.
+//
+// A notice shows a line in the conversation, so it can only be delivered where
+// appending is safe — anywhere except into a streaming assistant tail, which is
+// addressed by position (conv.StreamingTail). onMainNotice takes the earliest
+// of three:
+//
+//   - no turn running: injected now, starting a fresh turn;
+//   - turn running, tail not streaming (a tool is executing): handed to that
+//     turn's agent, which reads it at its next step;
+//   - streaming tail: parked in pendingNotices, released at the next completed
+//     tool batch (DrainStepQueues) or, failing that, at OnTurnEnd.
 //
 // m.mainNotices is a TUI staging channel, not the main agent's inbox: unlike a
-// subagent (whose broker delivery goes straight into its core.Agent inbox),
-// the main conversation is UI-attached, so a message must first surface as a
-// notice and wait for a turn boundary before SubmitToAgent forwards it into
-// the main agent's real inbox. That extra hop is why this channel carries
-// mainNotice (a notice) rather than a raw message.
+// subagent, whose broker delivery goes straight into its core.Agent inbox, the
+// main conversation is UI-attached and has this display half to place. That is
+// why the channel carries a mainNotice rather than a raw message.
 package app
 
 import (

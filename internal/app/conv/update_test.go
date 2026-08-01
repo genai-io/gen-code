@@ -15,7 +15,7 @@ type postToolRuntime struct {
 
 func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult { return &tr }
 func (r *postToolRuntime) TakeDecision(string) *core.ReviewDecision         { return nil }
-func (r *postToolRuntime) DrainQueuedAtStep() tea.Cmd {
+func (r *postToolRuntime) DrainStepQueues() tea.Cmd {
 	r.drainCalls++
 	return nil
 }

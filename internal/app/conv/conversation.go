@@ -55,6 +55,23 @@ func (m *ConversationModel) AddAgentNotice(content string) {
 	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content, AgentNotice: true})
 }
 
+// StreamingTail reports whether the conversation ends in an assistant message
+// the stream is still writing into. That message is addressed by position, not
+// by ID: AppendToLast, SetLastToolCalls and SetLastThinkingSignature all reach
+// for the last message and bail on anything else, and renderAndCommit holds a
+// streaming last message back from scrollback. So while this holds, nothing may
+// be appended — the next chunk would be dropped, and the half-streamed message
+// would freeze into scrollback.
+//
+// Tool execution does not hold it: a completed call appends its result, leaving
+// the tail a tool-result row that is safe to append after.
+func (m *ConversationModel) StreamingTail() bool {
+	if !m.Stream.Active || len(m.Messages) == 0 {
+		return false
+	}
+	return m.Messages[len(m.Messages)-1].Role == core.RoleAssistant
+}
+
 func (m *ConversationModel) AppendToLast(text, thinking string) {
 	if len(m.Messages) == 0 {
 		return

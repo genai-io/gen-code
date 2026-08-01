@@ -292,7 +292,7 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	// message between sibling tool rows; waiting preserves the visible order:
 	// complete tool output first, then the pending message.
 	if batchComplete {
-		return rt.DrainQueuedAtStep()
+		return rt.DrainStepQueues()
 	}
 	return nil
 }
