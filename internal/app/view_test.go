@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -84,6 +85,15 @@ const (
 func dockedModalModel(t *testing.T, rationale string) *model {
 	t.Helper()
 
+	return dockedModalModelWithCalls(t, rationale, []core.ToolCall{
+		{ID: "bash-1", Name: "Bash", Input: `{"command":"df -h","description":"check disk"}`},
+		{ID: "bash-2", Name: "Bash", Input: `{"command":"date","description":"check clock"}`},
+	})
+}
+
+func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.ToolCall) *model {
+	t.Helper()
+
 	const width, height = modalTestWidth, modalTestHeight
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
@@ -91,10 +101,9 @@ func dockedModalModel(t *testing.T, rationale string) *model {
 		userInput: input.New("", width, nil, input.SelectorDeps{}),
 		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry()},
 	}
-	batch := []core.ToolCall{
-		{ID: "bash-1", Name: "Bash", Input: `{"command":"df -h","description":"check disk"}`},
-		{ID: "bash-2", Name: "Bash", Input: `{"command":"date","description":"check clock"}`},
-	}
+	// The stream is still open across a permission gate — it clears only on a
+	// text-only final chunk — so the live tail believes it is mid-turn.
+	m.conv.Stream.Active = true
 	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{
 		Role:      core.RoleAssistant,
 		Content:   rationale,
@@ -181,6 +190,38 @@ func TestDockedModalDoesNotShowPendingCallsAsRunning(t *testing.T) {
 		if strings.Contains(row, spinnerGlyph) {
 			t.Fatalf("tool row %q spins while the batch waits on the approval modal", row)
 		}
+	}
+}
+
+// The stream stays open across a permission gate, so the assistant message
+// carrying the rationale still counts as the live tail. Its bullet must not
+// spin either — the turn is parked on the modal, not producing text.
+func TestDockedModalFreezesAssistantBullet(t *testing.T) {
+	m := dockedModalModel(t, "RATIONALE_SENTINEL about to check the disk")
+	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+
+	frame, _ := m.viewString()
+
+	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
+		if strings.Contains(line, "RATIONALE_SENTINEL") && strings.Contains(line, spinnerGlyph) {
+			t.Fatalf("assistant row %q spins while the turn waits on the modal", line)
+		}
+	}
+}
+
+// An Agent row is drawn by its own branch, which blinks its icon off the frame
+// counter instead of using the shared spinner and offers "(ctrl+o to expand)".
+// Both are wrong under a modal — the row is not working, and the modal owns
+// ctrl+o. (The glyph freeze itself is pinned in conv; this covers the wiring.)
+func TestDockedModalDropsDeadExpandHint(t *testing.T) {
+	m := dockedModalModelWithCalls(t, "spawning a reviewer", []core.ToolCall{
+		{ID: "agent-1", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review the diff"}`},
+	})
+
+	frame, _ := m.viewString()
+
+	if strings.Contains(ansi.Strip(frame), "ctrl+o") {
+		t.Fatalf("modal frame offers ctrl+o while the modal owns the keyboard:\n%s", frame)
 	}
 }
 

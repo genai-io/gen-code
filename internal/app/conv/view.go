@@ -229,6 +229,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ToolCalls:            msg.ToolCalls,
 		StreamActive:         p.StreamActive,
 		IsLast:               isLast,
+		DockedModalActive:    p.DockedModalActive,
 		SpinnerView:          p.SpinnerView,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,

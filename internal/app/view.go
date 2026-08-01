@@ -119,9 +119,9 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 // place the height budget is decided: the tail is capped to what is left, and
 // its earliest lines are the ones that scroll off.
 func (m *model) chatTailAbove(bottom string, params conv.RenderContext, trackerView string) string {
-	// A non-positive budget means the bottom block already fills the screen.
-	// Bail before rendering: whatever came back would be dropped whole, and
-	// letting it through would push the block off the bottom of the frame.
+	// A non-positive budget means the bottom block is taller than the screen on
+	// its own. tailLines would drop the tail anyway; bailing here skips the
+	// render that produced it, which is the whole cost on a short terminal.
 	maxContentHeight := m.env.Height - strings.Count(bottom, "\n")
 	if maxContentHeight <= 0 {
 		return ""
