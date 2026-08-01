@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -1368,5 +1369,45 @@ func TestRenderDecision(t *testing.T) {
 	bare := stripANSI(renderDecision(&core.ReviewDecision{Approved: true}))
 	if strings.Contains(bare, "·") {
 		t.Errorf("blank reason should not render a separator: %q", bare)
+	}
+}
+
+// A docked modal parks the turn on the user's answer, so an Agent row must
+// hold its glyph instead of blinking ●/○ off the frame counter — a blink reads
+// as a subagent working while the user decides whether to let it start.
+func TestRenderToolCallsFreezesAgentRowUnderDockedModal(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review it"}`}
+	params := ToolCallsParams{
+		ToolCalls:    []core.ToolCall{call},
+		ResultMap:    map[string]ToolResultData{},
+		PendingCalls: []core.ToolCall{call},
+		CurrentIdx:   0,
+		SpinnerView:  "⋯",
+		Width:        100,
+		Interactive:  true,
+	}
+
+	// agentIcon flips every agentBlinkTicks frames; both phases must render
+	// the same static bullet once the modal is up.
+	for _, blink := range []int{0, agentBlinkTicks} {
+		params.Blink = blink
+		live := stripANSI(RenderToolCalls(params))
+		if !strings.Contains(live, agentIcon(blink)) {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, want the blinking icon while no modal is up", blink, live)
+		}
+
+		params.DockedModalActive = true
+		frozen := stripANSI(RenderToolCalls(params))
+		params.DockedModalActive = false
+
+		if !strings.Contains(frozen, "●") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, want a static bullet under the modal", blink, frozen)
+		}
+		if strings.Contains(frozen, "○") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks under the modal", blink, frozen)
+		}
+		if strings.Contains(frozen, "ctrl+o") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, ctrl+o hint is dead while the modal owns the keyboard", blink, frozen)
+		}
 	}
 }

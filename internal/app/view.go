@@ -55,13 +55,29 @@ func (m *model) viewString() (string, *tea.Cursor) {
 	trackerView := m.renderTrackerList()
 
 	if hasOverlay { // docked modal (Question / Approval)
-		trackerPrefix := ""
-		if trackerView != "" {
-			trackerPrefix = "\n" + strings.TrimSuffix(trackerView, "\n") + "\n"
-		}
-		return trackerPrefix + separator + "\n" + ov.Render(), nil
+		return m.renderDockedModalView(ov, separator, trackerView), nil
 	}
 	return m.renderNormalView(separator, trackerView)
+}
+
+// renderDockedModalView composes a docked modal with the live chat tail still
+// visible above it. The assistant text that streams in right before a tool call
+// is the rationale for the permission being requested, so dropping it while the
+// modal is up hides the reasoning at exactly the moment the user has to act on
+// it.
+//
+// The modal claims its rows first and the chat tail gets what is left: rendering
+// the tail unbounded would push the modal's answer options off the bottom of the
+// screen, which is worse than showing no text at all.
+func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView string) string {
+	modal := "\n" + separator + "\n" + ov.Render()
+
+	params := m.messageRenderParams()
+	// Only this branch renders under a modal, so it is the one place that knows
+	// the turn is parked on an answer — everything animated holds still.
+	params.DockedModalActive = true
+
+	return m.chatTailAbove(modal, params, trackerView) + modal
 }
 
 // isDockedModal reports whether the active overlay docks above the input area
@@ -87,19 +103,30 @@ func isDockedModal(ov overlayPanel) bool {
 // shown and earlier lines scroll off — the full message lands in native
 // scrollback at turn end, which the terminal scrolls back through natively.
 func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cursor) {
-	// Render the footer first so we can measure how many lines it consumes
-	// and cap the chat section to the remaining terminal height.
+	// Render the footer first so the chat section can be capped to whatever
+	// height it leaves free.
 	footer, inputRow := m.renderFooter(separator)
-	// A non-positive result means the footer already fills the screen; tailLines
-	// reads that as "no room" and drops the chat section entirely.
-	maxContentHeight := m.env.Height - strings.Count(footer, "\n")
-
-	activeContent := conv.RenderActiveContent(m.messageRenderParams())
-	chatSection := tailLines(m.renderChatSection(activeContent, trackerView), maxContentHeight)
+	chatSection := m.chatTailAbove(footer, m.messageRenderParams(), trackerView)
 
 	// The footer's row offsets are relative to its own first line; the chat
 	// section above it shifts them all down.
 	return chatSection + footer, m.inputCursor(strings.Count(chatSection, "\n") + inputRow)
+}
+
+// chatTailAbove renders the live chat tail to fill the rows the bottom-anchored
+// block leaves free — the footer in the normal layout, the modal in the docked
+// one. Both layouts anchor to the bottom of the screen, so this is the single
+// place the height budget is decided: the tail is capped to what is left, and
+// its earliest lines are the ones that scroll off.
+func (m *model) chatTailAbove(bottom string, params conv.RenderContext, trackerView string) string {
+	// A non-positive budget means the bottom block is taller than the screen on
+	// its own. tailLines would drop the tail anyway; bailing here skips the
+	// render that produced it, which is the whole cost on a short terminal.
+	maxContentHeight := m.env.Height - strings.Count(bottom, "\n")
+	if maxContentHeight <= 0 {
+		return ""
+	}
+	return tailLines(m.renderChatSection(conv.RenderActiveContent(params), trackerView), maxContentHeight)
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.
@@ -374,8 +401,8 @@ func (m model) messageRenderParams() conv.RenderContext {
 		TaskActivity: m.conv.TaskActivity,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 
-		// Modal interlock
-		InteractivePromptActive: m.conv.Modal.Question != nil && m.conv.Modal.Question.IsActive(),
+		// Modal interlock is left false here and set by
+		// renderDockedModalView, the only caller rendering under a modal.
 	}
 }
 

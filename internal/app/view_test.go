@@ -9,6 +9,11 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // The composer prints the "❭ " prompt once, on the first row, while inputCursor
@@ -63,6 +68,160 @@ func TestComposerCursorAlignsWithEveryRow(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The terminal the docked-modal tests render into.
+const (
+	modalTestWidth  = 80
+	modalTestHeight = 24
+)
+
+// dockedModalModel builds a model whose approval modal is asking about the
+// first of two parallel Bash calls the assistant has just explained, with that
+// explanation still live (not yet committed to scrollback). The batch is what
+// makes the fixture realistic: both calls get a PreTool event, so the "current"
+// call is the *last* one tracked, not the one the modal is asking about.
+func dockedModalModel(t *testing.T, rationale string) *model {
+	t.Helper()
+
+	return dockedModalModelWithCalls(t, rationale, []core.ToolCall{
+		{ID: "bash-1", Name: "Bash", Input: `{"command":"df -h","description":"check disk"}`},
+		{ID: "bash-2", Name: "Bash", Input: `{"command":"date","description":"check clock"}`},
+	})
+}
+
+func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.ToolCall) *model {
+	t.Helper()
+
+	const width, height = modalTestWidth, modalTestHeight
+	m := &model{
+		env:       env{Width: width, Height: height, Ready: true},
+		conv:      conv.NewModel(width),
+		userInput: input.New("", width, nil, input.SelectorDeps{}),
+		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry()},
+	}
+	// The stream is still open across a permission gate — it clears only on a
+	// text-only final chunk — so the live tail believes it is mid-turn.
+	m.conv.Stream.Active = true
+	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{
+		Role:      core.RoleAssistant,
+		Content:   rationale,
+		ToolCalls: batch,
+	})
+	// PreTool fires before the permission request, so both calls are already
+	// tracked as in flight by the time the modal goes up.
+	m.conv.Tool.Track(batch)
+	for _, call := range batch {
+		m.conv.Tool.MarkCurrent(call.ID)
+		m.conv.Tool.MarkStarted(call.ID)
+	}
+
+	m.userInput.Approval.Show(&perm.PermissionRequest{
+		ID:          "req-1",
+		ToolName:    "Bash",
+		Description: "check disk",
+		BashMeta:    &perm.BashMetadata{Command: "df -h", Description: "check disk"},
+	}, width, height)
+
+	return m
+}
+
+// The text streamed right before a tool call is the rationale for the
+// permission being requested, so the approval modal has to render on top of it
+// rather than in place of it — otherwise the reasoning disappears at exactly
+// the moment the user has to act on it (issue #436).
+func TestDockedModalKeepsPrecedingAssistantText(t *testing.T) {
+	const rationale = "RATIONALE_SENTINEL: this is not a timeout, it is a kernel-level failure"
+
+	m := dockedModalModel(t, rationale)
+	frame, _ := m.viewString()
+
+	plain := ansi.Strip(frame)
+	if !strings.Contains(plain, "RATIONALE_SENTINEL") {
+		t.Fatalf("modal frame dropped the assistant text preceding the tool call:\n%s", frame)
+	}
+	if !strings.Contains(plain, "df -h") {
+		t.Fatalf("modal frame is missing the approval prompt itself:\n%s", frame)
+	}
+}
+
+// The chat tail above a docked modal is capped: rendering it in full would push
+// the modal's answer options off the bottom of the screen, which is worse than
+// showing no text at all.
+func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
+	rationale := strings.TrimSpace(strings.Repeat("wall of reasoning text that wraps and wraps ", 60))
+	m := dockedModalModel(t, rationale)
+	frame, _ := m.viewString()
+
+	if rows := strings.Count(frame, "\n") + 1; rows > modalTestHeight {
+		t.Fatalf("modal frame is %d rows tall, exceeds terminal height %d", rows, modalTestHeight)
+	}
+	// The options are the last thing in the modal: if they survived the cap,
+	// nothing below the chat tail was pushed off screen.
+	if !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+		t.Fatalf("modal frame lost its question to the chat tail:\n%s", frame)
+	}
+}
+
+// PreTool stamps a call before the permission request, so the in-flight state
+// is live while the user decides. No row may spin: the call being approved has
+// not been allowed to start, and its batch siblings are stuck behind the same
+// answer.
+func TestDockedModalDoesNotShowPendingCallsAsRunning(t *testing.T) {
+	m := dockedModalModel(t, "about to check the disk")
+	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+
+	frame, _ := m.viewString()
+
+	rows := map[string]string{}
+	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
+		for _, cmd := range []string{"df -h", "date"} {
+			if strings.Contains(line, "Bash("+cmd+")") {
+				rows[cmd] = line
+			}
+		}
+	}
+	for _, cmd := range []string{"df -h", "date"} {
+		row, ok := rows[cmd]
+		if !ok {
+			t.Fatalf("modal frame has no row for %q:\n%s", cmd, frame)
+		}
+		if strings.Contains(row, spinnerGlyph) {
+			t.Fatalf("tool row %q spins while the batch waits on the approval modal", row)
+		}
+	}
+}
+
+// The stream stays open across a permission gate, so the assistant message
+// carrying the rationale still counts as the live tail. Its bullet must not
+// spin either — the turn is parked on the modal, not producing text.
+func TestDockedModalFreezesAssistantBullet(t *testing.T) {
+	m := dockedModalModel(t, "RATIONALE_SENTINEL about to check the disk")
+	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+
+	frame, _ := m.viewString()
+
+	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
+		if strings.Contains(line, "RATIONALE_SENTINEL") && strings.Contains(line, spinnerGlyph) {
+			t.Fatalf("assistant row %q spins while the turn waits on the modal", line)
+		}
+	}
+}
+
+// An Agent row is drawn by its own branch, which blinks its icon off the frame
+// counter instead of using the shared spinner and offers "(ctrl+o to expand)".
+// Both are wrong under a modal — the row is not working, and the modal owns
+// ctrl+o. (The glyph freeze itself is pinned in conv; this covers the wiring.)
+func TestDockedModalDropsDeadExpandHint(t *testing.T) {
+	m := dockedModalModelWithCalls(t, "spawning a reviewer", []core.ToolCall{
+		{ID: "agent-1", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review the diff"}`},
+	})
+
+	frame, _ := m.viewString()
+
+	if strings.Contains(ansi.Strip(frame), "ctrl+o") {
+		t.Fatalf("modal frame offers ctrl+o while the modal owns the keyboard:\n%s", frame)
 	}
 }
 

@@ -194,6 +194,10 @@ type AssistantParams struct {
 	ToolCallsExpanded bool
 	StreamActive      bool
 	IsLast            bool
+	// DockedModalActive freezes the bullet: the stream stays "active" across a
+	// permission gate (it clears only on a text-only Done chunk), so without
+	// this the live tail spins while the turn is parked on the user's answer.
+	DockedModalActive bool
 	SpinnerView       string
 	MDRenderer        *MDRenderer
 	Width             int
@@ -338,7 +342,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 	// committed the bullet is spent and the remainder aligns under a gutter.
 	// While streaming, the active tail shows the spinner in the bullet slot.
 	aiIcon := contentGutter(!params.BulletEmitted)
-	if params.StreamActive && params.IsLast {
+	if params.StreamActive && params.IsLast && !params.DockedModalActive {
 		aiIcon = aiPromptStyle.Render(params.SpinnerView + " ")
 	}
 
@@ -486,6 +490,9 @@ type ToolCallsParams struct {
 	ToolCallsExpanded bool
 	ResultMap         map[string]ToolResultData
 	ParallelMode      bool
+	// DockedModalActive marks the frames where a Question / Approval modal
+	// owns the screen; the call it is asking about holds still until answered.
+	DockedModalActive bool
 	TaskActivity      map[int][]string
 	PendingCalls      []core.ToolCall
 	CurrentIdx        int
@@ -505,6 +512,15 @@ type ToolCallsParams struct {
 	MDRenderer   *MDRenderer
 	Width        int
 	Interactive  bool
+}
+
+// expandHints reports whether "(ctrl+o to expand)" affordances belong on this
+// pass. They ride the live tail only, and not while a docked modal owns the
+// keyboard: routeKeypress hands every key to the active overlay, so ctrl+o
+// reaches the modal (where it toggles a preview, or nothing) and never the row
+// offering the hint.
+func (p ToolCallsParams) expandHints() bool {
+	return p.Interactive && !p.DockedModalActive
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -549,8 +565,15 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), color))
-				if !params.ToolCallsExpanded && params.Interactive {
+				// agentIcon blinks ●/○ off the frame counter; under a docked
+				// modal it would advertise a subagent as working while the
+				// turn waits on the user, same as a spinning tool row.
+				icon := agentIcon(params.Blink)
+				if params.DockedModalActive {
+					icon = "●"
+				}
+				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
+				if !params.ToolCallsExpanded && params.expandHints() {
 					sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
 				}
 				sb.WriteString("\n")
@@ -575,10 +598,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				}
 			}
 		} else {
-			icon := toolCallIcon(tc, params.PendingCalls, params.CurrentIdx, params.ParallelMode, params.SpinnerView)
-			if _, hasResult := params.ResultMap[tc.ID]; hasResult {
-				icon = "●"
-			}
+			icon := toolCallIcon(tc, params)
 			detail := runningRowDetail(tc, params)
 			var row string
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
@@ -596,7 +616,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
-			resultData.Interactive = params.Interactive
+			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
 			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
@@ -619,9 +639,29 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int, parallelMode bool, spinnerView string) string {
+// toolCallIcon picks a call's row glyph: the spinner while it is in flight, a
+// static bullet once it has a result or is not the call being executed.
+//
+// A docked modal freezes every row. The call it is asking about was marked
+// current and stamped as started by its PreToolEvent, which fires *before* the
+// permission request, so it would otherwise spin as if it had been allowed to
+// run. Nothing here can tell that call apart from a batch sibling that really
+// is executing (the permission gate lives inside each tool's Execute, and a
+// parallel batch runs one goroutine per call), so the freeze is deliberately
+// blunt: a row that stalls for the length of the decision beats a row that
+// claims a command is running before it was allowed to start. Distinguishing
+// them needs the pending call's identity on the permission request itself —
+// see #440.
+func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
+	if _, done := params.ResultMap[tc.ID]; done {
+		return "●"
+	}
+	if params.DockedModalActive {
+		return "●"
+	}
+
 	idx := -1
-	for i, pending := range pendingCalls {
+	for i, pending := range params.PendingCalls {
 		if pending.ID == tc.ID {
 			idx = i
 			break
@@ -633,8 +673,8 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 
 	// In parallel mode every in-flight call spins; sequentially, only the
 	// current call does.
-	if parallelMode || idx == currentIdx {
-		return spinnerView
+	if params.ParallelMode || idx == params.CurrentIdx {
+		return params.SpinnerView
 	}
 
 	return "●"
@@ -649,6 +689,9 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 // a not-yet-current sequential call has no entry and shows nothing.
 func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
+		return ""
+	}
+	if params.DockedModalActive {
 		return ""
 	}
 	started, ok := params.ToolStartedAt[tc.ID]

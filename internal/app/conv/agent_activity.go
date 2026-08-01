@@ -196,8 +196,9 @@ func isAgentToolLine(line string) bool {
 
 // PendingToolSpinnerParams holds the parameters for rendering a pending tool spinner.
 type PendingToolSpinnerParams struct {
-	// InteractivePromptActive indicates if an interactive prompt is currently active.
-	InteractivePromptActive bool
+	// DockedModalActive indicates a Question / Approval / secret modal owns
+	// the screen, so the turn is parked on the user's answer.
+	DockedModalActive bool
 	// BuildingTool is the tool name being built during streaming.
 	BuildingTool string
 	// PendingCalls are the pending tool calls.
@@ -221,7 +222,7 @@ type PendingToolSpinnerParams struct {
 
 // RenderPendingToolSpinner renders the spinner for a tool being executed.
 func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
-	if params.InteractivePromptActive {
+	if params.DockedModalActive {
 		return ""
 	}
 

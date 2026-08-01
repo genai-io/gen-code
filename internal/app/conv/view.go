@@ -50,7 +50,11 @@ type RenderContext struct {
 	TaskOwnerMap map[string]string
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
-	InteractivePromptActive bool
+	// DockedModalActive marks the frames where a Question / Approval / secret
+	// modal owns the screen. The chat tail still renders above it, so anything
+	// that animates has to hold still: the turn is parked on the user's answer,
+	// not making progress.
+	DockedModalActive bool
 
 	// Interactive marks the live render pass (RenderActiveContent): the
 	// uncommitted tail the user can still act on. "(ctrl+o to expand)" hints
@@ -225,6 +229,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ToolCalls:            msg.ToolCalls,
 		StreamActive:         p.StreamActive,
 		IsLast:               isLast,
+		DockedModalActive:    p.DockedModalActive,
 		SpinnerView:          p.SpinnerView,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
@@ -256,6 +261,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ToolCallsExpanded: msg.ToolCallsExpanded,
 		ResultMap:         resultMap,
 		ParallelMode:      len(p.PendingCalls) > 1,
+		DockedModalActive: p.DockedModalActive,
 		TaskActivity:      p.TaskActivity,
 		PendingCalls:      p.PendingCalls,
 		CurrentIdx:        p.CurrentIdx,
@@ -322,15 +328,15 @@ func RenderActiveContent(p RenderContext) string {
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {
 	return RenderPendingToolSpinner(PendingToolSpinnerParams{
-		InteractivePromptActive: p.InteractivePromptActive,
-		BuildingTool:            p.BuildingTool,
-		PendingCalls:            p.PendingCalls,
-		CurrentIdx:              p.CurrentIdx,
-		TaskActivity:            p.TaskActivity,
-		SpinnerView:             p.SpinnerView,
-		Blink:                   p.Blink,
-		AgentColors:             p.AgentColors,
-		Width:                   p.Width,
-		SuppressAgentLabel:      suppressAgentLabel,
+		DockedModalActive:  p.DockedModalActive,
+		BuildingTool:       p.BuildingTool,
+		PendingCalls:       p.PendingCalls,
+		CurrentIdx:         p.CurrentIdx,
+		TaskActivity:       p.TaskActivity,
+		SpinnerView:        p.SpinnerView,
+		Blink:              p.Blink,
+		AgentColors:        p.AgentColors,
+		Width:              p.Width,
+		SuppressAgentLabel: suppressAgentLabel,
 	})
 }
