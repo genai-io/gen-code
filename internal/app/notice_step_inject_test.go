@@ -113,27 +113,27 @@ func TestDeliveryToRunningTurnReachesTheNextInference(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
 
-	runCmd(m.deliverToRunningTurn(taskNotice()))
+	runCmd(m.injectIntoRunningTurn(taskNotice()))
 
 	assertAgentRead(t, provider)
 }
 
-// A streaming assistant tail is addressed by position, so a notice cannot be
-// appended there — it parks, and the next completed tool batch releases it into
-// the same turn rather than holding it until the turn ends.
-func TestNoticeParkedByStreamingTailIsReleasedAtTheNextStep(t *testing.T) {
+// The stream finds its message by position, so a notice cannot be appended while
+// it is writing — the notice parks, and the next completed tool batch releases it
+// into the same turn rather than holding it until the turn ends.
+func TestNoticeParkedWhileStreamingIsReleasedAtTheNextStep(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
 	m.conv.Append(core.ChatMessage{Role: core.RoleAssistant, Content: "thinking out loud"})
 
 	m.onMainNotice(taskNotice()) // cmds unused: the routing decision is synchronous
 	if len(m.pendingNotices) != 1 {
-		t.Fatalf("notice was appended into a streaming tail: %+v", m.conv.Messages)
+		t.Fatalf("notice was appended while the stream was writing: %+v", m.conv.Messages)
 	}
 
 	// The tool batch completes: its result lands, leaving an appendable tail.
 	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
-	runCmd(m.DrainStepQueues())
+	runCmd(m.OnStepEnd())
 
 	if len(m.pendingNotices) != 0 {
 		t.Fatalf("notice still parked after a step boundary: %+v", m.pendingNotices)
@@ -148,7 +148,7 @@ func TestStepDrainWithNothingPendingIsInert(t *testing.T) {
 	m, _ := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
 
-	if cmd := m.DrainStepQueues(); cmd != nil {
+	if cmd := m.OnStepEnd(); cmd != nil {
 		t.Fatal("step drain produced work with nothing to release")
 	}
 	if len(m.conv.Messages) != 0 {

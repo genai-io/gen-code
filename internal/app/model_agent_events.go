@@ -19,12 +19,12 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-func (m *model) OnTokenUsage(resp *core.InferResponse) {
+func (m *model) OnInference(resp *core.InferResponse) {
 	if resp == nil {
 		return
 	}
 	// PostInfer starts a new step: re-arm the one-per-step queue release that
-	// this step's PostTool events will use (see DrainStepQueues).
+	// this step's PostTool events will use (see OnStepEnd).
 	m.drainedThisStep = false
 
 	if m.userInput.Provider.StatusMessage == "compacted" {
@@ -55,21 +55,12 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 // needsSpinner it reads live runtime state, not persisted tracker status.
 func (m *model) HasRunningTasks() bool { return m.hasRunningBackgroundTask() }
 
-// OnAgentMessage observes the agent's MessageEvent echoes only. Every path that
-// hands a user message to the agent — idle submit, queue release
-// (releaseQueuedMessage), cron prompt, async hook — appends it to m.conv at the
-// call site, so the echo has nothing to do here: appending again would
-// double-display.
-func (m *model) OnAgentMessage(core.Message) tea.Cmd {
-	return nil
-}
-
-// DrainStepQueues releases pending work into a still-running turn at a step
-// boundary (a PostTool, where the turn continues): notices a streaming tail
-// held back, plus one queued user message — the cap is what keeps the queue
+// OnStepEnd releases pending work into a still-running turn at a step
+// boundary (a PostTool, where the turn continues): notices the stream held
+// back, plus one queued user message — the cap is what keeps the queue
 // editable until release. Counterpart to drainTurnQueues, which runs once the
 // turn has ended.
-func (m *model) DrainStepQueues() tea.Cmd {
+func (m *model) OnStepEnd() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}

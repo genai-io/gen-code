@@ -4,15 +4,15 @@
 // delivery timing is defined; the mechanics live in model_turn_queue.go.
 //
 // A notice shows a line in the conversation, so it can only be delivered where
-// appending is safe — anywhere except into a streaming assistant tail, which is
-// addressed by position (conv.StreamingTail). onMainNotice takes the earliest
-// of three:
+// appending is safe — anywhere except the last slot while the stream is still
+// writing into it (conv.LastMessageIsStreaming). onMainNotice takes the earliest of
+// three:
 //
 //   - no turn running: injected now, starting a fresh turn;
-//   - turn running, tail not streaming (a tool is executing): handed to that
-//     turn's agent, which reads it at its next step;
-//   - streaming tail: parked in pendingNotices, released at the next completed
-//     tool batch (DrainStepQueues) or, failing that, at OnTurnEnd.
+//   - turn running, tail free (a tool is executing): injected into that turn,
+//     whose agent reads it at its next step;
+//   - stream owns the tail: parked in pendingNotices, released at the next
+//     completed tool batch (OnStepEnd) or, failing that, at OnTurnEnd.
 //
 // m.mainNotices is a TUI staging channel, not the main agent's inbox: unlike a
 // subagent, whose broker delivery goes straight into its core.Agent inbox, the

@@ -440,7 +440,7 @@ Update → routeToSubModel                update.go
         │
         ▼
    PostInfer                            applyPostInfer
-       ├─ rt.OnTokenUsage(resp)         model_agent_events.go
+       ├─ rt.OnInference(resp)         model_agent_events.go
        └─ 如果有工具调用：track 它们
         │
         ▼
@@ -457,7 +457,7 @@ Update → routeToSubModel                update.go
         └─ 触发 idle hooks
 
    rt.OnAgentStop(err)                  本轮结束（或被取消）
-   rt.OnAutoCompact / OnCompactResult / OnTokenLimitResult ……
+   rt.HandlePermGate / HandleCompactResult / HandleTokenLimitResult ……
 ```
 
 ### 流式文字到底渲染在哪里

@@ -47,10 +47,10 @@ type model struct {
 	mainNotices chan mainNotice
 	// pendingNotices holds notices that arrived mid-stream, where appending to
 	// the conversation is unsafe. Released at the next completed tool batch
-	// (DrainStepQueues), or at OnTurnEnd if the turn ends first.
+	// (OnStepEnd), or at OnTurnEnd if the turn ends first.
 	pendingNotices []mainNotice
-	// drainedThisStep caps DrainStepQueues to one queued message per step
-	// (PostTool fires once per tool). Reset each step in OnTokenUsage (PostInfer).
+	// drainedThisStep caps OnStepEnd to one queued message per step
+	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep bool
 	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
 	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)

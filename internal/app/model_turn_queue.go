@@ -54,8 +54,8 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 //
 // The message is shown in the conversation now, at release time, so it never
 // vanishes between the queue and the flow; the agent addresses it once it ingests
-// it a step or a turn later, and its ingest echo is a no-op (see OnAgentMessage).
-// Shared by the step-boundary (DrainStepQueues) and turn-boundary
+// it a step or a turn later, and the agent's echo of it is ignored (see conv.applyAgentEvent).
+// Shared by the step-boundary (OnStepEnd) and turn-boundary
 // (drainTurnQueues) drains.
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if m.userInput.Queue.SelectIdx == 0 {
@@ -107,7 +107,7 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// Whatever releaseParkedNotices did not get to: a task that finished during
 	// the turn's last step, or during a turn that never ran a tool.
 	if notices := m.takeParkedNotices(); len(notices) > 0 {
-		return m.injectNotices(notices), true
+		return m.injectAsNewTurn(mergeNotices(notices)), true
 	}
 
 	return nil, false
@@ -128,23 +128,23 @@ func (m *model) takeParkedNotices() []mainNotice {
 	return notices
 }
 
-// releaseParkedNotices delivers what a streaming tail held back, at the step
-// boundary where the conversation can take it again.
+// releaseParkedNotices injects what LastMessageIsStreaming held back, at the step
+// boundary where the tail is free again.
 func (m *model) releaseParkedNotices() tea.Cmd {
 	notices := m.takeParkedNotices()
 	if len(notices) == 0 {
 		return nil
 	}
 	log.QueueLog("releaseParkedNotices: releasing %d notice(s) mid-turn", len(notices))
-	return m.deliverToRunningTurn(mergeNotices(notices))
+	return m.injectIntoRunningTurn(mergeNotices(notices))
 }
 
-// deliverToRunningTurn hands a notice to the agent partway through a turn it is
+// injectIntoRunningTurn hands a notice to the agent partway through a turn it is
 // already running: sendToAgent reaches its inbox, which it drains between steps,
-// so the content is in the conversation the next inference reads. SubmitToAgent
-// is the idle path (injectNotice) and must not be used here — it can rebuild the
-// agent session, which would tear down the running turn.
-func (m *model) deliverToRunningTurn(n mainNotice) tea.Cmd {
+// so the content is in the conversation the next inference reads. Its pair is
+// injectAsNewTurn, whose SubmitToAgent must not be used here — that path can
+// rebuild the agent session, which would tear down the running turn.
+func (m *model) injectIntoRunningTurn(n mainNotice) tea.Cmd {
 	m.showNoticeLine(n)
 	cmds := m.CommitMessages()
 	if n.Content != "" { // display-only notices have nothing for the model to read
@@ -153,9 +153,9 @@ func (m *model) deliverToRunningTurn(n mainNotice) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// injectNotice delivers a notice with no turn running: the line is shown and the
+// injectAsNewTurn delivers a notice with no turn running: the line is shown and the
 // body, if any, starts a fresh turn.
-func (m *model) injectNotice(n mainNotice) tea.Cmd {
+func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
 	m.showNoticeLine(n)
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
@@ -199,26 +199,22 @@ func awaitMainNotice(ch <-chan mainNotice) tea.Cmd {
 	}
 }
 
-// onMainNotice routes an arriving notice to the earliest delivery the
-// conversation can take: straight into a running turn, a fresh turn when idle,
-// or parked when a streaming tail blocks appends (see notify.go). Re-arming is
+// onMainNotice routes an arriving notice to the earliest injection the
+// conversation can take: into a running turn, as a fresh turn when idle, or
+// parked while the stream owns the tail (see notify.go). Re-arming is
 // unconditional: after the read the chan is empty, so the next firing waits for
 // the next message.
 func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 	next := awaitMainNotice(m.mainNotices)
 	switch {
-	case m.conv.StreamingTail():
+	case m.conv.LastMessageIsStreaming():
 		m.pendingNotices = append(m.pendingNotices, n)
 		return next
 	case m.conv.Stream.Active:
-		return tea.Batch(m.deliverToRunningTurn(n), next)
+		return tea.Batch(m.injectIntoRunningTurn(n), next)
 	default:
-		return tea.Batch(m.injectNotice(n), next)
+		return tea.Batch(m.injectAsNewTurn(n), next)
 	}
-}
-
-func (m *model) injectNotices(notices []mainNotice) tea.Cmd {
-	return m.injectNotice(mergeNotices(notices))
 }
 
 // injectCronPrompt fires a scheduled cron prompt as if the user had just
