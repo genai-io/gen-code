@@ -21,9 +21,12 @@ import (
 
 func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 	return conv.CompactRequest{
-		Ctx:          context.Background(),
-		Client:       m.buildLLMClient(),
-		Messages:     m.conv.ConvertToProvider(),
+		Ctx:    context.Background(),
+		Client: m.buildLLMClient(),
+		// Summarization runs on the active model, so the chain has to clear the
+		// same bar as an agent turn: a text-only provider rejects image parts,
+		// and the conversation keeps images even when the model can't read them.
+		Messages:     m.dropImagesTextOnlyModelRejects(m.conv.ConvertToProvider()),
 		SummaryFocus: focus,
 		HookEngine:   m.services.Hook,
 		Trigger:      trigger,

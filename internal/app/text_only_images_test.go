@@ -32,6 +32,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	m := &model{
 		services: services{
 			Agent:    sess,
+			LLM:      &llm.Conn{},
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),
 			Reminder: reminder.NewService(),
@@ -101,10 +102,17 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 
 	select {
 	case chain := <-provider.requests:
+		sent := false
 		for _, msg := range chain {
 			if len(msg.Images) > 0 {
 				t.Fatalf("provider received %d image part(s) it rejects: %+v", len(msg.Images), msg)
 			}
+			if strings.Contains(msg.Content, "/tmp/chart.png") {
+				sent = true
+			}
+		}
+		if !sent {
+			t.Fatalf("provider never saw the image path, so the no-images check proves nothing: %+v", chain)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("queued message never reached the provider")
@@ -115,6 +123,33 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	last := m.conv.Messages[len(m.conv.Messages)-1]
 	if len(last.Images) != 1 {
 		t.Fatalf("conversation message carries %d image(s), want 1: %+v", len(last.Images), last)
+	}
+}
+
+// Compaction summarizes on the active model, so it is a third way the
+// conversation's images reach the provider — and the conversation now keeps
+// images even when the model can't read them.
+func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	m.conv.Append(core.ChatMessage{
+		Role:    core.RoleUser,
+		Content: "what does this show",
+		Images:  []core.Image{chartImage()},
+	})
+
+	req := m.BuildCompactRequest("", "manual")
+
+	if len(req.Messages) == 0 {
+		t.Fatal("compact request has no messages, so the check below proves nothing")
+	}
+	for _, msg := range req.Messages {
+		if len(msg.Images) > 0 {
+			t.Fatalf("compact request carries %d image part(s) the provider rejects: %+v", len(msg.Images), msg)
+		}
+	}
+	// The conversation keeps its own copy — only the request is stripped.
+	if len(m.conv.Messages[0].Images) != 1 {
+		t.Error("building the request mutated the conversation's images")
 	}
 }
 

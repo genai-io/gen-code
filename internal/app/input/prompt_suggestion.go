@@ -86,7 +86,14 @@ func RecentSuggestionMessages(c *conv.ConversationModel) []core.Message {
 	if len(c.Messages) > maxSuggestionMessages {
 		startIdx = len(c.Messages) - maxSuggestionMessages
 	}
-	return c.ConvertToProviderFrom(startIdx)
+	msgs := c.ConvertToProviderFrom(startIdx)
+	// A hint is a few dozen tokens guessing the user's next line — the image
+	// attachments buy it nothing, and a text-only provider rejects them
+	// outright. The conversion returns copies, so conv keeps its own.
+	for i := range msgs {
+		msgs[i].Images = nil
+	}
+	return msgs
 }
 
 func HandlePromptSuggestion(state *Model, active bool, inputValue string, msg PromptSuggestionMsg) {

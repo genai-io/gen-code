@@ -67,10 +67,11 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		return nil, false
 	}
 	// Process image references (leading image paths, @-references, bare paths)
-	// just like the normal submit path does in buildUserMessage. The raw queued
-	// content hasn't been through ProcessImageRefs yet. A load failure costs the
-	// user that image, not the message: this runs mid-stream, so the textarea
-	// holds the message being typed right now and must be left alone.
+	// just like the normal submit path does in buildUserMessage — the raw queued
+	// content hasn't been through ProcessImageRefs yet. On failure the message
+	// still goes out, as the user typed it: buildUserMessage can hand a bad turn
+	// back to the textarea, this one can't, because it runs mid-stream and the
+	// textarea holds the next message being typed.
 	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, item.Content)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
