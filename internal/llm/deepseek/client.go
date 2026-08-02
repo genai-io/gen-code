@@ -46,7 +46,8 @@ func (c *Client) ThinkingEfforts(model string) []string {
 	if !supportsThinking(model) {
 		return nil
 	}
-	return []string{"off", "low", "medium", "high", "max"}
+	// https://api-docs.deepseek.com/guides/thinking_mode/
+	return []string{"off", "low", "high", "xhigh", "max"}
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {

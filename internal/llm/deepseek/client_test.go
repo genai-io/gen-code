@@ -166,8 +166,8 @@ func TestDeepSeekThinkingEfforts(t *testing.T) {
 		model   string
 		efforts []string
 	}{
-		{"deepseek-v4-flash", []string{"off", "low", "medium", "high", "max"}},
-		{"deepseek-v4-pro", []string{"off", "low", "medium", "high", "max"}},
+		{"deepseek-v4-flash", []string{"off", "low", "high", "xhigh", "max"}},
+		{"deepseek-v4-pro", []string{"off", "low", "high", "xhigh", "max"}},
 	}
 	for _, tt := range tests {
 		got := c.ThinkingEfforts(tt.model)
