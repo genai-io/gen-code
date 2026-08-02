@@ -235,7 +235,7 @@ Stream.Active:   仍然 true（Done=false）
 
 ```
 event:           core.PostInfer{Response: {ToolCalls: [{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
-applyPostInfer:  rt.OnTokenUsage(resp)
+applyPostInfer:  rt.OnInference(resp)
                  m.SetLastToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
 

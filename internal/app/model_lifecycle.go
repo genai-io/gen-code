@@ -26,7 +26,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 
 	// The main conversation registers the "main" address with the broker;
 	// messages routed to it (subagent completions, interim messages) land on
-	// mainNotices and are drained at turn boundaries.
+	// mainNotices and are injected at the next safe seam — see notify.go.
 	broker.Register(broker.Main, func(msg broker.Message) bool {
 		return m.notifyMain(fromBrokerMessage(msg))
 	})

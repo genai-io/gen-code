@@ -55,7 +55,7 @@ func (m *model) cancelPendingToolCalls() {
 	}
 	m.conv.AppendCancelledToolResults(toolCalls, func(tc core.ToolCall) string {
 		return "Tool execution interrupted because the user sent a new message."
-	}, m.TakeDecision)
+	}, m.TakeReviewDecision)
 }
 
 func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {

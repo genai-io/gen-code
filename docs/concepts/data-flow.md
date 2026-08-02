@@ -463,7 +463,7 @@ Update → routeToSubModel                update.go
         │
         ▼
    PostInfer                            applyPostInfer
-       ├─ rt.OnTokenUsage(resp)         model_agent_events.go
+       ├─ rt.OnInference(resp)         model_agent_events.go
        └─ if tool calls: track them
         │
         ▼
@@ -480,7 +480,7 @@ Update → routeToSubModel                update.go
         └─ fire idle hooks
 
    rt.OnAgentStop(err)                  turn ended (or canceled)
-   rt.OnAutoCompact / OnCompactResult / OnTokenLimitResult ...
+   rt.HandlePermGate / HandleCompactResult / HandleTokenLimitResult ...
 ```
 
 ### Where the user sees streaming text

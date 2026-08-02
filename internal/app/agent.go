@@ -293,7 +293,7 @@ func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
 
 // recordDecision tallies one auto-review decision for the status-bar count and
 // stashes it for the renderer, keyed by the tool call ID carried in ctx and
-// consumed (load + delete) in TakeDecision — so the handoff map only ever
+// consumed (load + delete) in TakeReviewDecision — so the handoff map only ever
 // holds calls whose result has not arrived yet. The approved flag
 // picks the counter, so the count and the inline annotations can never drift.
 // The count is bumped even when ctx carries no tool call ID; only the stash
@@ -309,12 +309,12 @@ func (m *model) recordDecision(ctx context.Context, approved bool, reason string
 	}
 }
 
-// TakeDecision consumes the decision stashed for a tool call (load + delete),
+// TakeReviewDecision consumes the decision stashed for a tool call (load + delete),
 // so it stamps exactly one rendered result and the handoff map holds only
 // in-flight calls. Returns nil when the call was not auto-reviewed. Mirrors the
 // tool side-effect handoff (Tool.PopSideEffect), consumed at the same point in
 // OnToolResult.
-func (m *model) TakeDecision(callID string) *core.ReviewDecision {
+func (m *model) TakeReviewDecision(callID string) *core.ReviewDecision {
 	// No empty-callID guard: recordDecision never stores under an empty key, so
 	// LoadAndDelete("") already misses and returns nil.
 	v, ok := m.pendingDecisions.LoadAndDelete(callID)
@@ -570,7 +570,7 @@ func (m *model) ContinueOutbox() tea.Cmd {
 	return conv.DrainAgentOutbox(m.services.Agent.Outbox())
 }
 
-func (m *model) OnPermGateRequest(req *conv.PermGateRequest) tea.Cmd {
+func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
 	m.services.Agent.SetPendingPermission(req)
 	if req == nil {
 		return nil

@@ -24,11 +24,11 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return handleAgentEvent(rt, m, msg.Event), true
 	case PermGateMsg:
-		return rt.OnPermGateRequest(msg.Request), true
+		return rt.HandlePermGate(msg.Request), true
 	case CompactResultMsg:
-		return rt.OnCompactResult(msg), true
+		return rt.HandleCompactResult(msg), true
 	case kit.TokenLimitResultMsg:
-		return rt.OnTokenLimitResult(msg), true
+		return rt.HandleTokenLimitResult(msg), true
 	case AgentActivityMsg:
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
@@ -151,11 +151,11 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		cs, _ := ev.CompactStart()
 		return rt.OnCompactStart(cs.Count)
 	case core.OnMessage:
-		msg, ok := ev.Message()
-		if !ok {
-			return nil
-		}
-		return rt.OnAgentMessage(msg)
+		// Nothing to do: every path that hands a user message to the agent —
+		// idle submit, queue release, cron prompt, async hook, a notice
+		// delivered mid-turn — appends it to the conversation at the call site,
+		// so acting on the agent's echo here would double-display it.
+		return nil
 	case core.PreInfer:
 		return applyPreInfer(rt, m)
 	case core.OnChunk:
@@ -228,7 +228,7 @@ func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	rt.OnTokenUsage(resp)
+	rt.OnInference(resp)
 	m.Compact.WarningSuppressed = false
 	// No Stream.Active guard: SetLastThinkingSignature / SetLastToolCalls
 	// already bail on non-assistant tails, which is the only way a late
@@ -285,14 +285,14 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		// Stamp the auto-review decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed
 		// here — the handoff map keeps only in-flight calls.
-		Decision: rt.TakeDecision(tr.ToolCallID),
+		Decision: rt.TakeReviewDecision(tr.ToolCallID),
 	})
 	// Release queued input only after every tool call in this response has
 	// completed. Releasing after the first result inserts the user's pending
 	// message between sibling tool rows; waiting preserves the visible order:
 	// complete tool output first, then the pending message.
 	if batchComplete {
-		return rt.DrainQueuedAtStep()
+		return rt.OnStepEnd()
 	}
 	return nil
 }

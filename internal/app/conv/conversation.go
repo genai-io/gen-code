@@ -55,6 +55,23 @@ func (m *ConversationModel) AddAgentNotice(content string) {
 	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content, AgentNotice: true})
 }
 
+// LastMessageIsStreaming reports whether the stream is still writing into the
+// last message. Everything that feeds a live message finds it by position rather
+// than by ID — AppendToLast, SetLastToolCalls and SetLastThinkingSignature all
+// reach for the last message and bail on anything else, and renderAndCommit
+// holds a streaming last message back from scrollback. So while this holds, an
+// append takes the slot the stream is using: the next chunk lands on the wrong
+// message, and the half-streamed one freezes into scrollback.
+//
+// Tool execution does not hold it. A completed call appends its result, so the
+// last message is a tool-result row that anything may append after.
+func (m *ConversationModel) LastMessageIsStreaming() bool {
+	if !m.Stream.Active || len(m.Messages) == 0 {
+		return false
+	}
+	return m.Messages[len(m.Messages)-1].Role == core.RoleAssistant
+}
+
 func (m *ConversationModel) AppendToLast(text, thinking string) {
 	if len(m.Messages) == 0 {
 		return

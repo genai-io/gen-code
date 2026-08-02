@@ -42,13 +42,15 @@ type model struct {
 	userInput input.Model // Source 1: user keyboard input
 	// mainNotices is the TUI's notice-staging channel (Source 2) — NOT the main
 	// agent's inbox. Broker messages routed to "main" (subagent completions,
-	// interim messages) and self-learn notices land here; they drain at turn
-	// boundaries, show as a notice, then go through SubmitToAgent into the main
-	// agent's real core.Agent inbox. See notify.go.
-	mainNotices    chan mainNotice
-	pendingNotices []mainNotice // notices that arrived mid-stream, drained at OnTurnEnd
-	// drainedThisStep caps DrainQueuedAtStep to one queued message per step
-	// (PostTool fires once per tool). Reset each step in OnTokenUsage (PostInfer).
+	// interim messages) and self-learn notices land here; they show as a notice
+	// and then reach the main agent's real core.Agent inbox. See notify.go.
+	mainNotices chan mainNotice
+	// pendingNotices holds notices that arrived mid-stream, where appending to
+	// the conversation is unsafe. Released at the next completed tool batch
+	// (OnStepEnd), or at OnTurnEnd if the turn ends first.
+	pendingNotices []mainNotice
+	// drainedThisStep caps OnStepEnd to one queued message per step
+	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep bool
 	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
 	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)

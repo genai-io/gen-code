@@ -249,7 +249,7 @@ non-empty content and `MDRenderer.Render` styles it. Repaint zone:
 
 ```
 event:           core.PostInfer{Response: {ToolCalls: [{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
-applyPostInfer:  rt.OnTokenUsage(resp)
+applyPostInfer:  rt.OnInference(resp)
                  m.SetLastToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
 

@@ -1,8 +1,9 @@
-// Turn-boundary inbox drain and prompt injection. After every agent turn
-// ends we drain (in priority order) queued user messages, cron-fired
-// prompts, async-hook continuations, and the main-loop notice buffer (broker
-// messages routed to "main"). Each drained item is converted to a notice +
-// optional re-send to the agent. Also handles the Stop hook result that gates
+// Inbox drain and prompt injection. After every agent turn ends we drain (in
+// priority order) queued user messages, cron-fired prompts, async-hook
+// continuations, and the main-loop notice buffer (broker messages routed to
+// "main"). Each drained item is converted to a notice + optional re-send to the
+// agent. Notice delivery is not limited to the turn boundary — see notify.go
+// for when each seam applies. Also handles the Stop hook result that gates
 // session persistence.
 package app
 
@@ -53,8 +54,8 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 //
 // The message is shown in the conversation now, at release time, so it never
 // vanishes between the queue and the flow; the agent addresses it once it ingests
-// it a step or a turn later, and its ingest echo is a no-op (see OnAgentMessage).
-// Shared by the step-boundary (DrainQueuedAtStep) and turn-boundary
+// it a step or a turn later, and the agent's echo of it is ignored (see conv.applyAgentEvent).
+// Shared by the step-boundary (OnStepEnd) and turn-boundary
 // (drainTurnQueues) drains.
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if m.userInput.Queue.SelectIdx == 0 {
@@ -103,35 +104,74 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 		}
 	}
 
-	if len(m.pendingNotices) > 0 {
-		events := m.pendingNotices
-		m.pendingNotices = nil
-		// Listener may have just re-armed during OnTurnEnd processing;
-		// catch any chan events that landed in that window too.
-		if extra := drainNotices(m.mainNotices, maxNoticesPerDrain-len(events)); len(extra) > 0 {
-			events = append(events, extra...)
-		}
-		return m.injectNotices(events), true
+	// Whatever releaseParkedNotices did not get to: a task that finished during
+	// the turn's last step, or during a turn that never ran a tool.
+	if notices := m.takeParkedNotices(); len(notices) > 0 {
+		return m.injectAsNewTurn(mergeNotices(notices)), true
 	}
 
 	return nil, false
 }
 
-// injectNotice surfaces merged main-loop notices (subagent completions,
-// interim messages) into the live conversation: the notice line is shown, the
-// body (if any) is submitted to the main agent as a fresh turn.
-func (m *model) injectNotice(n mainNotice) tea.Cmd {
-	if n.Display != "" {
-		if n.FromAgent {
-			m.conv.AddAgentNotice(n.Display)
-		} else {
-			m.conv.AddNotice(n.Display)
-		}
+// takeParkedNotices removes everything parked during the running turn, topped
+// up from the channel so notices that landed since the last read ride along in
+// the same injection rather than trickling in one step apart.
+func (m *model) takeParkedNotices() []mainNotice {
+	if len(m.pendingNotices) == 0 {
+		return nil
 	}
+	notices := m.pendingNotices
+	m.pendingNotices = nil
+	if extra := drainNotices(m.mainNotices, maxNoticesPerDrain-len(notices)); len(extra) > 0 {
+		notices = append(notices, extra...)
+	}
+	return notices
+}
+
+// releaseParkedNotices injects what LastMessageIsStreaming held back, at the step
+// boundary where the tail is free again.
+func (m *model) releaseParkedNotices() tea.Cmd {
+	notices := m.takeParkedNotices()
+	if len(notices) == 0 {
+		return nil
+	}
+	log.QueueLog("releaseParkedNotices: releasing %d notice(s) mid-turn", len(notices))
+	return m.injectIntoRunningTurn(mergeNotices(notices))
+}
+
+// injectIntoRunningTurn hands a notice to the agent partway through a turn it is
+// already running: sendToAgent reaches its inbox, which it drains between steps,
+// so the content is in the conversation the next inference reads. Its pair is
+// injectAsNewTurn, whose SubmitToAgent must not be used here — that path can
+// rebuild the agent session, which would tear down the running turn.
+func (m *model) injectIntoRunningTurn(n mainNotice) tea.Cmd {
+	m.showNoticeLine(n)
+	cmds := m.CommitMessages()
+	if n.Content != "" { // display-only notices have nothing for the model to read
+		cmds = append(cmds, m.sendToAgent(n.Content, nil))
+	}
+	return tea.Batch(cmds...)
+}
+
+// injectAsNewTurn delivers a notice with no turn running: the line is shown and the
+// body, if any, starts a fresh turn.
+func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
+	m.showNoticeLine(n)
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
 	return m.SubmitToAgent(n.Content, nil)
+}
+
+func (m *model) showNoticeLine(n mainNotice) {
+	if n.Display == "" {
+		return
+	}
+	if n.FromAgent {
+		m.conv.AddAgentNotice(n.Display)
+	} else {
+		m.conv.AddNotice(n.Display)
+	}
 }
 
 func drainNotices(ch <-chan mainNotice, max int) []mainNotice {
@@ -159,21 +199,22 @@ func awaitMainNotice(ch <-chan mainNotice) tea.Cmd {
 	}
 }
 
-// onMainNotice injects a message now when idle, or parks it in pendingNotices
-// for the next turn boundary when a stream is in flight. Re-arming is
+// onMainNotice routes an arriving notice to the earliest injection the
+// conversation can take: into a running turn, as a fresh turn when idle, or
+// parked while the stream owns the tail (see notify.go). Re-arming is
 // unconditional: after the read the chan is empty, so the next firing waits for
 // the next message.
 func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 	next := awaitMainNotice(m.mainNotices)
-	if m.conv.Stream.Active {
+	switch {
+	case m.conv.LastMessageIsStreaming():
 		m.pendingNotices = append(m.pendingNotices, n)
 		return next
+	case m.conv.Stream.Active:
+		return tea.Batch(m.injectIntoRunningTurn(n), next)
+	default:
+		return tea.Batch(m.injectAsNewTurn(n), next)
 	}
-	return tea.Batch(m.injectNotices([]mainNotice{n}), next)
-}
-
-func (m *model) injectNotices(notices []mainNotice) tea.Cmd {
-	return m.injectNotice(mergeNotices(notices))
 }
 
 // injectCronPrompt fires a scheduled cron prompt as if the user had just
