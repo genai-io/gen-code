@@ -116,12 +116,14 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	}
 	// Text-only models can't receive image parts, so inline each image's path
 	// into the content and let the model decide how to use it (e.g. call an
-	// MCP tool to inspect the file) instead of refusing the turn.
-	msg.Content, msg.Images = m.adaptImagesForModel(msg.Content, msg.Images)
+	// MCP tool to inspect the file) instead of refusing the turn. The appended
+	// message keeps its images; only the provider send drops them.
+	content, providerImages := m.adaptImagesForModel(msg.Content, msg.Images)
+	msg.Content = content
 	msg.AutopilotNote = autopilotNote
 	m.conv.Append(msg)
 	m.userInput.Reset()
-	return m.SubmitToAgent(msg.Content, msg.Images)
+	return m.SubmitToAgent(msg.Content, providerImages)
 }
 
 // runSlashCommandIfMatched returns (cmd, true) if `raw` is a slash command
@@ -155,14 +157,20 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 }
 
 // adaptImagesForModel adapts a user turn to the active model's image
-// capability. Vision-capable models receive the binary attachments unchanged.
+// capability, returning the content to send and the images the provider may
+// receive. Vision-capable models take the binary attachments unchanged.
 // Text-only models cannot receive image parts, so each image's path is inlined
-// into the content instead — the model then decides how to use it (e.g. call
-// an MCP image-description tool) rather than the app refusing the turn.
-// The original images are kept on the returned message so they remain visible
-// in the transcript and survive a later switch to a vision-capable model;
-// the agent layer (dropImagesTextOnlyModelRejects) strips them before sending
-// to a text-only provider.
+// into the content and the returned image slice is empty — the model then
+// decides how to use the path (e.g. call an MCP image-description tool) rather
+// than the app refusing the turn.
+//
+// Callers keep the original slice on the message they append to conv, so the
+// image stays visible in the transcript and a later switch to a vision-capable
+// model can still use it; dropImagesTextOnlyModelRejects strips those on the
+// way back out when a session is rebuilt. It does not cover the live turn:
+// seedAgentMessages drops the pending message from the chain, and an already
+// active session skips seeding altogether — which is why the images must not
+// reach Send in the first place.
 func (m *model) adaptImagesForModel(content string, images []core.Image) (string, []core.Image) {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
 		return content, images
@@ -185,7 +193,7 @@ func (m *model) adaptImagesForModel(content string, images []core.Image) (string
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}
-	return strings.TrimSpace(sb.String()), images
+	return strings.TrimSpace(sb.String()), nil
 }
 
 // drainInputQueueWhileIdle pops one queued item (if any) and runs it

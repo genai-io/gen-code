@@ -68,25 +68,27 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	}
 	// Process image references (leading image paths, @-references, bare paths)
 	// just like the normal submit path does in buildUserMessage. The raw queued
-	// content hasn't been through ProcessImageRefs yet.
+	// content hasn't been through ProcessImageRefs yet. A load failure costs the
+	// user that image, not the message: this runs mid-stream, so the textarea
+	// holds the message being typed right now and must be left alone.
 	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, item.Content)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
-		m.userInput.Reset()
-		return tea.Batch(m.CommitMessages()...), true
+		content, fileImages = item.Content, nil
 	}
-	content, inlineImages := m.userInput.ExtractInlineImages(content)
-	allImages := make([]core.Image, 0, len(inlineImages)+len(fileImages)+len(item.Images))
-	allImages = append(allImages, inlineImages...)
-	allImages = append(allImages, fileImages...)
-	allImages = append(allImages, item.Images...)
+	// Images the user attached travel on the item — they were moved off the
+	// textarea when it was queued. Anything pending in the textarea now belongs
+	// to the next message, so it must not be picked up here.
+	images := make([]core.Image, 0, len(item.Images)+len(fileImages))
+	images = append(images, item.Images...)
+	images = append(images, fileImages...)
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
-	content, allImages = m.adaptImagesForModel(content, allImages)
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: allImages})
+	content, providerImages := m.adaptImagesForModel(content, images)
+	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: images})
 	svc := m.services.Agent
 	send := func() tea.Msg {
-		svc.Send(content, allImages)
+		svc.Send(content, providerImages)
 		return nil
 	}
 	return tea.Batch(append(m.CommitMessages(), send)...), true
