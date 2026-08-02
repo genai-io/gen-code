@@ -9,6 +9,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -72,7 +73,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	// still goes out, as the user typed it: buildUserMessage can hand a bad turn
 	// back to the textarea, this one can't, because it runs mid-stream and the
 	// textarea holds the next message being typed.
-	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, item.Content)
+	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, item.Content)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
 		content, fileImages = item.Content, nil
@@ -83,10 +84,20 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	images := make([]core.Image, 0, len(item.Images)+len(fileImages))
 	images = append(images, item.Images...)
 	images = append(images, fileImages...)
+	// Split display from content the way buildUserMessage does: the queued text
+	// still carries the [Image #N] markers the textarea used to position its
+	// attachments, which the reader wants to see and the model doesn't.
+	displayContent := content
+	content = strings.TrimSpace(core.InlineImageTokenRe.ReplaceAllString(content, ""))
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
 	content, providerImages := m.adaptTurnForProvider(content, images)
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: images})
+	m.conv.Append(core.ChatMessage{
+		Role:           core.RoleUser,
+		Content:        content,
+		DisplayContent: displayContent,
+		Images:         images,
+	})
 	svc := m.services.Agent
 	send := func() tea.Msg {
 		svc.Send(content, providerImages)

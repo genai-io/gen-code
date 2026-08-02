@@ -17,7 +17,7 @@ func (m *model) changeCwd(newCwd string) {
 	oldCwd := m.env.CWD
 	m.env.CWD = newCwd
 	m.env.IsGit = m.services.Setting.IsGitRepo(newCwd)
-	m.userInput.HandleCwdChange(m.env.ProjectRoot)
+	m.userInput.HandleCwdChange(newCwd)
 	m.env.ClearCachedInstructions()
 	m.refreshMemoryContext(newCwd, "cwd_changed")
 	m.ReloadProjectContext(newCwd)

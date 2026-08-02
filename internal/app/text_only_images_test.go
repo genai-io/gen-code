@@ -126,6 +126,28 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	}
 }
 
+// The queued text keeps the [Image #N] markers the textarea used to position
+// its attachments: they belong in the display, not in what the model reads —
+// the same split buildUserMessage makes on the direct path. Run on a vision
+// model so the only thing separating the two fields is the marker.
+func TestReleasedQueuedMessageSplitsDisplayFromContent(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	m.env.LLMProvider = &restartStubProvider{}
+	m.userInput.Queue.Enqueue("look at [Image #1] please", []core.Image{chartImage()})
+
+	if _, released := m.releaseQueuedMessage(); !released {
+		t.Fatal("queued message was not released")
+	}
+
+	last := m.conv.Messages[len(m.conv.Messages)-1]
+	if strings.Contains(last.Content, "[Image #1]") {
+		t.Errorf("content = %q, want the marker stripped for the model", last.Content)
+	}
+	if !strings.Contains(last.DisplayContent, "[Image #1]") {
+		t.Errorf("display content = %q, want the marker kept for rendering", last.DisplayContent)
+	}
+}
+
 // Compaction summarizes on the active model, so it is a third way the
 // conversation's images reach the provider — and the conversation now keeps
 // images even when the model can't read them.
@@ -162,7 +184,7 @@ func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "broken.png"), []byte("not an image"), 0o644); err != nil {
 		t.Fatalf("write broken.png: %v", err)
 	}
-	m.env.ProjectRoot = dir
+	m.env.CWD = dir
 	m.userInput.Queue.Enqueue("look at @broken.png", nil)
 	// What the user is typing right now, while the turn streams.
 	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: core.Image{FileName: "next.png"}}}

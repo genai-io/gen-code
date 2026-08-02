@@ -104,7 +104,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// "upload an image first") starts with "/" and would otherwise parse as a
 	// slash command. Bypass command matching so it flows through the normal
 	// message path, where ProcessImageRefs attaches it as an image.
-	if input.LeadingImagePath(m.env.ProjectRoot, raw) == "" {
+	if input.LeadingImagePath(m.env.CWD, raw) == "" {
 		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
 			return cmd
 		}
@@ -138,7 +138,7 @@ func (m *model) runSlashCommandIfMatched(raw string) (tea.Cmd, bool) {
 // ready to append. Returns ok=false if image resolution failed (in which
 // case a notice has already been appended to conv).
 func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
-	content, fileImages, err := input.ProcessImageRefs(m.env.ProjectRoot, raw)
+	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, raw)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
 		return core.ChatMessage{}, false

@@ -16,7 +16,6 @@ import (
 type env struct {
 	// ── App-level state ─────────────────────────────────────────
 	CWD           string
-	ProjectRoot   string
 	IsGit         bool
 	Width         int
 	Height        int
@@ -78,9 +77,8 @@ type env struct {
 
 func newEnv(llmConn *llm.Conn, cwd string, isGit bool) env {
 	e := env{
-		CWD:         cwd,
-		ProjectRoot: cwd,
-		IsGit:       isGit,
+		CWD:   cwd,
+		IsGit: isGit,
 
 		OperationMode:      setting.ModeNormal,
 		SessionPermissions: setting.NewSessionPermissions(),
