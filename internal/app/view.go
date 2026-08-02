@@ -385,12 +385,13 @@ func (m model) messageRenderParams() conv.RenderContext {
 		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount),
 
 		// Streaming + tool execution
-		StreamActive:  m.conv.Stream.Active,
-		BuildingTool:  m.conv.Stream.BuildingTool,
-		PendingCalls:  m.conv.Tool.PendingCalls,
-		CurrentIdx:    m.conv.Tool.CurrentIdx,
-		ToolStartedAt: m.conv.Tool.StartedAt,
-		ToolProgress:  m.conv.Tool.Progress,
+		StreamActive:       m.conv.Stream.Active,
+		BuildingTool:       m.conv.Stream.BuildingTool,
+		PendingCalls:       m.conv.Tool.PendingCalls,
+		CurrentIdx:         m.conv.Tool.CurrentIdx,
+		ToolStartedAt:      m.conv.Tool.StartedAt,
+		ToolProgress:       m.conv.Tool.Progress,
+		AwaitingApprovalID: m.conv.Tool.AwaitingApprovalID,
 
 		// Renderer env
 		Width:      m.env.Width,

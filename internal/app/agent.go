@@ -573,8 +573,13 @@ func (m *model) ContinueOutbox() tea.Cmd {
 func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
 	m.services.Agent.SetPendingPermission(req)
 	if req == nil {
+		m.conv.Tool.ClearAwaitingApproval()
 		return nil
 	}
+	// The call was stamped as started by its PreToolEvent, which fired before
+	// this request: name it so its row reports waiting on the user while its
+	// batch siblings keep reporting the work they really are doing.
+	m.conv.Tool.MarkAwaitingApproval(req.ToolCallID)
 
 	permReq := m.preparePermissionRequest(req)
 	// Emit permission.required with the metadata about to be rendered to the

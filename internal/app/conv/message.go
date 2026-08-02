@@ -502,16 +502,19 @@ type ToolCallsParams struct {
 	// ToolProgress maps a running command's ID to its latest output counter,
 	// shown next to the timer. Empty for calls that have produced no output.
 	ToolProgress map[string]string
-	ModelName    string
-	InputTokens  int
-	OutputTokens int
-	Blink        int
-	AgentColors  map[string]string
-	SpinnerView  string
-	TaskOwnerMap map[string]string
-	MDRenderer   *MDRenderer
-	Width        int
-	Interactive  bool
+	// AwaitingApprovalID is the call parked on a permission prompt: started by
+	// its PreToolEvent, but not allowed to run yet.
+	AwaitingApprovalID string
+	ModelName          string
+	InputTokens        int
+	OutputTokens       int
+	Blink              int
+	AgentColors        map[string]string
+	SpinnerView        string
+	TaskOwnerMap       map[string]string
+	MDRenderer         *MDRenderer
+	Width              int
+	Interactive        bool
 }
 
 // expandHints reports whether "(ctrl+o to expand)" affordances belong on this
@@ -521,6 +524,12 @@ type ToolCallsParams struct {
 // offering the hint.
 func (p ToolCallsParams) expandHints() bool {
 	return p.Interactive && !p.DockedModalActive
+}
+
+// awaitsApproval reports whether this call is the one a permission prompt is
+// asking about — started on paper, but not allowed to run yet.
+func (p ToolCallsParams) awaitsApproval(toolCallID string) bool {
+	return p.AwaitingApprovalID != "" && p.AwaitingApprovalID == toolCallID
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -565,11 +574,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				// agentIcon blinks ●/○ off the frame counter; under a docked
-				// modal it would advertise a subagent as working while the
-				// turn waits on the user, same as a spinning tool row.
+				// agentIcon blinks ●/○ off the frame counter; on the call a
+				// permission prompt is asking about that would advertise a
+				// subagent as working before it was allowed to spawn.
 				icon := agentIcon(params.Blink)
-				if params.DockedModalActive {
+				if params.awaitsApproval(tc.ID) {
 					icon = "●"
 				}
 				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
@@ -642,21 +651,17 @@ func RenderToolCalls(params ToolCallsParams) string {
 // toolCallIcon picks a call's row glyph: the spinner while it is in flight, a
 // static bullet once it has a result or is not the call being executed.
 //
-// A docked modal freezes every row. The call it is asking about was marked
-// current and stamped as started by its PreToolEvent, which fires *before* the
-// permission request, so it would otherwise spin as if it had been allowed to
-// run. Nothing here can tell that call apart from a batch sibling that really
-// is executing (the permission gate lives inside each tool's Execute, and a
-// parallel batch runs one goroutine per call), so the freeze is deliberately
-// blunt: a row that stalls for the length of the decision beats a row that
-// claims a command is running before it was allowed to start. Distinguishing
-// them needs the pending call's identity on the permission request itself —
-// see #440.
+// The call a permission prompt is asking about was marked current and stamped
+// as started by its PreToolEvent, which fires *before* the request goes out, so
+// it holds a static bullet until it is allowed to run. Its batch siblings keep
+// spinning: the gate lives inside each tool's Execute and a parallel batch runs
+// one goroutine per call, so an allow-listed sibling really is executing while
+// the user decides.
 func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return "●"
 	}
-	if params.DockedModalActive {
+	if params.awaitsApproval(tc.ID) {
 		return "●"
 	}
 
@@ -687,12 +692,16 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 // finished (its result is in) or has not started (no start stamp) gets "".
 // The stamp map only holds in-flight calls, so membership already gates this:
 // a not-yet-current sequential call has no entry and shows nothing.
+//
+// The call a permission prompt is asking about says so instead of counting: its
+// start stamp predates the prompt, so an elapsed timer there would be measuring
+// the user's own deliberation.
 func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return ""
 	}
-	if params.DockedModalActive {
-		return ""
+	if params.awaitsApproval(tc.ID) {
+		return toolResultStyle.Render(" · waiting for approval")
 	}
 	started, ok := params.ToolStartedAt[tc.ID]
 	if !ok {

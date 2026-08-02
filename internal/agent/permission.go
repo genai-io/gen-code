@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -43,8 +44,14 @@ type PermReviewFunc func(ctx context.Context, name string, input map[string]any,
 // RequestID carries the correlation token the decider stamped so the TUI
 // can reference the prior permission.required record when emitting
 // permission.decided.
+//
+// ToolCallID names the call this request gates. The TUI needs it because a
+// call is already stamped as started by its PreToolEvent, which fires before
+// the request goes out: without the ID no view can tell the call waiting on
+// the user apart from a batch sibling that really is executing.
 type PermGateRequest struct {
 	RequestID   string
+	ToolCallID  string
 	ToolName    string
 	Description string
 	Input       map[string]any
@@ -127,7 +134,12 @@ func (pg *PermissionGate) Check(ctx context.Context, name string, input map[stri
 
 // prompt sends a permission request to the resolver (TUI) and blocks until
 // it responds or ctx is cancelled.
+//
+// The tool call ID is taken from the context the agent stamps before Execute
+// (core.WithToolCallID), the only place that knows which call this check runs
+// for — the permission func signature carries the tool name, not the call.
 func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (bool, string) {
+	req.ToolCallID = core.ToolCallIDFromContext(ctx)
 	req.Response = make(chan PermGateResponse, 1)
 
 	select {

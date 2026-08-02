@@ -32,6 +32,10 @@ type RenderContext struct {
 	// ToolProgress maps a running command's ID to its latest output counter
 	// ("1.2k lines"), shown next to the timer. Empty for calls with no output.
 	ToolProgress map[string]string
+	// AwaitingApprovalID is the in-flight call parked on a permission prompt.
+	// It was stamped as started before the prompt went out, so its row has to
+	// be told apart from the siblings that really are executing.
+	AwaitingApprovalID string
 
 	// ── Renderer / terminal env ─────────────────────────────────
 	Width      int
@@ -257,26 +261,27 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 	}
 
 	sb.WriteString(RenderToolCalls(ToolCallsParams{
-		ToolCalls:         msg.ToolCalls,
-		ToolCallsExpanded: msg.ToolCallsExpanded,
-		ResultMap:         resultMap,
-		ParallelMode:      len(p.PendingCalls) > 1,
-		DockedModalActive: p.DockedModalActive,
-		TaskActivity:      p.TaskActivity,
-		PendingCalls:      p.PendingCalls,
-		CurrentIdx:        p.CurrentIdx,
-		ToolStartedAt:     p.ToolStartedAt,
-		ToolProgress:      p.ToolProgress,
-		ModelName:         p.ModelName,
-		InputTokens:       p.InputTokens,
-		OutputTokens:      p.OutputTokens,
-		Blink:             p.Blink,
-		AgentColors:       p.AgentColors,
-		SpinnerView:       p.SpinnerView,
-		TaskOwnerMap:      p.TaskOwnerMap,
-		MDRenderer:        p.MDRenderer,
-		Width:             p.Width,
-		Interactive:       p.Interactive,
+		ToolCalls:          msg.ToolCalls,
+		ToolCallsExpanded:  msg.ToolCallsExpanded,
+		ResultMap:          resultMap,
+		ParallelMode:       len(p.PendingCalls) > 1,
+		DockedModalActive:  p.DockedModalActive,
+		TaskActivity:       p.TaskActivity,
+		PendingCalls:       p.PendingCalls,
+		CurrentIdx:         p.CurrentIdx,
+		ToolStartedAt:      p.ToolStartedAt,
+		ToolProgress:       p.ToolProgress,
+		AwaitingApprovalID: p.AwaitingApprovalID,
+		ModelName:          p.ModelName,
+		InputTokens:        p.InputTokens,
+		OutputTokens:       p.OutputTokens,
+		Blink:              p.Blink,
+		AgentColors:        p.AgentColors,
+		SpinnerView:        p.SpinnerView,
+		TaskOwnerMap:       p.TaskOwnerMap,
+		MDRenderer:         p.MDRenderer,
+		Width:              p.Width,
+		Interactive:        p.Interactive,
 	}))
 
 	return sb.String()
