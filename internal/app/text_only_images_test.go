@@ -57,10 +57,10 @@ func chartImage() core.Image {
 // A text-only model gets the image's path as text and no attachment: the path
 // is something it can act on (an MCP tool can read the file), the attachment is
 // what the provider rejects.
-func TestAdaptImagesForModelWithholdsImagesFromTextOnlyModel(t *testing.T) {
+func TestAdaptTurnForProviderWithholdsImagesFromTextOnlyModel(t *testing.T) {
 	m, _ := textOnlyModel(t)
 
-	content, providerImages := m.adaptImagesForModel("what does this show", []core.Image{chartImage()})
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{chartImage()})
 
 	if len(providerImages) != 0 {
 		t.Fatalf("provider images = %+v, want none — a text-only provider rejects image parts", providerImages)
@@ -73,11 +73,11 @@ func TestAdaptImagesForModelWithholdsImagesFromTextOnlyModel(t *testing.T) {
 	}
 }
 
-func TestAdaptImagesForModelLeavesVisionModelsAlone(t *testing.T) {
+func TestAdaptTurnForProviderLeavesVisionModelsAlone(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.env.LLMProvider = &restartStubProvider{} // no ImageSupportProvider — images supported
 
-	content, providerImages := m.adaptImagesForModel("what does this show", []core.Image{chartImage()})
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{chartImage()})
 
 	if len(providerImages) != 1 {
 		t.Fatalf("provider images = %d, want the attachment passed through", len(providerImages))

@@ -85,7 +85,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	images = append(images, fileImages...)
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
-	content, providerImages := m.adaptImagesForModel(content, images)
+	content, providerImages := m.adaptTurnForProvider(content, images)
 	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: content, Images: images})
 	svc := m.services.Agent
 	send := func() tea.Msg {

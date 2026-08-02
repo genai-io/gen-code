@@ -81,32 +81,33 @@ func newImage(mediaType, fileName, path string, data []byte) core.Image {
 	}
 }
 
-// ResolvePath returns a filesystem path for an image. Images loaded from a
-// file keep their original path; images without a backing file (e.g.
-// clipboard pastes) are materialized to a temporary file so tools such as MCP
-// image describers can read them. The caller must remove the returned file
-// (via os.Remove) when it is no longer needed.
-func ResolvePath(img core.Image) (string, error) {
+// EnsureFilePath returns a filesystem path for an image, writing the file when
+// the image doesn't have one — so a tool handed the path (an MCP image
+// describer, say) can always open it. An image loaded from disk keeps its own
+// path and temp is false. A clipboard paste has no backing file, so its bytes
+// go to a temp file and temp is true: that one belongs to the caller, who must
+// os.Remove it once the model is done with it.
+func EnsureFilePath(img core.Image) (path string, temp bool, err error) {
 	if img.Path != "" {
-		return img.Path, nil
+		return img.Path, false, nil
 	}
 	if img.Data == "" {
-		return img.FileName, nil
+		return "", false, fmt.Errorf("image %s has neither a path nor data", img.FileName)
 	}
 	data, err := base64.StdEncoding.DecodeString(img.Data)
 	if err != nil {
-		return "", fmt.Errorf("decoding image data: %w", err)
+		return "", false, fmt.Errorf("decoding image data: %w", err)
 	}
 	f, err := os.CreateTemp("", "san-image-*"+extForMediaType(img.MediaType))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer f.Close()
 	if _, err := f.Write(data); err != nil {
 		os.Remove(f.Name())
-		return "", err
+		return "", false, err
 	}
-	return f.Name(), nil
+	return f.Name(), true, nil
 }
 
 func extForMediaType(mediaType string) string {

@@ -10,7 +10,7 @@ import (
 // The next-input hint runs an inference on the active model, so it is one more
 // way the conversation's images reach the provider — and the conversation keeps
 // images even when the model is text-only and rejects them.
-func TestRecentSuggestionMessagesSendsNoImages(t *testing.T) {
+func TestRecentSuggestionMessagesCarryNoImages(t *testing.T) {
 	c := &conv.ConversationModel{
 		Messages: []core.ChatMessage{{
 			Role:    core.RoleUser,

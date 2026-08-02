@@ -143,7 +143,7 @@ type model struct {
 	flush flushState
 
 	// tempImageFiles holds paths to temporary files created for clipboard
-	// images materialized by adaptImagesForModel. Cleaned up at OnTurnEnd.
+	// images materialized by adaptTurnForProvider. Cleaned up at OnTurnEnd.
 	tempImageFiles []string
 }
 

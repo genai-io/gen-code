@@ -118,7 +118,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// into the content and let the model decide how to use it (e.g. call an
 	// MCP tool to inspect the file) instead of refusing the turn. The appended
 	// message keeps its images; only the provider send drops them.
-	content, providerImages := m.adaptImagesForModel(msg.Content, msg.Images)
+	content, providerImages := m.adaptTurnForProvider(msg.Content, msg.Images)
 	msg.Content = content
 	msg.AutopilotNote = autopilotNote
 	m.conv.Append(msg)
@@ -156,13 +156,12 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	}, true
 }
 
-// adaptImagesForModel adapts a user turn to the active model's image
-// capability, returning the content to send and the images the provider may
-// receive. Vision-capable models take the binary attachments unchanged.
-// Text-only models cannot receive image parts, so each image's path is inlined
-// into the content and the returned image slice is empty — the model then
-// decides how to use the path (e.g. call an MCP image-description tool) rather
-// than the app refusing the turn.
+// adaptTurnForProvider fits a user turn to the active model's image capability,
+// returning the content to send and the images the provider may receive. A
+// vision-capable model takes both unchanged. A text-only one cannot receive
+// image parts at all, so each image's path is inlined into the content and no
+// image comes back — the model then decides how to use the path (e.g. call an
+// MCP image-description tool) rather than the app refusing the turn.
 //
 // Callers keep the original slice on the message they append to conv, so the
 // image stays visible in the transcript and a later switch to a vision-capable
@@ -171,7 +170,7 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 // seedAgentMessages drops the pending message from the chain, and an already
 // active session skips seeding altogether — which is why the images must not
 // reach Send in the first place.
-func (m *model) adaptImagesForModel(content string, images []core.Image) (string, []core.Image) {
+func (m *model) adaptTurnForProvider(content string, images []core.Image) (string, []core.Image) {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
 		return content, images
 	}
@@ -182,13 +181,13 @@ func (m *model) adaptImagesForModel(content string, images []core.Image) (string
 	}
 	sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
 	for i, img := range images {
-		path, err := image.ResolvePath(img)
+		path, temp, err := image.EnsureFilePath(img)
 		if err != nil {
+			// Nothing on disk to point at — the name is all the model gets.
 			path = img.FileName
 		}
-		if img.Path == "" {
-			// Clipboard-originated image — ResolvePath materialized a temp
-			// file. Track it for cleanup at turn end.
+		if temp {
+			// Written for this turn only; OnTurnEnd removes it.
 			m.tempImageFiles = append(m.tempImageFiles, path)
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
