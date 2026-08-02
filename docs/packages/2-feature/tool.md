@@ -70,7 +70,8 @@ func ResetDefaultRegistry()           // test-only
 
 ```
 internal/tool/execute_test.go         — dispatch and not-found behavior.
-internal/tool/schema_agent_test.go    — schema generation for the Agent tool.
+internal/tool/schema_registry_test.go — schema generation, including the Agent tool.
+internal/tool/pretool_hook_test.go    — PreToolUse hook outcomes and the permission gate.
 ```
 
 ## See Also

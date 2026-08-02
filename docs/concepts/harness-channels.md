@@ -42,18 +42,20 @@ The harness optimizes:
 
 The system prompt is composed of **Sections**, each owning a numbered
 **Slot**. Slots define ordering. Sections within the same slot use
-insertion order, so several sections can stack inside one slot (e.g.
-`identity` + `output` + `engineering` all live in slot 0). Mutations to a
-section trigger `Refresh` (lazy re-render).
+insertion order, so several sections can stack inside one slot (a
+subagent's injected charter lands in slot 0 alongside the identity).
+Mutations to a section trigger `Refresh` (lazy re-render).
 
 ```
-slot 0   identity        built-in or custom persona; output and
-                         engineering sections stack here too
-slot 1   provider        optional provider-specific quirks
-slot 2   policy          safety contract — never overridden
-slot 3   guidelines      tool-usage, task-workflow, when-to-ask,
-                         git-safety (filtered by Scope and isGit)
-slot 4   environment     cwd, git, date, platform, model — volatile,
+slot 0   identity        who you are — built-in or custom persona, and
+                         a subagent's injected charter
+slot 1   behavior        how you communicate and work: tone and updates
+                         merged with the engineering defaults
+                         (main agent only — a subagent carries its
+                         working style in its charter)
+slot 2   rules           safety contract plus the tool / task / git
+                         protocols
+slot 3   environment     date, cwd, git branch, platform — volatile,
                          placed last so daily/cwd changes don't bust
                          the cache prefix above
 ```
@@ -94,10 +96,9 @@ Reminders wrap their body in:
 
 The LLM is instructed to treat the `<system-reminder>` tag as a system
 instruction even though it appears inside a user message. That directive
-lives in the system prompt as `<guidelines name="system-reminders">`
-(source: `internal/core/system/prompts/guidelines/system-reminders.txt`),
-applied to both
-main and subagent scopes — subagents receive reminders too (the skills
+is the "System reminders" part of the `<rules>` section (source:
+`internal/core/system/prompts/rules.txt`), applied to both main and
+subagent scopes — subagents receive reminders too (the skills
 directory). It also tells the model to act on the most recent reminder
 values (they refresh and re-inject after compaction) and not to echo the
 tags back to the user.
