@@ -217,6 +217,39 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	}
 }
 
+// A request with no call ID names nothing, so the per-call state has to stay
+// empty rather than hold a stale ID — that is what puts the rows back on the
+// docked-modal freeze instead of leaving the gated call spinning over the
+// user's deliberation. Unreachable on the main agent path today, but it is the
+// seam that would degrade first.
+func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
+	m := dockedModalModel(t, "about to check the disk")
+	m.services.Agent = &agent.Session{}
+	m.services.Session = &session.Setup{}
+	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+
+	m.HandlePermGate(&conv.PermGateRequest{
+		RequestID:   "req-1",
+		ToolName:    "Bash",
+		Description: "check disk",
+		Input:       map[string]any{"command": "df -h"},
+	})
+
+	if got := m.conv.Tool.AwaitingApprovalID; got != "" {
+		t.Fatalf("awaiting call = %q, want no call named when the request carries no ID", got)
+	}
+
+	frame, _ := m.viewString()
+	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
+		if !strings.Contains(line, "Bash(") {
+			continue
+		}
+		if strings.Contains(line, spinnerGlyph) {
+			t.Fatalf("tool row %q spins while the modal owns the screen", line)
+		}
+	}
+}
+
 // The stream stays open across a permission gate, so the assistant message
 // carrying the rationale still counts as the live tail. Its bullet must not
 // spin either — the turn is parked on the modal, not producing text.

@@ -532,6 +532,17 @@ func (p ToolCallsParams) awaitsApproval(toolCallID string) bool {
 	return p.AwaitingApprovalID != "" && p.AwaitingApprovalID == toolCallID
 }
 
+// modalNamesNoCall reports whether a docked modal owns the screen without
+// naming the call it is parked on: a Question or a secret prompt, which stop a
+// call just as a permission request does but have no ID to hand over, or a
+// permission request that somehow arrived without one. Nothing here can tell
+// which in-flight row the user is deciding about, so every row falls back to
+// the blunt freeze — a row that stalls for the length of the answer beats a row
+// claiming a call is running when it is parked on the user (#440).
+func (p ToolCallsParams) modalNamesNoCall() bool {
+	return p.DockedModalActive && p.AwaitingApprovalID == ""
+}
+
 // ToolResultData holds the data needed to render a tool result inline.
 type ToolResultData struct {
 	ToolName    string
@@ -578,7 +589,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
 				icon := agentIcon(params.Blink)
-				if params.awaitsApproval(tc.ID) {
+				if params.awaitsApproval(tc.ID) || params.modalNamesNoCall() {
 					icon = "●"
 				}
 				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
@@ -656,12 +667,13 @@ func RenderToolCalls(params ToolCallsParams) string {
 // it holds a static bullet until it is allowed to run. Its batch siblings keep
 // spinning: the gate lives inside each tool's Execute and a parallel batch runs
 // one goroutine per call, so an allow-listed sibling really is executing while
-// the user decides.
+// the user decides. A modal that names no call still freezes every row —
+// see modalNamesNoCall.
 func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return "●"
 	}
-	if params.awaitsApproval(tc.ID) {
+	if params.awaitsApproval(tc.ID) || params.modalNamesNoCall() {
 		return "●"
 	}
 
@@ -695,13 +707,19 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 //
 // The call a permission prompt is asking about says so instead of counting: its
 // start stamp predates the prompt, so an elapsed timer there would be measuring
-// the user's own deliberation.
+// the user's own deliberation. Under a modal that names no call the same is
+// true of every in-flight row, but nothing here knows which one is parked, so
+// they drop the detail rather than claim to be waiting for an approval nobody
+// asked for.
 func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return ""
 	}
 	if params.awaitsApproval(tc.ID) {
 		return toolResultStyle.Render(" · waiting for approval")
+	}
+	if params.modalNamesNoCall() {
+		return ""
 	}
 	started, ok := params.ToolStartedAt[tc.ID]
 	if !ok {

@@ -1463,3 +1463,46 @@ func TestRenderToolCallsSeparatesAwaitingCallFromRunningSibling(t *testing.T) {
 		t.Fatalf("RenderToolCalls() = %q, want the sibling that was allowed to run to keep spinning and ticking", rendered)
 	}
 }
+
+// Not every docked modal names a call: an AskUserQuestion prompt parks the call
+// that asked it just as hard as a permission request does, but carries no tool
+// call ID. With nothing to name, the rows keep the blunt freeze — otherwise the
+// asked call spins and ticks the user's answer time, which is #440 by another
+// route.
+func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
+	asking := core.ToolCall{ID: "tc-1", Name: "AskUserQuestion", Input: `{"questions":[]}`}
+	agentCall := core.ToolCall{ID: "tc-2", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review it"}`}
+	batch := []core.ToolCall{asking, agentCall}
+	params := ToolCallsParams{
+		ToolCalls:    batch,
+		ResultMap:    map[string]ToolResultData{},
+		ParallelMode: true,
+		PendingCalls: batch,
+		SpinnerView:  "⋯",
+		Width:        100,
+		ToolStartedAt: map[string]time.Time{
+			"tc-1": time.Now().Add(-9 * time.Second),
+			"tc-2": time.Now().Add(-9 * time.Second),
+		},
+		// The question modal owns the screen, and no permission request named
+		// a call.
+		DockedModalActive: true,
+	}
+
+	for _, blink := range []int{0, agentBlinkTicks} {
+		params.Blink = blink
+		rendered := stripANSI(RenderToolCalls(params))
+		if strings.Contains(rendered, "⋯") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, a row spins while the modal owns the screen", blink, rendered)
+		}
+		if strings.Contains(rendered, "· 9s") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, a row is timing the user's answer", blink, rendered)
+		}
+		if strings.Contains(rendered, "waiting for approval") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, no approval was asked for", blink, rendered)
+		}
+		if strings.Contains(rendered, "○") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks under the modal", blink, rendered)
+		}
+	}
+}

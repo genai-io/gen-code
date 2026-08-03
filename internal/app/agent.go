@@ -578,7 +578,15 @@ func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
 	}
 	// The call was stamped as started by its PreToolEvent, which fired before
 	// this request: name it so its row reports waiting on the user while its
-	// batch siblings keep reporting the work they really are doing.
+	// batch siblings keep reporting the work they really are doing. A request
+	// with no ID names nothing, which leaves the rows on the blunt freeze the
+	// modal already forces (see conv.modalNamesNoCall) — correct, but only
+	// because it degrades, so say so rather than let a future caller lose the
+	// per-call state without a trace.
+	if req.ToolCallID == "" {
+		log.Logger().Warn("permission request carries no tool call ID; every in-flight row falls back to the docked-modal freeze",
+			zap.String("tool", req.ToolName))
+	}
 	m.conv.Tool.MarkAwaitingApproval(req.ToolCallID)
 
 	permReq := m.preparePermissionRequest(req)
