@@ -543,6 +543,14 @@ func (p ToolCallsParams) modalNamesNoCall() bool {
 	return p.DockedModalActive && p.AwaitingApprovalID == ""
 }
 
+// parkedOnUser reports whether this row is waiting on an answer rather than
+// doing work, so its glyph must hold instead of animating. runningRowDetail
+// takes the two cases apart rather than calling this, because only a named
+// call can say what it is waiting for.
+func (p ToolCallsParams) parkedOnUser(toolCallID string) bool {
+	return p.awaitsApproval(toolCallID) || p.modalNamesNoCall()
+}
+
 // ToolResultData holds the data needed to render a tool result inline.
 type ToolResultData struct {
 	ToolName    string
@@ -589,7 +597,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
 				icon := agentIcon(params.Blink)
-				if params.awaitsApproval(tc.ID) || params.modalNamesNoCall() {
+				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
 				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
@@ -673,7 +681,7 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return "●"
 	}
-	if params.awaitsApproval(tc.ID) || params.modalNamesNoCall() {
+	if params.parkedOnUser(tc.ID) {
 		return "●"
 	}
 
@@ -707,10 +715,9 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 //
 // The call a permission prompt is asking about says so instead of counting: its
 // start stamp predates the prompt, so an elapsed timer there would be measuring
-// the user's own deliberation. Under a modal that names no call the same is
-// true of every in-flight row, but nothing here knows which one is parked, so
-// they drop the detail rather than claim to be waiting for an approval nobody
-// asked for.
+// the user's own deliberation. A row frozen by modalNamesNoCall drops the
+// detail instead — it is just as parked, but claiming to wait for an approval
+// would name one nobody asked for.
 func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return ""
