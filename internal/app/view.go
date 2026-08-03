@@ -51,7 +51,14 @@ func (m *model) viewString() (string, *tea.Cursor) {
 		return ov.Render(), nil // fullscreen slash-command picker
 	}
 
-	separator := conv.SeparatorStyle.Render(strings.Repeat("─", m.env.Width))
+	// One column short of the terminal, deliberately. A row written to the last
+	// column leaves the terminal in the deferred-wrap state — the cursor parks
+	// on column W with the line break owed rather than taken — and whether the
+	// renderer's later cursor-up counts that row depends on when the terminal
+	// settles the debt. The separators are the only full-width rows in the live
+	// view, so they were the only ones that could land on that ambiguity, which
+	// showed up as leftover rule rows above the composer after a resize.
+	separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
 	trackerView := m.renderTrackerList()
 
 	if hasOverlay { // docked modal (Question / Approval)
