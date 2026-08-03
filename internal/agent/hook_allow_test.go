@@ -51,10 +51,11 @@ func gatedTools(t *testing.T, data *setting.Data, inner core.Tool) (core.Tools, 
 }
 
 // runBash executes one command through the stack and reports whether the gate
-// prompted on the way. Racing the prompt against the call's own return is what
-// keeps every regression a clean failure: a bypass returns with prompted=false
-// instead of parking the test on a prompt that never arrives, and a prompt is
-// answered (deny) instead of parking the call on an answer that never comes.
+// prompted on the way. Racing the gate's request channel against the call's own
+// return is what keeps every regression a clean failure: a bypass returns with
+// prompted=false instead of parking the test on a prompt that never arrives,
+// and a prompt is answered (deny) instead of parking the call on an answer that
+// never comes.
 func runBash(t *testing.T, tools core.Tools, gate *PermissionGate, command string) (prompted bool, err error) {
 	t.Helper()
 	done := make(chan error, 1)
@@ -62,17 +63,11 @@ func runBash(t *testing.T, tools core.Tools, gate *PermissionGate, command strin
 		_, execErr := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": command})
 		done <- execErr
 	}()
-	prompts := make(chan *PermGateRequest, 1)
-	go func() {
-		if req, ok := gate.Recv(); ok {
-			prompts <- req
-		}
-	}()
 
 	select {
 	case err = <-done:
 		return false, err
-	case req := <-prompts:
+	case req := <-gate.requests:
 		req.Response <- PermGateResponse{Allow: false, Reason: "denied by test"}
 		return true, <-done
 	}

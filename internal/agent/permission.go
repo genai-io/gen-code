@@ -41,8 +41,11 @@ type PermReviewFunc func(ctx context.Context, name string, input map[string]any,
 
 // PermHookAllowFunc reports whether a PreToolUse hook's "allow" may stand for
 // this call. It backs the safety invariant deny rules > safety checks > ask
-// rules > hook allow: a hook can waive the routine prompt, but it cannot vouch
-// for a call the user or the breaker has already ruled on.
+// rules > hook allow: the hook can waive the routine prompt, but a deny rule,
+// the circuit breaker, either confirmation tier or an explicit ask rule
+// outranks it, and the call goes through the gate as if the hook had said
+// nothing. A hook cannot vouch for a call the user or the breaker has already
+// ruled on.
 type PermHookAllowFunc func(name string, args map[string]any) bool
 
 // PermGateRequest is a pending permission request sent to the TUI for approval.
@@ -102,9 +105,8 @@ func (pg *PermissionGate) SetHookAllowResolver(fn PermHookAllowFunc) {
 }
 
 // HonorsHookAllow reports whether a PreToolUse hook's "allow" is enough to skip
-// the gate for this call. A deny rule, the circuit breaker, either confirmation
-// tier or an explicit ask rule outranks the hook, and the call goes through the
-// gate as if the hook had said nothing.
+// the gate for this call, on the precedence PermHookAllowFunc documents. A gate
+// with no resolver answers no.
 func (pg *PermissionGate) HonorsHookAllow(name string, input map[string]any) bool {
 	if pg.hookAllowFn == nil {
 		return false
