@@ -109,12 +109,14 @@ func TestHookAllowCannotWaiveCircuitBreaker(t *testing.T) {
 }
 
 // The hook stays useful: on a call no rule and no safety check speaks to, its
-// allow still waives the routine "do you want to run this?" prompt.
+// allow still waives the routine "do you want to run this?" prompt. The command
+// has to be one the gate would really prompt on — a read-only one is permitted
+// by the mode default whether or not the waiver works, so it would pin nothing.
 func TestHookAllowWaivesRoutinePrompt(t *testing.T) {
 	inner := &recordingTool{}
 	tools, gate := gatedTools(t, &setting.Data{}, inner)
 
-	prompted, err := runBash(t, tools, gate, "git status")
+	prompted, err := runBash(t, tools, gate, "touch marker")
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}

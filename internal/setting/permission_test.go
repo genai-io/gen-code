@@ -1127,6 +1127,22 @@ func TestResolveHookAllow(t *testing.T) {
 	}
 }
 
+// A handle with no settings loaded — the package default before Initialize runs,
+// and what ResetDefaultSettings restores — has no rules to weigh the hook's
+// allow against, so it cannot certify the waiver. Failing open here would hand a
+// permissive hook a gate-free path on exactly the call HasPermissionToUseTool
+// would have prompted on.
+func TestSettingsResolveHookAllowFailsClosedWithoutData(t *testing.T) {
+	settings := &Settings{}
+
+	if settings.ResolveHookAllow("Bash", map[string]any{"command": "rm -rf /tmp/test"}, nil) {
+		t.Error("no settings loaded: the hook allow was honored, bypassing the gate")
+	}
+	if got := settings.HasPermissionToUseTool("Bash", map[string]any{"command": "rm -rf /tmp/test"}, nil); got.Behavior != perm.Prompt {
+		t.Errorf("the same call without a hook = %v, want Prompt", got.Behavior)
+	}
+}
+
 func TestOperationModeNext(t *testing.T) {
 	// Normal → AutoAccept → AutoPilot → Normal
 	if ModeNormal.Next() != ModeAutoAccept {

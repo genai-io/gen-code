@@ -212,7 +212,11 @@ func (s *Settings) ResolveHookAllow(toolName string, args map[string]any, sessio
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
-		return true
+		// No settings loaded means no deny rules, no ask rules and no
+		// confirmation tiers to check the hook's allow against, so the waiver
+		// cannot be certified: refuse it and let the call reach the gate, which
+		// prompts for the same reason.
+		return false
 	}
 	return s.data.ResolveHookAllow(toolName, args, session)
 }
