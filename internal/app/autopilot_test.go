@@ -204,32 +204,54 @@ func TestMissionRetireLeavesConfiguredSafetySteers(t *testing.T) {
 	}
 }
 
+// newSuggestionModel builds a model wired far enough for the input hint to
+// fire: a stub provider, a conversation to predict from, and the mode entered
+// the way the app enters it (the steer gates read the permission posture, not
+// the raw field).
+func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) *model {
+	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.services.LLM = &llm.Conn{}
+	m.env.LLMProvider = &autopilotStubProvider{}
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.env.OperationMode = mode
+	m.env.ApplyModePermissions(t.TempDir())
+	m.env.AutoPilot.Steers.Suggest = &suggest
+	m.conv.Messages = []core.ChatMessage{
+		{Role: core.RoleAssistant, Content: "Done."},
+		{Role: core.RoleUser, Content: "Next."},
+		{Role: core.RoleAssistant, Content: "Also done."},
+	}
+	return m
+}
+
 // The Suggest steer is the input hint's feature switch in every mode: when
 // explicitly off the hint never fires — including outside AutoPilot, where
 // generic prediction used to be unconditional.
 func TestPromptSuggestionGatedOnSuggestSteerInEveryMode(t *testing.T) {
-	newModel := func(suggest bool, mode setting.OperationMode) *model {
-		m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
-		m.services.LLM = &llm.Conn{}
-		m.env.LLMProvider = &autopilotStubProvider{}
-		m.env.OperationMode = mode
-		m.env.AutoPilot.Steers.Suggest = &suggest
-		m.conv.Messages = []core.ChatMessage{
-			{Role: core.RoleAssistant, Content: "Done."},
-			{Role: core.RoleUser, Content: "Next."},
-			{Role: core.RoleAssistant, Content: "Also done."},
-		}
-		return m
-	}
-
-	if cmd := newModel(false, setting.ModeNormal).startPromptSuggestion(); cmd != nil {
+	if cmd := newSuggestionModel(t, false, setting.ModeNormal).startPromptSuggestion(); cmd != nil {
 		t.Error("suggest steer off: the hint still fired outside AutoPilot")
 	}
-	if cmd := newModel(false, setting.ModeAutoPilot).startPromptSuggestion(); cmd != nil {
+	if cmd := newSuggestionModel(t, false, setting.ModeAutoPilot).startPromptSuggestion(); cmd != nil {
 		t.Error("suggest steer off: the hint still fired in AutoPilot mode")
 	}
-	if cmd := newModel(true, setting.ModeNormal).startPromptSuggestion(); cmd == nil {
+	if cmd := newSuggestionModel(t, true, setting.ModeNormal).startPromptSuggestion(); cmd == nil {
 		t.Error("suggest steer on: no hint outside AutoPilot")
+	}
+}
+
+// Shift+Tab can now land on AutoPilot mid-turn. The opening proposal is ghost
+// text for a textarea the user cannot type into yet, so it must not cost an LLM
+// call — OnTurnEnd re-arms the hint once the turn is over.
+func TestAutopilotModeSettledSkipsSuggestionMidTurn(t *testing.T) {
+	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
+
+	if cmd := m.handleAutopilotModeSettled(); cmd == nil {
+		t.Fatal("settling on AutoPilot while idle did not start the proposal")
+	}
+
+	m.conv.Stream.Active = true
+	if cmd := m.handleAutopilotModeSettled(); cmd != nil {
+		t.Fatal("settling on AutoPilot mid-turn started the proposal anyway")
 	}
 }
 

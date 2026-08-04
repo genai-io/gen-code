@@ -502,6 +502,14 @@ func (sp *SessionPermissions) SetMode(mode OperationMode) {
 	sp.Mode = mode
 }
 
+// CurrentMode reads the active mode under the lock — Snapshot for callers that
+// only need the mode, without cloning the allowances.
+func (sp *SessionPermissions) CurrentMode() OperationMode {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
+	return sp.Mode
+}
+
 // GrantEditPosture auto-approves edits and writes and trusts cwd, as one
 // atomic change — the accept-edits and auto-pilot posture.
 func (sp *SessionPermissions) GrantEditPosture(cwd string) {

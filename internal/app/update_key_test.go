@@ -6,7 +6,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 type testThinkingProvider struct {
@@ -91,6 +95,48 @@ func TestCtrlTUsesCachedModelReasoningMetadata(t *testing.T) {
 	}
 	if m.env.ThinkingEffort != "ultra" {
 		t.Fatalf("ThinkingEffort = %q, want dynamic next effort ultra", m.env.ThinkingEffort)
+	}
+}
+
+// A running turn is exactly when the user reaches for a laxer mode — every
+// command is stopping for approval — so Shift+Tab must keep cycling mid-stream.
+func TestShiftTabCyclesModeDuringStream(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwd := t.TempDir()
+
+	m := &model{}
+	m.env.CWD = cwd
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.services.Setting = setting.New(setting.NewData())
+	m.services.Hook = hook.NewEngine(setting.NewData(), "", cwd, "")
+	m.conv.Stream.Active = true
+
+	shiftTab := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	if _, handled := m.handleTextareaShortcut(shiftTab); !handled {
+		t.Fatal("shift+tab was dropped while a turn was streaming")
+	}
+	if m.env.OperationMode != setting.ModeAutoAccept {
+		t.Fatalf("OperationMode = %v, want %v", m.env.OperationMode, setting.ModeAutoAccept)
+	}
+	if got := m.env.SessionPermissions.CurrentMode(); got != setting.ModeAutoAccept {
+		t.Fatalf("posture mode = %v, want %v (this is what the permission gate reads)", got, setting.ModeAutoAccept)
+	}
+}
+
+// The approval prompt keeps Shift+Tab as its "allow all this session"
+// accelerator: it is an overlay, so routeKeypress hands it the key before the
+// mode cycle ever sees it.
+func TestShiftTabAtApprovalPromptDoesNotCycleMode(t *testing.T) {
+	m := &model{conv: conv.NewModel(80)}
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.conv.Stream.Active = true
+	m.userInput.Approval.Show(&perm.PermissionRequest{ToolName: "Bash"}, 80, 24)
+
+	if _, ok := m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}); !ok {
+		t.Fatal("shift+tab was not routed to the approval overlay")
+	}
+	if m.env.OperationMode != setting.ModeNormal {
+		t.Fatalf("OperationMode = %v, want %v (the approval prompt owns this key)", m.env.OperationMode, setting.ModeNormal)
 	}
 }
 

@@ -64,8 +64,12 @@ type autopilotModeSettledMsg struct{}
 // the mode has rested on AutoPilot. It no-ops if the user has since cycled away,
 // so a pass-through cycle costs nothing. The mission kick-off is deliberately NOT
 // here — that's the panel's explicit Start button, not a side effect of landing.
+//
+// A mid-turn landing skips it: the proposal is ghost text for an idle textarea
+// (HandlePromptSuggestion drops it while streaming anyway), and OnTurnEnd
+// re-arms the hint once the turn is over.
 func (m *model) handleAutopilotModeSettled() tea.Cmd {
-	if !m.autopilotEngaged() {
+	if !m.autopilotEngaged() || m.conv.Stream.Active {
 		return nil
 	}
 	return m.startPromptSuggestion()

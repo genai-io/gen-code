@@ -37,6 +37,53 @@ func TestApplyDefaultPermissionMode_RestoresAllModes(t *testing.T) {
 	}
 }
 
+// `san -r` restores a recorded mode, and leaves the launch's alone when the
+// session recorded none.
+func TestResumeOperationMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		recorded string
+		startup  setting.OperationMode
+		want     setting.OperationMode
+	}{
+		{"no recorded mode keeps accept edits", "", setting.ModeAutoAccept, setting.ModeAutoAccept},
+		{"recorded normal wins over startup", "normal", setting.ModeAutoAccept, setting.ModeNormal},
+		{"recorded autopilot restores", "auto-pilot", setting.ModeNormal, setting.ModeAutoPilot},
+		{"recorded bypass never round-trips", "bypass", setting.ModeAutoAccept, setting.ModeNormal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resumeOperationMode(tt.recorded, tt.startup); got != tt.want {
+				t.Fatalf("resumeOperationMode(%q, %v) = %v, want %v", tt.recorded, tt.startup, got, tt.want)
+			}
+		})
+	}
+}
+
+// Shift+Tab cycles modes on the UI goroutine while the agent goroutine stamps
+// each permission decision with SessionMode(). Run under -race: the reader must
+// go through the synchronized posture, never the UI's OperationMode field.
+func TestSessionModeReadsPostureWhileModesCycle(t *testing.T) {
+	e := env{SessionPermissions: setting.NewSessionPermissions(), CWD: t.TempDir()}
+	cycle := []setting.OperationMode{
+		setting.ModeNormal, setting.ModeAutoAccept, setting.ModeAutoPilot, setting.ModeBypassPermissions,
+	}
+
+	cycled := make(chan struct{})
+	go func() {
+		defer close(cycled)
+		for i := range 200 {
+			e.OperationMode = cycle[i%len(cycle)]
+			e.ApplyModePermissions(e.CWD)
+		}
+	}()
+
+	for range 200 {
+		_ = e.SessionMode()
+	}
+	<-cycled
+}
+
 func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
 	e := &env{Compressions: 3, InputTokens: 100, OutputTokens: 50}
 	e.ResetContextDisplay()
