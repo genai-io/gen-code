@@ -10,10 +10,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	tea "charm.land/bubbletea/v2"
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -122,13 +120,6 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// from is behind us — give a later failure its full recovery budget again.
 	m.autopilotRecoveries = 0
 	m.services.Agent.SetPluginRoot("")
-	// Clean up any temp image files created for text-only models this turn.
-	for _, p := range m.tempImageFiles {
-		if err := os.Remove(p); err != nil {
-			log.Logger().Warn("remove temp image file", zap.String("path", p), zap.Error(err))
-		}
-	}
-	m.tempImageFiles = nil
 	// Forward to L1 self-learning with whether this turn used a skill and
 	// whether the model called Evolve (the model-decided trigger). No-op when
 	// disabled; the reviewer gates on StopEndTurn internally so cancelled /

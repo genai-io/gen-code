@@ -320,9 +320,12 @@ func TestProcessImageRefs(t *testing.T) {
 			wantImage: 0,
 		},
 		{
-			name:      "@ with corrupt image returns error",
+			// The error aborts the send, but the text comes back with it: an
+			// @-failure consumes nothing, so a caller that has to send something
+			// anyway sends what the user wrote rather than an empty turn.
+			name:      "@ with corrupt image returns error and the untouched text",
 			input:     "@" + badPath,
-			wantText:  "",
+			wantText:  "@" + badPath,
 			wantImage: 0,
 			wantErr:   true,
 		},

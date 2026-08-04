@@ -143,7 +143,10 @@ type model struct {
 	flush flushState
 
 	// tempImageFiles holds paths to temporary files created for clipboard
-	// images materialized by adaptTurnForProvider. Cleaned up at OnTurnEnd.
+	// images materialized by adaptTurnForProvider. Session-scoped: the paths
+	// are inlined into persisted message content, so they are removed on the
+	// way out (see removeTempImageFiles), not at the end of the turn that
+	// wrote them.
 	tempImageFiles []string
 }
 

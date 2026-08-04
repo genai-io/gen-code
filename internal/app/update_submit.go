@@ -6,10 +6,14 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
@@ -187,12 +191,29 @@ func (m *model) adaptTurnForProvider(content string, images []core.Image) (strin
 			path = img.FileName
 		}
 		if temp {
-			// Written for this turn only; OnTurnEnd removes it.
+			// The path goes into content that is appended to conv, persisted, and
+			// replayed on every later turn, so the file has to outlive the turn
+			// that wrote it — a follow-up question about the image reaches a model
+			// reading this same path out of its own history. removeTempImageFiles
+			// clears them at quit.
 			m.tempImageFiles = append(m.tempImageFiles, path)
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}
 	return strings.TrimSpace(sb.String()), nil
+}
+
+// removeTempImageFiles deletes the files adaptTurnForProvider materialized for
+// clipboard images this session. Called once on the way out, from the seam every
+// quit path converges on — deleting them at the end of the turn that wrote them
+// would leave every later turn pointing at a path that no longer resolves.
+func (m *model) removeTempImageFiles() {
+	for _, p := range m.tempImageFiles {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			log.Logger().Warn("remove temp image file", zap.String("path", p), zap.Error(err))
+		}
+	}
+	m.tempImageFiles = nil
 }
 
 // drainInputQueueWhileIdle pops one queued item (if any) and runs it

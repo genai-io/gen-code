@@ -315,6 +315,12 @@ func LeadingImagePath(cwd, input string) string {
 // (an "upload first" paste), it is consumed as an image reference and removed
 // from the text, mirroring @-prefixed behavior — otherwise the leading path
 // would reach the agent as text that reads like an unknown command.
+//
+// An error still comes with usable content: the text that survived the failure,
+// and the images that did load. A caller with somewhere to hand the turn back
+// to (buildUserMessage returns it to the textarea) can ignore both and abort; a
+// caller that has to send something anyway (releaseQueuedMessage runs
+// mid-stream) sends what resolved instead of the raw text.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	content := input
 	var images []core.Image
@@ -334,7 +340,10 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 		}
 		img, err := image.Load(absPath)
 		if err != nil {
-			return "", nil, fmt.Errorf("loading image %s: %w", absPath, err)
+			// The @ was deliberate, so the failure aborts the send. The text is
+			// handed back untouched: nothing has been consumed from it yet, and
+			// a caller that must send anyway should send what the user wrote.
+			return strings.TrimSpace(content), images, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
 		images = append(images, img)
 		loadedRefs = append(loadedRefs, match[0])
@@ -363,15 +372,10 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 		if err != nil {
 			if !leadingConsumed && leadPath == path {
 				// The leading image path exists (stat passed) but failed to load
-				// (e.g. oversized or corrupt). Consume it from the text so the
-				// agent doesn't see the bare path as an unknown command.
-				leadingConsumed = true
-				// Strip the leading path from content before returning the error,
-				// so the caller can surface a notice while the remaining text
-				// survives.
-				trimmed := strings.TrimSpace(content)
-				content = strings.TrimSpace(trimmed[len(leadPath):])
-				return strings.TrimSpace(content), images, fmt.Errorf("loading image %s: %w", absPath, err)
+				// (e.g. oversized or corrupt). Consume it from the text anyway so
+				// the agent doesn't see the bare path as an unknown command, and
+				// hand the caller the surviving text alongside the error.
+				return stripLeadingPath(content, leadPath), images, fmt.Errorf("loading image %s: %w", absPath, err)
 			}
 			continue
 		}
@@ -380,15 +384,21 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 			leadingConsumed = true
 		}
 	}
-	if leadingConsumed && leadPath != "" {
+	if leadingConsumed {
 		// The image came first in the prompt: consume the leading path as an
 		// image reference so the agent receives the image plus the rest of the
 		// prompt, not a leading path that reads like an unknown command.
-		trimmed := strings.TrimSpace(content)
-		content = strings.TrimSpace(trimmed[len(leadPath):])
+		content = stripLeadingPath(content, leadPath)
 	}
 
 	return strings.TrimSpace(content), images, nil
+}
+
+// stripLeadingPath drops the leading image-path token from a prompt, leaving
+// the rest of it. leadPath came from LeadingImagePath on this same content, so
+// it is the first token of the trimmed text.
+func stripLeadingPath(content, leadPath string) string {
+	return strings.TrimSpace(strings.TrimSpace(content)[len(leadPath):])
 }
 
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.

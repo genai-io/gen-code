@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/subagent"
@@ -199,5 +200,67 @@ func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	last := m.conv.Messages[len(m.conv.Messages)-1]
 	if !strings.Contains(last.Content, "look at") {
 		t.Fatalf("last message = %q, want the queued message sent anyway", last.Content)
+	}
+}
+
+// A queued message that leads with an image path the loader rejects still has
+// to lose the path: the release path can't hand the turn back to the textarea,
+// so whatever it sends is final, and a bare path left in the text is the
+// unknown-command-looking string this whole change exists to remove.
+func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	dir := t.TempDir()
+	broken := filepath.Join(dir, "broken.png")
+	if err := os.WriteFile(broken, []byte("not an image"), 0o644); err != nil {
+		t.Fatalf("write broken.png: %v", err)
+	}
+	m.env.CWD = dir
+	m.userInput.Queue.Enqueue(broken+" what is this", nil)
+
+	if _, released := m.releaseQueuedMessage(); !released {
+		t.Fatal("queued message was not released")
+	}
+
+	last := m.conv.Messages[len(m.conv.Messages)-1]
+	if strings.Contains(last.Content, broken) {
+		t.Fatalf("last message = %q, want the failed leading path consumed, not sent as text", last.Content)
+	}
+	if !strings.Contains(last.Content, "what is this") {
+		t.Fatalf("last message = %q, want the rest of the prompt to survive", last.Content)
+	}
+}
+
+// The inlined path is written into content that conv persists and replays, so
+// the file behind it has to outlive the turn: a follow-up question reaches a
+// model reading that same path back out of its own history. The files are
+// session-scoped and go at quit instead.
+func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	pasted := core.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}
+
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{pasted})
+	if len(providerImages) != 0 {
+		t.Fatalf("provider images = %+v, want none", providerImages)
+	}
+	if len(m.tempImageFiles) != 1 {
+		t.Fatalf("temp files = %+v, want the pasted image materialized", m.tempImageFiles)
+	}
+	path := m.tempImageFiles[0]
+	if !strings.Contains(content, path) {
+		t.Fatalf("content = %q, want the temp path inlined", content)
+	}
+
+	m.services.Hook = hook.NewEngine(nil, "", "", "")
+	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("stat %s after the turn ended: %v — the path is still in the persisted content", path, err)
+	}
+
+	m.removeTempImageFiles()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
+	}
+	if m.tempImageFiles != nil {
+		t.Fatalf("temp files = %+v, want the list cleared", m.tempImageFiles)
 	}
 }
