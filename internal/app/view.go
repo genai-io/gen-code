@@ -58,7 +58,8 @@ func (m *model) viewString() (string, *tea.Cursor) {
 	// unchanged rule, so the debt is settled on resize and nowhere else, which
 	// is exactly when a miscount strands a row above the composer. The
 	// separators are the only rows in the live view that ever reach the last
-	// column.
+	// column. The other half of that miscount — the rows a narrowing terminal
+	// rewraps — is corrected in the Bubble Tea replacement pinned in go.mod.
 	separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
 	trackerView := m.renderTrackerList()
 
