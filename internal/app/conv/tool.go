@@ -28,8 +28,13 @@ type ToolExecState struct {
 	// lines"), keyed by tool-call ID — the replaceable companion to the
 	// elapsed timer, showing output is actually flowing. Cleared with StartedAt.
 	Progress map[string]string
-	Ctx      context.Context
-	Cancel   context.CancelFunc
+	// AwaitingApprovalID is the tool call parked on the permission modal. Its
+	// PreToolEvent already stamped it as started, so without this the row would
+	// spin and tick as if the call had been allowed to run. Empty while no
+	// permission request is open.
+	AwaitingApprovalID string
+	Ctx                context.Context
+	Cancel             context.CancelFunc
 }
 
 func (t *ToolExecState) Begin() context.Context {
@@ -54,6 +59,7 @@ func (t *ToolExecState) Reset() {
 	t.ClearPending()
 	t.StartedAt = nil
 	t.Progress = nil
+	t.AwaitingApprovalID = ""
 	t.Ctx = nil
 	t.Cancel = nil
 }
@@ -61,6 +67,7 @@ func (t *ToolExecState) Reset() {
 func (t *ToolExecState) Track(calls []core.ToolCall) {
 	t.StartedAt = nil
 	t.Progress = nil
+	t.AwaitingApprovalID = ""
 	if len(calls) == 0 {
 		t.ClearPending()
 		return
@@ -79,12 +86,29 @@ func (t *ToolExecState) MarkCurrent(toolCallID string) {
 }
 
 // MarkStarted stamps the moment a tool call began executing, so the view can
-// show how long it has been running. Called once per call, on its PreToolEvent.
+// show how long it has been running. Called on its PreToolEvent, and again
+// when a permission prompt is approved — the first stamp then covers only how
+// long the user took to answer, which is not what the row is reporting.
 func (t *ToolExecState) MarkStarted(toolCallID string) {
+	if toolCallID == "" {
+		return
+	}
 	if t.StartedAt == nil {
 		t.StartedAt = make(map[string]time.Time)
 	}
 	t.StartedAt[toolCallID] = time.Now()
+}
+
+// MarkAwaitingApproval records the call whose permission request is open, so
+// its row reports waiting rather than running. Only one request is on screen
+// at a time; a later one replaces it.
+func (t *ToolExecState) MarkAwaitingApproval(toolCallID string) {
+	t.AwaitingApprovalID = toolCallID
+}
+
+// ClearAwaitingApproval drops the waiting state once the request is answered.
+func (t *ToolExecState) ClearAwaitingApproval() {
+	t.AwaitingApprovalID = ""
 }
 
 // SetProgress records the latest output counter for a running tool call. A blank

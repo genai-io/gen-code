@@ -7,9 +7,11 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -116,6 +118,9 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 		m.conv.Tool.MarkCurrent(call.ID)
 		m.conv.Tool.MarkStarted(call.ID)
 	}
+	// What HandlePermGate records when the request lands: the modal is asking
+	// about the first call, not the batch.
+	m.conv.Tool.MarkAwaitingApproval(batch[0].ID)
 
 	m.userInput.Approval.Show(&perm.PermissionRequest{
 		ID:          "req-1",
@@ -165,30 +170,82 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 }
 
 // PreTool stamps a call before the permission request, so the in-flight state
-// is live while the user decides. No row may spin: the call being approved has
-// not been allowed to start, and its batch siblings are stuck behind the same
-// answer.
-func TestDockedModalDoesNotShowPendingCallsAsRunning(t *testing.T) {
+// is live while the user decides. The call the modal is asking about has not
+// been allowed to start: its row must say so rather than spin and tick an
+// elapsed timer over the user's deliberation (issue #440).
+func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
 
 	frame, _ := m.viewString()
 
-	rows := map[string]string{}
+	var row string
 	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
-		for _, cmd := range []string{"df -h", "date"} {
-			if strings.Contains(line, "Bash("+cmd+")") {
-				rows[cmd] = line
-			}
+		if strings.Contains(line, "Bash(df -h)") {
+			row = line
 		}
 	}
-	for _, cmd := range []string{"df -h", "date"} {
-		row, ok := rows[cmd]
-		if !ok {
-			t.Fatalf("modal frame has no row for %q:\n%s", cmd, frame)
+	if row == "" {
+		t.Fatalf("modal frame has no row for the gated call:\n%s", frame)
+	}
+	if strings.Contains(row, spinnerGlyph) {
+		t.Fatalf("tool row %q spins while it waits on the approval modal", row)
+	}
+	if !strings.Contains(row, "waiting for approval") {
+		t.Fatalf("tool row %q does not say what it is waiting for", row)
+	}
+}
+
+// The awaiting state is keyed by tool call, so the request has to carry the ID
+// of the call it gates — the whole point of routing it through the modal.
+func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
+	m := dockedModalModel(t, "about to check the disk")
+	m.services.Agent = &agent.Session{}
+	m.services.Session = &session.Setup{}
+	m.conv.Tool.ClearAwaitingApproval()
+
+	m.HandlePermGate(&conv.PermGateRequest{
+		RequestID:   "req-1",
+		ToolCallID:  "bash-1",
+		ToolName:    "Bash",
+		Description: "check disk",
+		Input:       map[string]any{"command": "df -h"},
+	})
+
+	if got := m.conv.Tool.AwaitingApprovalID; got != "bash-1" {
+		t.Fatalf("awaiting call = %q, want the call the request gates", got)
+	}
+}
+
+// A request with no call ID names nothing, so the per-call state has to stay
+// empty rather than hold a stale ID — that is what puts the rows back on the
+// docked-modal freeze instead of leaving the gated call spinning over the
+// user's deliberation. Unreachable on the main agent path today, but it is the
+// seam that would degrade first.
+func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
+	m := dockedModalModel(t, "about to check the disk")
+	m.services.Agent = &agent.Session{}
+	m.services.Session = &session.Setup{}
+	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+
+	m.HandlePermGate(&conv.PermGateRequest{
+		RequestID:   "req-1",
+		ToolName:    "Bash",
+		Description: "check disk",
+		Input:       map[string]any{"command": "df -h"},
+	})
+
+	if got := m.conv.Tool.AwaitingApprovalID; got != "" {
+		t.Fatalf("awaiting call = %q, want no call named when the request carries no ID", got)
+	}
+
+	frame, _ := m.viewString()
+	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
+		if !strings.Contains(line, "Bash(") {
+			continue
 		}
-		if strings.Contains(row, spinnerGlyph) {
-			t.Fatalf("tool row %q spins while the batch waits on the approval modal", row)
+		if strings.Contains(line, spinnerGlyph) {
+			t.Fatalf("tool row %q spins while the modal owns the screen", line)
 		}
 	}
 }

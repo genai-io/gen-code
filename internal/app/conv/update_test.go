@@ -93,3 +93,46 @@ func TestMarkToolCallCompleteAdvancesAndClearsPendingState(t *testing.T) {
 		t.Fatalf("CurrentIdx = %d, want 0", state.CurrentIdx)
 	}
 }
+
+// A gated call carries its PreToolEvent stamp through the whole permission
+// prompt, so approving it has to restamp — otherwise the row's elapsed timer
+// reports the user's deliberation as execution time (issue #440).
+func TestApprovalRestampsGatedCallAndClearsWaiting(t *testing.T) {
+	state := ToolExecState{}
+	state.Track([]core.ToolCall{{ID: "tc-1", Name: "Bash"}})
+
+	state.MarkCurrent("tc-1")
+	state.MarkStarted("tc-1")
+	state.MarkAwaitingApproval("tc-1")
+	prompted := state.StartedAt["tc-1"]
+
+	// The user takes a while to answer, then approves.
+	state.ClearAwaitingApproval()
+	state.MarkStarted("tc-1")
+
+	if state.AwaitingApprovalID != "" {
+		t.Fatalf("AwaitingApprovalID = %q, want it cleared once the request is answered", state.AwaitingApprovalID)
+	}
+	if !state.StartedAt["tc-1"].After(prompted) {
+		t.Fatal("approving a gated call must restamp it, or its timer counts the wait for the user")
+	}
+}
+
+// The waiting state belongs to one batch: a new one (or a cancelled turn) must
+// not leave a row of the next batch marked as parked on an answered prompt.
+func TestTrackAndResetClearWaitingState(t *testing.T) {
+	state := ToolExecState{}
+	state.Track([]core.ToolCall{{ID: "tc-1", Name: "Bash"}})
+	state.MarkAwaitingApproval("tc-1")
+
+	state.Track([]core.ToolCall{{ID: "tc-2", Name: "Bash"}})
+	if state.AwaitingApprovalID != "" {
+		t.Fatalf("AwaitingApprovalID = %q, want a new batch to start with nothing waiting", state.AwaitingApprovalID)
+	}
+
+	state.MarkAwaitingApproval("tc-2")
+	state.Reset()
+	if state.AwaitingApprovalID != "" {
+		t.Fatalf("AwaitingApprovalID = %q, want a reset turn to leave nothing waiting", state.AwaitingApprovalID)
+	}
+}

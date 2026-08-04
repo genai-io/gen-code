@@ -62,9 +62,14 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	if req == nil {
 		return nil
 	}
+	m.conv.Tool.ClearAwaitingApproval()
 	reason := "user denied"
 	if decision.Approved {
 		reason = "user approved"
+		// Restamp: the call has been sitting on its PreToolEvent stamp since
+		// before the prompt went up, so the row's elapsed timer would otherwise
+		// report how long the user deliberated as execution time.
+		m.conv.Tool.MarkStarted(req.ToolCallID)
 		if decision.AllowAll && m.env.SessionPermissions != nil && decision.Request != nil {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
 		}

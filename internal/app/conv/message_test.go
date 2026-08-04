@@ -1372,10 +1372,10 @@ func TestRenderDecision(t *testing.T) {
 	}
 }
 
-// A docked modal parks the turn on the user's answer, so an Agent row must
-// hold its glyph instead of blinking ●/○ off the frame counter — a blink reads
-// as a subagent working while the user decides whether to let it start.
-func TestRenderToolCallsFreezesAgentRowUnderDockedModal(t *testing.T) {
+// An Agent call waiting on its permission prompt must hold its glyph instead
+// of blinking ●/○ off the frame counter — a blink reads as a subagent working
+// while the user is still deciding whether to let it spawn.
+func TestRenderToolCallsFreezesAgentRowAwaitingApproval(t *testing.T) {
 	call := core.ToolCall{ID: "tc-1", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review it"}`}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -1388,26 +1388,121 @@ func TestRenderToolCallsFreezesAgentRowUnderDockedModal(t *testing.T) {
 	}
 
 	// agentIcon flips every agentBlinkTicks frames; both phases must render
-	// the same static bullet once the modal is up.
+	// the same static bullet once the prompt is up.
 	for _, blink := range []int{0, agentBlinkTicks} {
 		params.Blink = blink
 		live := stripANSI(RenderToolCalls(params))
 		if !strings.Contains(live, agentIcon(blink)) {
-			t.Fatalf("blink %d: RenderToolCalls() = %q, want the blinking icon while no modal is up", blink, live)
+			t.Fatalf("blink %d: RenderToolCalls() = %q, want the blinking icon while the call runs unprompted", blink, live)
 		}
 
-		params.DockedModalActive = true
+		params.AwaitingApprovalID = call.ID
 		frozen := stripANSI(RenderToolCalls(params))
-		params.DockedModalActive = false
+		params.AwaitingApprovalID = ""
 
 		if !strings.Contains(frozen, "●") {
-			t.Fatalf("blink %d: RenderToolCalls() = %q, want a static bullet under the modal", blink, frozen)
+			t.Fatalf("blink %d: RenderToolCalls() = %q, want a static bullet while the call waits on approval", blink, frozen)
 		}
 		if strings.Contains(frozen, "○") {
-			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks under the modal", blink, frozen)
+			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks while it waits on approval", blink, frozen)
 		}
-		if strings.Contains(frozen, "ctrl+o") {
-			t.Fatalf("blink %d: RenderToolCalls() = %q, ctrl+o hint is dead while the modal owns the keyboard", blink, frozen)
+	}
+}
+
+// The ctrl+o affordance is dead while a docked modal owns the keyboard: every
+// key goes to the overlay, so the hint points at a shortcut that cannot reach
+// the row offering it. That freeze is about keyboard ownership, not about which
+// call is waiting, so it stays on the modal flag.
+func TestRenderToolCallsDropsExpandHintUnderDockedModal(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review it"}`}
+	params := ToolCallsParams{
+		ToolCalls:         []core.ToolCall{call},
+		ResultMap:         map[string]ToolResultData{},
+		PendingCalls:      []core.ToolCall{call},
+		SpinnerView:       "⋯",
+		Width:             100,
+		Interactive:       true,
+		DockedModalActive: true,
+	}
+
+	if got := stripANSI(RenderToolCalls(params)); strings.Contains(got, "ctrl+o") {
+		t.Fatalf("RenderToolCalls() = %q, ctrl+o hint is dead while the modal owns the keyboard", got)
+	}
+}
+
+// A permission prompt stops the call it is asking about, not the batch. The
+// gated row says what it is waiting for; the sibling that was allowed to run
+// keeps its spinner and its timer, because it really is executing.
+func TestRenderToolCallsSeparatesAwaitingCallFromRunningSibling(t *testing.T) {
+	gated := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"rm -rf build"}`}
+	running := core.ToolCall{ID: "tc-2", Name: "Bash", Input: `{"command":"npm test"}`}
+	batch := []core.ToolCall{gated, running}
+	params := ToolCallsParams{
+		ToolCalls:    batch,
+		ResultMap:    map[string]ToolResultData{},
+		ParallelMode: true,
+		PendingCalls: batch,
+		SpinnerView:  "⋯",
+		Width:        100,
+		// Both were stamped by their PreToolEvent before the prompt went out.
+		ToolStartedAt: map[string]time.Time{
+			"tc-1": time.Now().Add(-9 * time.Second),
+			"tc-2": time.Now().Add(-9 * time.Second),
+		},
+		AwaitingApprovalID: gated.ID,
+	}
+
+	rendered := stripANSI(RenderToolCalls(params))
+	if !strings.Contains(rendered, "● Bash(rm -rf build) · waiting for approval") {
+		t.Fatalf("RenderToolCalls() = %q, want the gated row to report waiting instead of running", rendered)
+	}
+	if strings.Contains(rendered, "Bash(rm -rf build) · 9s") {
+		t.Fatalf("RenderToolCalls() = %q, gated row is timing the user's deliberation", rendered)
+	}
+	if !strings.Contains(rendered, "⋯ Bash(npm test) · 9s") {
+		t.Fatalf("RenderToolCalls() = %q, want the sibling that was allowed to run to keep spinning and ticking", rendered)
+	}
+}
+
+// Not every docked modal names a call: an AskUserQuestion prompt parks the call
+// that asked it just as hard as a permission request does, but carries no tool
+// call ID. With nothing to name, the rows keep the blunt freeze — otherwise the
+// asked call spins and ticks the user's answer time, which is #440 by another
+// route.
+func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
+	asking := core.ToolCall{ID: "tc-1", Name: "AskUserQuestion", Input: `{"questions":[]}`}
+	agentCall := core.ToolCall{ID: "tc-2", Name: tool.ToolAgent, Input: `{"agent":"reviewer","prompt":"review it"}`}
+	batch := []core.ToolCall{asking, agentCall}
+	params := ToolCallsParams{
+		ToolCalls:    batch,
+		ResultMap:    map[string]ToolResultData{},
+		ParallelMode: true,
+		PendingCalls: batch,
+		SpinnerView:  "⋯",
+		Width:        100,
+		ToolStartedAt: map[string]time.Time{
+			"tc-1": time.Now().Add(-9 * time.Second),
+			"tc-2": time.Now().Add(-9 * time.Second),
+		},
+		// The question modal owns the screen, and no permission request named
+		// a call.
+		DockedModalActive: true,
+	}
+
+	for _, blink := range []int{0, agentBlinkTicks} {
+		params.Blink = blink
+		rendered := stripANSI(RenderToolCalls(params))
+		if strings.Contains(rendered, "⋯") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, a row spins while the modal owns the screen", blink, rendered)
+		}
+		if strings.Contains(rendered, "· 9s") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, a row is timing the user's answer", blink, rendered)
+		}
+		if strings.Contains(rendered, "waiting for approval") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, no approval was asked for", blink, rendered)
+		}
+		if strings.Contains(rendered, "○") {
+			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks under the modal", blink, rendered)
 		}
 	}
 }
