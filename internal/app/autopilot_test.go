@@ -212,7 +212,11 @@ func TestPromptSuggestionGatedOnSuggestSteerInEveryMode(t *testing.T) {
 		m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
 		m.services.LLM = &llm.Conn{}
 		m.env.LLMProvider = &autopilotStubProvider{}
+		// Enter the mode the way the app does — the steer gates read the
+		// permission posture, not the raw field.
+		m.env.SessionPermissions = setting.NewSessionPermissions()
 		m.env.OperationMode = mode
+		m.env.ApplyModePermissions(t.TempDir())
 		m.env.AutoPilot.Steers.Suggest = &suggest
 		m.conv.Messages = []core.ChatMessage{
 			{Role: core.RoleAssistant, Content: "Done."},

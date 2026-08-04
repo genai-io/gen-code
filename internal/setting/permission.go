@@ -228,6 +228,11 @@ func coerceAsk(decision PermissionDecision, session *SessionPermissions) Permiss
 // ask rule overrides the hook's decision. This implements the safety
 // invariant: deny rules > safety checks > ask rules > hook allow.
 func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *SessionPermissions) bool {
+	// Same reason HasPermissionToUseTool snapshots: this runs on the agent
+	// goroutine, and the working directories it reads below are rewritten by
+	// the UI goroutine whenever the user cycles the mode mid-turn.
+	session = session.Snapshot()
+
 	rule := BuildRule(toolName, args)
 	for _, pattern := range s.Permissions.Deny {
 		if MatchesToolPattern(toolName, args, rule, pattern) {

@@ -235,8 +235,12 @@ func (m *env) ClearCachedInstructions() {
 	m.CachedProjectInstructions = ""
 }
 
+// SessionMode is the mode label persisted with the session and stamped on each
+// permission record. It reads the synchronized posture rather than
+// OperationMode (the UI goroutine's field), because the agent goroutine calls
+// it while the user may be cycling modes mid-turn.
 func (m *env) SessionMode() string {
-	switch m.OperationMode {
+	switch m.SessionPermissions.CurrentMode() {
 	case setting.ModeAutoAccept:
 		return "auto-accept"
 	case setting.ModeAutoPilot:
@@ -244,6 +248,18 @@ func (m *env) SessionMode() string {
 	default:
 		return "normal"
 	}
+}
+
+// resumeOperationMode is the mode a resumed session restores into: the one it
+// recorded, or — for a session that recorded none, which is every session saved
+// before modes were persisted — the mode the launch already established. Only a
+// recorded mode may move the user; an absent one must not demote a startup
+// accept-edits/autopilot posture to Normal behind their back.
+func resumeOperationMode(recorded string, startup setting.OperationMode) setting.OperationMode {
+	if recorded == "" {
+		return startup
+	}
+	return parseSessionMode(recorded)
 }
 
 // parseSessionMode maps a persisted session mode back to the OperationMode a
