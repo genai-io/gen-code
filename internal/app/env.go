@@ -49,6 +49,11 @@ type env struct {
 	ShowContextBar bool
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
+	// Two views of one posture, kept in step by ApplyModePermissions.
+	// OperationMode belongs to the UI goroutine: the status bar renders it and
+	// Shift+Tab advances it. SessionPermissions carries the same mode behind a
+	// mutex, and that is the copy the agent goroutine must read (CurrentMode or
+	// a Snapshot) — the user can cycle modes while a turn is running.
 	OperationMode      setting.OperationMode
 	SessionPermissions *setting.SessionPermissions
 
@@ -236,9 +241,7 @@ func (m *env) ClearCachedInstructions() {
 }
 
 // SessionMode is the mode label persisted with the session and stamped on each
-// permission record. It reads the synchronized posture rather than
-// OperationMode (the UI goroutine's field), because the agent goroutine calls
-// it while the user may be cycling modes mid-turn.
+// permission record. Called from the agent goroutine, so it reads the posture.
 func (m *env) SessionMode() string {
 	switch m.SessionPermissions.CurrentMode() {
 	case setting.ModeAutoAccept:

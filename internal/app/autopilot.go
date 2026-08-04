@@ -107,9 +107,7 @@ func (m *model) liveAutopilotConfig() setting.AutoPilotSettings {
 // the precondition every steer shares. Steers are the copilot's actions, so
 // none fire unless the copilot is actually driving. Combine with the per-steer
 // toggle at each gate: `if !m.autopilotEngaged() || !<steer> { return }`.
-//
-// Read from the synchronized posture, not env.OperationMode: the steer gates
-// run on the agent goroutine while Shift+Tab may be cycling modes mid-turn.
+// The gates run on the agent goroutine, so this reads the posture.
 func (m *model) autopilotEngaged() bool {
 	return m.env.SessionPermissions.CurrentMode() == setting.ModeAutoPilot
 }

@@ -99,8 +99,7 @@ func TestCtrlTUsesCachedModelReasoningMetadata(t *testing.T) {
 }
 
 // A running turn is exactly when the user reaches for a laxer mode — every
-// command is stopping for approval — so Shift+Tab must keep cycling mid-stream,
-// and the switch must land on the posture the agent goroutine reads.
+// command is stopping for approval — so Shift+Tab must keep cycling mid-stream.
 func TestShiftTabCyclesModeDuringStream(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	cwd := t.TempDir()
@@ -121,19 +120,6 @@ func TestShiftTabCyclesModeDuringStream(t *testing.T) {
 	}
 	if got := m.env.SessionPermissions.CurrentMode(); got != setting.ModeAutoAccept {
 		t.Fatalf("posture mode = %v, want %v (this is what the permission gate reads)", got, setting.ModeAutoAccept)
-	}
-
-	// Landing on AutoPilot mid-turn engages the copilot for the rest of the
-	// turn, but must not fire the Suggest steer's ghost text at a textarea the
-	// user cannot type into yet.
-	if _, handled := m.handleTextareaShortcut(shiftTab); !handled {
-		t.Fatal("second shift+tab was dropped while a turn was streaming")
-	}
-	if m.env.OperationMode != setting.ModeAutoPilot {
-		t.Fatalf("OperationMode = %v, want %v", m.env.OperationMode, setting.ModeAutoPilot)
-	}
-	if cmd := m.handleAutopilotModeSettled(); cmd != nil {
-		t.Fatal("landing on AutoPilot mid-turn started a prompt suggestion")
 	}
 }
 

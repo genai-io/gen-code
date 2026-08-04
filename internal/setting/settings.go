@@ -502,15 +502,9 @@ func (sp *SessionPermissions) SetMode(mode OperationMode) {
 	sp.Mode = mode
 }
 
-// CurrentMode reads the active mode under the lock. This is the mode the agent
-// goroutine must consult: the user can cycle the posture (Shift+Tab) while a
-// turn is running, so reading the plain field would race with SetMode. Nil
-// receiver reports Normal, matching how the decision pipeline treats a session
-// without a posture.
+// CurrentMode reads the active mode under the lock — Snapshot for callers that
+// only need the mode, without cloning the allowances.
 func (sp *SessionPermissions) CurrentMode() OperationMode {
-	if sp == nil {
-		return ModeNormal
-	}
 	sp.mu.RLock()
 	defer sp.mu.RUnlock()
 	return sp.Mode
