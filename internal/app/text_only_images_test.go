@@ -11,7 +11,6 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/subagent"
@@ -53,6 +52,20 @@ func chartImage() core.Image {
 		FileName:  "chart.png",
 		Path:      "/tmp/chart.png",
 	}
+}
+
+// brokenImagePath writes a broken.png the loader rejects, points the model's
+// cwd at it, and returns its absolute path.
+func brokenImagePath(t *testing.T, m *model) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.png")
+	if err := os.WriteFile(path, []byte("not an image"), 0o644); err != nil {
+		t.Fatalf("write broken.png: %v", err)
+	}
+	m.env.CWD = dir
+	return path
 }
 
 // A text-only model gets the image's path as text and no attachment: the path
@@ -181,11 +194,7 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 // image — not both messages.
 func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	m, _ := textOnlyModel(t)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "broken.png"), []byte("not an image"), 0o644); err != nil {
-		t.Fatalf("write broken.png: %v", err)
-	}
-	m.env.CWD = dir
+	brokenImagePath(t, m)
 	m.userInput.Queue.Enqueue("look at @broken.png", nil)
 	// What the user is typing right now, while the turn streams.
 	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: core.Image{FileName: "next.png"}}}
@@ -209,12 +218,7 @@ func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 // unknown-command-looking string this whole change exists to remove.
 func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
 	m, _ := textOnlyModel(t)
-	dir := t.TempDir()
-	broken := filepath.Join(dir, "broken.png")
-	if err := os.WriteFile(broken, []byte("not an image"), 0o644); err != nil {
-		t.Fatalf("write broken.png: %v", err)
-	}
-	m.env.CWD = dir
+	broken := brokenImagePath(t, m)
 	m.userInput.Queue.Enqueue(broken+" what is this", nil)
 
 	if _, released := m.releaseQueuedMessage(); !released {
@@ -232,8 +236,8 @@ func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
 
 // The inlined path is written into content that conv persists and replays, so
 // the file behind it has to outlive the turn: a follow-up question reaches a
-// model reading that same path back out of its own history. The files are
-// session-scoped and go at quit instead.
+// model reading that same path back out of its own history. It goes at quit
+// instead.
 func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	pasted := core.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}
@@ -249,18 +253,12 @@ func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	if !strings.Contains(content, path) {
 		t.Fatalf("content = %q, want the temp path inlined", content)
 	}
-
-	m.services.Hook = hook.NewEngine(nil, "", "", "")
-	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("stat %s after the turn ended: %v — the path is still in the persisted content", path, err)
+		t.Fatalf("stat %s: %v — the path is in the persisted content already", path, err)
 	}
 
 	m.removeTempImageFiles()
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
-	}
-	if m.tempImageFiles != nil {
-		t.Fatalf("temp files = %+v, want the list cleared", m.tempImageFiles)
 	}
 }

@@ -68,13 +68,10 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		return nil, false
 	}
 	// Process image references (leading image paths, @-references, bare paths)
-	// just like the normal submit path does in buildUserMessage — the raw queued
-	// content hasn't been through ProcessImageRefs yet. On failure the message
-	// still goes out: buildUserMessage can hand a bad turn back to the textarea,
-	// this one can't, because it runs mid-stream and the textarea holds the next
-	// message being typed. What goes out is what resolved — the text that
-	// survived the failure and the images that did load — so a leading path that
-	// failed to load is still consumed rather than sent as bare text.
+	// just like the normal submit path does — the raw queued content hasn't been
+	// through ProcessImageRefs yet. On failure this message still goes out: it
+	// runs mid-stream, so there is no textarea to hand it back to (the user is
+	// typing the next one there). Send what resolved.
 	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, item.Content)
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())

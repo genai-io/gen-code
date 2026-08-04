@@ -187,11 +187,8 @@ func (m *model) adaptTurnForProvider(content string, images []core.Image) (strin
 			path = img.FileName
 		}
 		if temp {
-			// The path goes into content that is appended to conv, persisted, and
-			// replayed on every later turn, so the file has to outlive the turn
-			// that wrote it — a follow-up question about the image reaches a model
-			// reading this same path out of its own history. removeTempImageFiles
-			// clears them when the process exits.
+			// The path below is inlined into content conv persists and replays, so
+			// the file has to outlive this turn — see removeTempImageFiles.
 			m.tempImageFiles = append(m.tempImageFiles, path)
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)

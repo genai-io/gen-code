@@ -316,11 +316,10 @@ func LeadingImagePath(cwd, input string) string {
 // from the text, mirroring @-prefixed behavior — otherwise the leading path
 // would reach the agent as text that reads like an unknown command.
 //
-// An error still comes with usable content: the text that survived the failure,
-// and the images that did load. A caller with somewhere to hand the turn back
-// to (buildUserMessage returns it to the textarea) can ignore both and abort; a
-// caller that has to send something anyway (releaseQueuedMessage runs
-// mid-stream) sends what resolved instead of the raw text.
+// An error still comes with usable content: the text and images returned are
+// what survived the failure. A caller with somewhere to hand the turn back to
+// can ignore both and abort; one that has to send something anyway sends what
+// resolved instead of the raw text.
 func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 	content := input
 	var images []core.Image
@@ -340,17 +339,12 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 		}
 		img, err := image.Load(absPath)
 		if err != nil {
-			// The @ was deliberate, so the failure aborts the send. The text is
-			// handed back untouched: nothing has been consumed from it yet, and
-			// a caller that must send anyway should send what the user wrote.
-			return strings.TrimSpace(content), images, fmt.Errorf("loading image %s: %w", absPath, err)
+			return strings.TrimSpace(stripRefs(content, loadedRefs)), images, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
 		images = append(images, img)
 		loadedRefs = append(loadedRefs, match[0])
 	}
-	for _, ref := range loadedRefs {
-		content = strings.ReplaceAll(content, ref, "")
-	}
+	content = stripRefs(content, loadedRefs)
 
 	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
 	// Keep the text in the message, skip silently on load failure, unless
@@ -395,11 +389,18 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 }
 
 // stripLeadingPath drops the leading image-path token from a prompt, leaving
-// the rest of it. leadPath came from LeadingImagePath on this same content, so
-// it is the first token of the trimmed text; TrimPrefix rather than a slice so
-// that stops being an assumption the function can panic on.
+// the rest of it.
 func stripLeadingPath(content, leadPath string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), leadPath))
+}
+
+// stripRefs drops the @-references that were consumed as images, so the text a
+// caller gets back — on the error path too — is the text that survived.
+func stripRefs(content string, refs []string) string {
+	for _, ref := range refs {
+		content = strings.ReplaceAll(content, ref, "")
+	}
+	return content
 }
 
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.
