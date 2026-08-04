@@ -50,12 +50,17 @@ type BuildParams struct {
 	// PermissionRules and PermissionReview are the two stages of the
 	// pre-execution permission gate: the rules stage applies the static rules
 	// (permit/reject/prompt); the review stage is the LLM auto-review consulted
-	// only on a gray-zone prompt (AutoPilot.Permission).
-	PermissionRules  PermDecisionFunc
-	PermissionReview PermReviewFunc
-	HookEngine       hook.Handler
-	AskUser          tool.AskUserFunc
-	ToolActivity     func(toolCallID string, msg string)
+	// only on a gray-zone prompt (AutoPilot.Permission). HookAllowResolver
+	// guards the way past both: it vets a PreToolUse hook's "allow" against the
+	// settings, so a hook cannot waive a deny rule, the circuit breaker, a
+	// confirmation tier or an explicit ask rule. Nil fails closed.
+	PermissionRules   PermDecisionFunc
+	PermissionReview  PermReviewFunc
+	HookAllowResolver PermHookAllowFunc
+
+	HookEngine   hook.Handler
+	AskUser      tool.AskUserFunc
+	ToolActivity func(toolCallID string, msg string)
 	// BashPromptResponder answers prompts a command raises *while it runs*
 	// (AutoPilot.BashPrompt plus the masked secret input) — a separate concern
 	// from the pre-execution gate above.
@@ -102,6 +107,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	}
 	pg := NewPermissionGate(p.PermissionRules)
 	pg.SetReviewer(p.PermissionReview)
+	pg.SetHookAllowResolver(p.HookAllowResolver)
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {

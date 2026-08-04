@@ -268,6 +268,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
 		},
 
+		HookAllowResolver: func(name string, args map[string]any) bool {
+			return m.services.Setting.ResolveHookAllow(name, args, m.env.SessionPermissions)
+		},
+
 		StreamFirstChunkTimeout: streamFirstChunk,
 		StreamIdleTimeout:       streamIdle,
 	}

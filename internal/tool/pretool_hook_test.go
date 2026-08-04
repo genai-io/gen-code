@@ -61,6 +61,10 @@ type fakePreToolPermissionChecker struct {
 	forcePrompt bool
 	reason      string
 	allow       bool
+	// refuseHookAllow makes the checker answer HonorsHookAllow with false, the
+	// way the real gate does for a deny rule, the circuit breaker, a
+	// confirmation tier or an explicit ask rule.
+	refuseHookAllow bool
 }
 
 func (c *fakePreToolPermissionChecker) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
@@ -71,6 +75,10 @@ func (c *fakePreToolPermissionChecker) Check(ctx context.Context, name string, i
 		return true, ""
 	}
 	return false, "should not be used"
+}
+
+func (c *fakePreToolPermissionChecker) HonorsHookAllow(name string, input map[string]any) bool {
+	return !c.refuseHookAllow
 }
 
 func TestPreToolUseAllowOverridesPermissionPrompt(t *testing.T) {
@@ -85,6 +93,27 @@ func TestPreToolUseAllowOverridesPermissionPrompt(t *testing.T) {
 	}
 	if checker.called {
 		t.Fatal("permission checker should not run after PreToolUse allow")
+	}
+}
+
+// A hook allow waives the routine prompt, not the rules. When the checker says
+// the waiver does not hold — a deny rule, the circuit breaker, a confirmation
+// tier or an explicit ask rule — the call is gated as if no hook had spoken.
+func TestPreToolUseAllowStillGatedWhenNotHonored(t *testing.T) {
+	inner := &captureCoreTool{}
+	hooks := &fakeHookHandler{outcome: hook.HookOutcome{PermissionAllow: true}}
+	checker := &fakePreToolPermissionChecker{refuseHookAllow: true}
+	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
+
+	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "rm -rf important/"})
+	if err == nil {
+		t.Fatal("expected the gate to block the call")
+	}
+	if !checker.called {
+		t.Fatal("permission checker should run when the hook allow is not honored")
+	}
+	if inner.input != nil {
+		t.Fatalf("tool ran despite the gate refusing the call, input %#v", inner.input)
 	}
 }
 

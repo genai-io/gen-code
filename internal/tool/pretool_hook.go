@@ -17,6 +17,9 @@ func WithPreToolUseHooks(inner core.Tools, hooks hook.Handler) core.Tools {
 
 type PreToolPermissionChecker interface {
 	Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string)
+	// HonorsHookAllow reports whether a PreToolUse hook's "allow" is enough to
+	// skip Check for this call. False sends the call through the gate anyway.
+	HonorsHookAllow(name string, input map[string]any) bool
 }
 
 func WithPreToolUseAndPermission(inner core.Tools, hooks hook.Handler, check PreToolPermissionChecker) core.Tools {
@@ -94,11 +97,17 @@ func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (s
 		permissionReason = outcome.PermissionReason
 	}
 
-	// A hook "ask" always reaches the user, even if another hook also
-	// answered "allow": prompting is the safe resolution of the conflict.
-	if pt.check != nil && (!allowByHook || forceAsk) {
-		if allow, reason := pt.check.Check(ctx, pt.inner.Name(), input, forceAsk, permissionReason); !allow {
-			return "", fmt.Errorf("blocked: %s", reason)
+	if pt.check != nil {
+		// A hook "allow" waives the routine prompt and nothing more. A hook
+		// "ask" outranks it, because prompting is the safe resolution when two
+		// hooks disagree; so does a deny rule, the circuit breaker, either
+		// confirmation tier or an explicit ask rule, which is what
+		// HonorsHookAllow reports on.
+		waived := allowByHook && !forceAsk && pt.check.HonorsHookAllow(pt.inner.Name(), input)
+		if !waived {
+			if allow, reason := pt.check.Check(ctx, pt.inner.Name(), input, forceAsk, permissionReason); !allow {
+				return "", fmt.Errorf("blocked: %s", reason)
+			}
 		}
 	}
 	return pt.inner.Execute(ctx, input)
