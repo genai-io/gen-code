@@ -51,7 +51,15 @@ func (m *model) viewString() (string, *tea.Cursor) {
 		return ov.Render(), nil // fullscreen slash-command picker
 	}
 
-	separator := conv.SeparatorStyle.Render(strings.Repeat("─", m.env.Width))
+	// One column short of the terminal, deliberately. Writing the last column
+	// leaves the terminal owing a line break rather than having taken one, and
+	// how it settles that debt against the line feed that follows is not
+	// something the renderer can predict. Only a full redraw rewrites an
+	// unchanged rule, so the debt is settled on resize and nowhere else, which
+	// is exactly when a miscount strands a row above the composer. The
+	// separators are the only rows in the live view that ever reach the last
+	// column.
+	separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
 	trackerView := m.renderTrackerList()
 
 	if hasOverlay { // docked modal (Question / Approval)
