@@ -64,9 +64,9 @@ func Run(opts setting.RunOptions) error {
 		// so the flush runs exactly once regardless of which handler fired it.
 		// Best-effort — the index rebuilds from the transcripts if this fails.
 		_ = fm.services.Session.FlushIndex()
-		// Same reasoning for the clipboard images written to temp files for a
+		// Same seam for the clipboard images written to temp files for a
 		// text-only model: their paths live in the persisted conversation, so
-		// they stay readable for as long as the session can still ask about them.
+		// they have to outlast every turn that can still replay them.
 		fm.removeTempImageFiles()
 		printExitMessage(fm)
 	}

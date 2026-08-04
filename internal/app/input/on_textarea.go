@@ -396,9 +396,10 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 
 // stripLeadingPath drops the leading image-path token from a prompt, leaving
 // the rest of it. leadPath came from LeadingImagePath on this same content, so
-// it is the first token of the trimmed text.
+// it is the first token of the trimmed text; TrimPrefix rather than a slice so
+// that stops being an assumption the function can panic on.
 func stripLeadingPath(content, leadPath string) string {
-	return strings.TrimSpace(strings.TrimSpace(content)[len(leadPath):])
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), leadPath))
 }
 
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.

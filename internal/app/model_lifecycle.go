@@ -7,14 +7,18 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
+
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -273,4 +277,23 @@ func (m *model) FireSessionEnd(reason string) {
 		m.systemInput.FileWatcher.Stop()
 	}
 	broker.Unregister(broker.Main)
+}
+
+// removeTempImageFiles deletes the files adaptTurnForProvider materialized for
+// clipboard images this run. Deleting them at the end of the turn that wrote
+// them would leave every later turn pointing at a path that no longer resolves:
+// the path lives on in the message content conv persists and replays, so it has
+// to keep resolving for as long as the model can still be asked about it.
+//
+// The scope is the process, not the conversation. A --continue or --resume
+// starts a fresh one, which replays that same persisted path with nothing
+// behind it — see #458 for giving these files a home that survives the way the
+// transcript does.
+func (m *model) removeTempImageFiles() {
+	for _, p := range m.tempImageFiles {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Logger().Warn("remove temp image file", zap.String("path", p), zap.Error(err))
+		}
+	}
+	m.tempImageFiles = nil
 }
