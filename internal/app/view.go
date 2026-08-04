@@ -51,13 +51,15 @@ func (m *model) viewString() (string, *tea.Cursor) {
 		return ov.Render(), nil // fullscreen slash-command picker
 	}
 
-	// One column short of the terminal, deliberately. A row written to the last
-	// column leaves the terminal in the deferred-wrap state — the cursor parks
-	// on column W with the line break owed rather than taken — and whether the
-	// renderer's later cursor-up counts that row depends on when the terminal
-	// settles the debt. The separators are the only full-width rows in the live
-	// view, so they were the only ones that could land on that ambiguity, which
-	// showed up as leftover rule rows above the composer after a resize.
+	// One column short of the terminal, deliberately. Writing the last column
+	// leaves the terminal owing a line break rather than having taken one, and
+	// how it settles that debt against the line feed that follows is not
+	// something the renderer can predict. Only a full redraw rewrites an
+	// unchanged rule, so the debt is settled on resize and nowhere else, which
+	// is exactly when a miscount strands a row above the composer. The
+	// separators are the only rows in the live view that ever reach the last
+	// column. The other half of that miscount — the rows a narrowing terminal
+	// rewraps — is corrected in the Bubble Tea replacement pinned in go.mod.
 	separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
 	trackerView := m.renderTrackerList()
 

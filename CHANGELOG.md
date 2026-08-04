@@ -3,6 +3,26 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.2] - 2026-08-04
+
+### Added
+- Hand image paths to text-only models instead of blocking the message ([@hsain9357](https://github.com/hsain9357) in [#439](https://github.com/genai-io/san/pull/439))
+- Deliver background task results as soon as the conversation can accept them ([@yanmxa](https://github.com/yanmxa) in [#445](https://github.com/genai-io/san/pull/445))
+
+### Changed
+- Correct the slot table, mode table, and stale source references in the documentation ([@yanmxa](https://github.com/yanmxa) in [#447](https://github.com/genai-io/san/pull/447))
+
+### Fixed
+- Keep assistant text visible while a docked modal is open ([@yanmxa](https://github.com/yanmxa) in [#437](https://github.com/genai-io/san/pull/437))
+- Tell the agent to continue working until the task is complete ([@yanmxa](https://github.com/yanmxa) in [#455](https://github.com/genai-io/san/pull/455))
+- Keep input separators one column short of the terminal ([@yanmxa](https://github.com/yanmxa) in [#456](https://github.com/genai-io/san/pull/456))
+- Report calls awaiting permission as waiting rather than running ([@yanmxa](https://github.com/yanmxa) in [#449](https://github.com/genai-io/san/pull/449))
+- Preserve the permission gate when a `PreToolUse` hook allows a call ([@yanmxa](https://github.com/yanmxa) in [#446](https://github.com/genai-io/san/pull/446))
+- Keep inlined image paths resolvable and honor `ProcessImageRefs` errors ([@yanmxa](https://github.com/yanmxa) in [#457](https://github.com/genai-io/san/pull/457))
+- Let Shift+Tab cycle modes mid-turn and keep `-r` from demoting the mode ([@yanmxa](https://github.com/yanmxa) in [#459](https://github.com/genai-io/san/pull/459))
+- Prevent narrowing the terminal from stranding frame rows, and count rewrapped rows from actual wrapping ([@yanmxa](https://github.com/yanmxa) in [befdd3a](https://github.com/genai-io/san/commit/befdd3ab06c892ebbd3b1e59738ebe8ede9b0c9a), [d459676](https://github.com/genai-io/san/commit/d459676978e2ce3e1bb7f13794e873495e324cf9))
+- Keep input separators inside the terminal after resize corrections ([@yanmxa](https://github.com/yanmxa) in [5b383e2](https://github.com/genai-io/san/commit/5b383e281111d404a40273fa33cf9c58c28356ca), [a229b08](https://github.com/genai-io/san/commit/a229b0811cec12af38b1e2135f8b6a6bfe840b0f))
+
 ## [v1.22.1] - 2026-07-30
 
 ### Added

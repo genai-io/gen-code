@@ -31,9 +31,12 @@ require (
 	github.com/kr/pty v1.1.1 // indirect
 )
 
-// Bubble Tea v2 has no flush barrier between View updates and Println.
-// Keep this local replacement until charmbracelet/bubbletea#1736 is fixed.
-replace charm.land/bubbletea/v2 => github.com/yanmxa/bubbletea/v2 v2.0.8-0.20260723150327-81ba608a2d90
+// Bubble Tea v2 has no flush barrier between View updates and Println
+// (charmbracelet/bubbletea#1736), and its resize redraw erases from where the
+// frame's top row would be had the terminal not rewrapped the frame, which
+// strands a copy of the frame's head on screen every time the window narrows.
+// Keep this replacement until both are fixed upstream.
+replace charm.land/bubbletea/v2 => github.com/yanmxa/bubbletea/v2 v2.0.8-0.20260804132944-245f35f9f302
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
