@@ -22,7 +22,7 @@ func newClipboardImage(data []byte) (*core.Image, error) {
 		return nil, fmt.Errorf("clipboard image too large: %d bytes (max %d)", len(data), maxImageSize)
 	}
 	fileName := fmt.Sprintf("clipboard_%s.png", time.Now().Format("150405"))
-	img := newImage("image/png", fileName, data)
+	img := newImage("image/png", fileName, "", data)
 	return &img, nil
 }
 

@@ -46,7 +46,8 @@ func (c *Client) ThinkingEfforts(model string) []string {
 	if !supportsThinking(model) {
 		return nil
 	}
-	return []string{"off", "high", "max"}
+	// https://api-docs.deepseek.com/guides/thinking_mode/
+	return []string{"off", "low", "high", "xhigh", "max"}
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
@@ -65,11 +66,20 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 		Options:          opts,
 		ConvertAssistant: makeAssistantConverter(thinking),
 		ConfigureParams: func(params *openai.ChatCompletionNewParams) {
-			if thinking && opts.ThinkingEffort != "" && opts.ThinkingEffort != "off" {
-				params.SetExtraFields(map[string]any{
-					"reasoning_effort": opts.ThinkingEffort,
-				})
+			if !thinking || opts.ThinkingEffort == "" {
+				return
 			}
+			if opts.ThinkingEffort == "off" {
+				// Thinking runs by default, so leaving reasoning_effort out
+				// keeps it on — it has to be switched off explicitly.
+				params.SetExtraFields(map[string]any{
+					"thinking": map[string]any{"type": "disabled"},
+				})
+				return
+			}
+			params.SetExtraFields(map[string]any{
+				"reasoning_effort": opts.ThinkingEffort,
+			})
 		},
 		ExtractReasoning: thinking,
 	})

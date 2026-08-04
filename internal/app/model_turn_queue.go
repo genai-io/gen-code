@@ -9,9 +9,11 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
@@ -49,8 +51,8 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 // releaseQueuedMessage hands the next queued user message to the running agent
 // and returns (cmd, true) when one was released, or (nil, false) when the queue
 // is empty or its head is under edit (SelectIdx 0 — dispatching would send
-// pre-edit text and orphan the user's changes). An image-blocked item is diverted
-// back to the textarea with a notice instead of sent.
+// pre-edit text and orphan the user's changes). A text-only model receives the
+// queued images' paths inlined into the content instead of the attachments.
 //
 // The message is shown in the conversation now, at release time, so it never
 // vanishes between the queue and the flow; the agent addresses it once it ingests
@@ -65,16 +67,40 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
-	if m.imagesBlockedForModel(item.Images) {
-		// Hand the message back instead of dropping it — the notice tells the
-		// user to remove the image or switch models.
-		m.userInput.ReturnToTextarea(item.Content, item.Images)
-		return tea.Batch(m.CommitMessages()...), true
+	// Process image references (leading image paths, @-references, bare paths)
+	// just like the normal submit path does in buildUserMessage — the raw queued
+	// content hasn't been through ProcessImageRefs yet. On failure the message
+	// still goes out, as the user typed it: buildUserMessage can hand a bad turn
+	// back to the textarea, this one can't, because it runs mid-stream and the
+	// textarea holds the next message being typed.
+	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, item.Content)
+	if err != nil {
+		m.conv.AddNotice("Image error: " + err.Error())
+		content, fileImages = item.Content, nil
 	}
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})
-	svc, content, images := m.services.Agent, item.Content, item.Images
+	// Images the user attached travel on the item — they were moved off the
+	// textarea when it was queued. Anything pending in the textarea now belongs
+	// to the next message, so it must not be picked up here.
+	images := make([]core.Image, 0, len(item.Images)+len(fileImages))
+	images = append(images, item.Images...)
+	images = append(images, fileImages...)
+	// Split display from content the way buildUserMessage does: the queued text
+	// still carries the [Image #N] markers the textarea used to position its
+	// attachments, which the reader wants to see and the model doesn't.
+	displayContent := content
+	content = strings.TrimSpace(core.InlineImageTokenRe.ReplaceAllString(content, ""))
+	// Text-only models can't receive image parts; inline each image's path so
+	// the model can decide how to use it (e.g. via an MCP tool).
+	content, providerImages := m.adaptTurnForProvider(content, images)
+	m.conv.Append(core.ChatMessage{
+		Role:           core.RoleUser,
+		Content:        content,
+		DisplayContent: displayContent,
+		Images:         images,
+	})
+	svc := m.services.Agent
 	send := func() tea.Msg {
-		svc.Send(content, images)
+		svc.Send(content, providerImages)
 		return nil
 	}
 	return tea.Batch(append(m.CommitMessages(), send)...), true

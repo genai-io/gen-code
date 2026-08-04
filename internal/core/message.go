@@ -196,7 +196,10 @@ type Image struct {
 	MediaType string `json:"media_type"`
 	Data      string `json:"data"`
 	FileName  string `json:"file_name"`
-	Size      int    `json:"size"`
+	// Path is the absolute source path on disk, when the image came from a
+	// file. Empty for images that have no backing file (e.g. clipboard pastes).
+	Path string `json:"path,omitempty"`
+	Size int    `json:"size"`
 }
 
 // ToolCall represents a tool call from the model.

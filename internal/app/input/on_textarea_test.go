@@ -288,6 +288,25 @@ func TestProcessImageRefs(t *testing.T) {
 			wantImage: 1,
 		},
 		{
+			name:      "leading bare absolute path loads image and strips text",
+			input:     pngPath + " describe it",
+			wantText:  "describe it",
+			wantImage: 1,
+		},
+		{
+			name:      "leading bare absolute path alone leaves empty text",
+			input:     pngPath,
+			wantText:  "",
+			wantImage: 1,
+		},
+		{
+			name:      "leading bare corrupt path is consumed with error",
+			input:     badPath + " explain",
+			wantText:  "explain",
+			wantImage: 0,
+			wantErr:   true,
+		},
+		{
 			name:      "bare path with corrupt image skips silently",
 			input:     "see " + badPath,
 			wantText:  "see " + badPath,
@@ -329,6 +348,98 @@ func TestProcessImageRefs(t *testing.T) {
 			}
 			if len(images) != tt.wantImage {
 				t.Errorf("ProcessImageRefs() got %d images, want %d", len(images), tt.wantImage)
+			}
+		})
+	}
+}
+
+func TestLeadingImagePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	pngPath := tmpDir + "/photo.png"
+	if err := os.WriteFile(pngPath, []byte("anything"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	subDir := tmpDir + "/sub"
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	relPath := "sub/photo.png"
+	if err := os.WriteFile(subDir+"/photo.png", []byte("anything"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		cwd   string
+		input string
+		want  string
+	}{
+		{
+			name:  "absolute existing image path first",
+			cwd:   tmpDir,
+			input: pngPath + " describe it",
+			want:  pngPath,
+		},
+		{
+			name:  "absolute existing image path alone",
+			cwd:   tmpDir,
+			input: pngPath,
+			want:  pngPath,
+		},
+		{
+			name:  "relative existing image path first",
+			cwd:   tmpDir,
+			input: relPath + " explain",
+			want:  relPath,
+		},
+		{
+			name:  "leading whitespace is ignored",
+			cwd:   tmpDir,
+			input: "  " + pngPath + " hi",
+			want:  pngPath,
+		},
+		{
+			name:  "path mid-sentence is not leading",
+			cwd:   tmpDir,
+			input: "check " + pngPath + " for details",
+			want:  "",
+		},
+		{
+			name:  "non-existent absolute path",
+			cwd:   tmpDir,
+			input: "/nonexistent/photo.png explain",
+			want:  "",
+		},
+		{
+			name:  "trailing punctuation disqualifies the token",
+			cwd:   tmpDir,
+			input: pngPath + ", what is this",
+			want:  "",
+		},
+		{
+			name:  "bare filename is not a path",
+			cwd:   tmpDir,
+			input: "photo.png describe",
+			want:  "",
+		},
+		{
+			name:  "plain text",
+			cwd:   tmpDir,
+			input: "just some words",
+			want:  "",
+		},
+		{
+			name:  "empty input",
+			cwd:   tmpDir,
+			input: "   ",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := LeadingImagePath(tt.cwd, tt.input); got != tt.want {
+				t.Errorf("LeadingImagePath(%q, %q) = %q, want %q", tt.cwd, tt.input, got, tt.want)
 			}
 		})
 	}

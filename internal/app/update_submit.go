@@ -13,6 +13,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/image"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 )
@@ -99,23 +100,30 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 
 	m.userInput.RecordSubmission(m.env.CWD, raw)
 
-	if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
-		return cmd
+	// A leading absolute path to an existing image (e.g. a drag-drop paste of
+	// "upload an image first") starts with "/" and would otherwise parse as a
+	// slash command. Bypass command matching so it flows through the normal
+	// message path, where ProcessImageRefs attaches it as an image.
+	if input.LeadingImagePath(m.env.CWD, raw) == "" {
+		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
+			return cmd
+		}
 	}
 
 	msg, ok := m.buildUserMessage(raw)
 	if !ok {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	// Hold the turn (keeping the input) if it carries images the active model
-	// can't accept, rather than letting the provider reject the request.
-	if m.imagesBlockedForModel(msg.Images) {
-		return tea.Batch(m.CommitMessages()...)
-	}
+	// Text-only models can't receive image parts, so inline each image's path
+	// into the content and let the model decide how to use it (e.g. call an
+	// MCP tool to inspect the file) instead of refusing the turn. The appended
+	// message keeps its images; only the provider send drops them.
+	content, providerImages := m.adaptTurnForProvider(msg.Content, msg.Images)
+	msg.Content = content
 	msg.AutopilotNote = autopilotNote
 	m.conv.Append(msg)
 	m.userInput.Reset()
-	return m.SubmitToAgent(msg.Content, msg.Images)
+	return m.SubmitToAgent(msg.Content, providerImages)
 }
 
 // runSlashCommandIfMatched returns (cmd, true) if `raw` is a slash command
@@ -148,16 +156,43 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	}, true
 }
 
-// imagesBlockedForModel reports whether a turn carrying images must be held back
-// because the active model is text-only. It adds a user-facing notice when it
-// blocks; callers must not send the turn and should preserve the input so the
-// user can remove the image or switch to a vision-capable model.
-func (m *model) imagesBlockedForModel(images []core.Image) bool {
+// adaptTurnForProvider fits a user turn to the active model's image capability,
+// returning the content to send and the images the provider may receive. A
+// vision-capable model takes both unchanged. A text-only one cannot receive
+// image parts at all, so each image's path is inlined into the content and no
+// image comes back — the model then decides how to use the path (e.g. call an
+// MCP image-description tool) rather than the app refusing the turn.
+//
+// Callers keep the original slice on the message they append to conv, so the
+// image stays visible in the transcript and a later switch to a vision-capable
+// model can still use it; dropImagesTextOnlyModelRejects strips those on the
+// way back out when a session is rebuilt. It does not cover the live turn:
+// seedAgentMessages drops the pending message from the chain, and an already
+// active session skips seeding altogether — which is why the images must not
+// reach Send in the first place.
+func (m *model) adaptTurnForProvider(content string, images []core.Image) (string, []core.Image) {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
-		return false
+		return content, images
 	}
-	m.conv.AddNotice("The current model doesn't support images — remove the image or switch to a vision-capable model.")
-	return true
+	var sb strings.Builder
+	if content != "" {
+		sb.WriteString(content)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
+	for i, img := range images {
+		path, temp, err := image.EnsureFilePath(img)
+		if err != nil {
+			// Nothing on disk to point at — the name is all the model gets.
+			path = img.FileName
+		}
+		if temp {
+			// Written for this turn only; OnTurnEnd removes it.
+			m.tempImageFiles = append(m.tempImageFiles, path)
+		}
+		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
+	}
+	return strings.TrimSpace(sb.String()), nil
 }
 
 // drainInputQueueWhileIdle pops one queued item (if any) and runs it
@@ -170,12 +205,6 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
 		return nil
-	}
-	if m.imagesBlockedForModel(item.Images) {
-		// Hand the message back instead of dropping it — the notice tells
-		// the user to remove the image or switch models.
-		m.userInput.ReturnToTextarea(item.Content, item.Images)
-		return tea.Batch(m.CommitMessages()...)
 	}
 	m.conv.Compact.ClearResult()
 

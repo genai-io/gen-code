@@ -141,6 +141,10 @@ type model struct {
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState
+
+	// tempImageFiles holds paths to temporary files created for clipboard
+	// images materialized by adaptTurnForProvider. Cleaned up at OnTurnEnd.
+	tempImageFiles []string
 }
 
 var _ conv.Runtime = (*model)(nil)

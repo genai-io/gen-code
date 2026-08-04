@@ -460,8 +460,8 @@ func (m *model) seedAgentMessages(pendingSend string) []core.Message {
 }
 
 // dropImagesTextOnlyModelRejects removes image attachments from a seeded chain
-// the active model can't accept, keeping the surrounding text. imagesBlockedForModel
-// holds back new turns carrying images, but history predating the current model
+// the active model can't accept, keeping the surrounding text. The adaptTurnForProvider
+// call in the submit path handles new turns, but history predating the current model
 // still holds them — switch a conversation from a vision-capable model to a
 // text-only one and every later turn replays those images, which the provider
 // rejects outright. Every rebuild passes through here, so the switch itself

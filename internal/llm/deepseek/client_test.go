@@ -150,6 +150,40 @@ func TestDeepSeekV4StreamIncludesReasoningEffort(t *testing.T) {
 	}
 }
 
+// "off" is a san-side value with no API equivalent. Omitting reasoning_effort
+// is not enough — thinking is on by default, so the turn would still reason.
+func TestDeepSeekV4StreamDisablesThinkingWhenOff(t *testing.T) {
+	transport := &captureTransport{}
+	client := openai.NewClient(
+		option.WithAPIKey("test"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
+	)
+
+	c := NewClient(client, "deepseek:test")
+
+	ch := c.Stream(context.Background(), llm.CompletionOptions{
+		Model:          "deepseek-v4-flash",
+		Messages:       []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		ThinkingEffort: "off",
+	})
+	for range ch {
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(transport.body, &payload); err != nil {
+		t.Fatalf("invalid json body: %v", err)
+	}
+
+	if got, ok := payload["reasoning_effort"]; ok {
+		t.Errorf("sent reasoning_effort=%v, want the field left out", got)
+	}
+	toggle, _ := payload["thinking"].(map[string]any)
+	if toggle["type"] != "disabled" {
+		t.Fatalf("thinking = %v, want type=disabled", payload["thinking"])
+	}
+}
+
 func TestDeepSeekSupportsThinking(t *testing.T) {
 	tests := []string{"deepseek-v4-flash", "deepseek-v4-pro"}
 	for _, model := range tests {
@@ -166,8 +200,8 @@ func TestDeepSeekThinkingEfforts(t *testing.T) {
 		model   string
 		efforts []string
 	}{
-		{"deepseek-v4-flash", []string{"off", "high", "max"}},
-		{"deepseek-v4-pro", []string{"off", "high", "max"}},
+		{"deepseek-v4-flash", []string{"off", "low", "high", "xhigh", "max"}},
+		{"deepseek-v4-pro", []string{"off", "low", "high", "xhigh", "max"}},
 	}
 	for _, tt := range tests {
 		got := c.ThinkingEfforts(tt.model)
