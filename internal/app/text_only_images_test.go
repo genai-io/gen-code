@@ -54,6 +54,20 @@ func chartImage() core.Image {
 	}
 }
 
+// brokenImagePath writes a broken.png the loader rejects, points the model's
+// cwd at it, and returns its absolute path.
+func brokenImagePath(t *testing.T, m *model) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.png")
+	if err := os.WriteFile(path, []byte("not an image"), 0o644); err != nil {
+		t.Fatalf("write broken.png: %v", err)
+	}
+	m.env.CWD = dir
+	return path
+}
+
 // A text-only model gets the image's path as text and no attachment: the path
 // is something it can act on (an MCP tool can read the file), the attachment is
 // what the provider rejects.
@@ -180,11 +194,7 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 // image — not both messages.
 func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	m, _ := textOnlyModel(t)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "broken.png"), []byte("not an image"), 0o644); err != nil {
-		t.Fatalf("write broken.png: %v", err)
-	}
-	m.env.CWD = dir
+	brokenImagePath(t, m)
 	m.userInput.Queue.Enqueue("look at @broken.png", nil)
 	// What the user is typing right now, while the turn streams.
 	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: core.Image{FileName: "next.png"}}}
@@ -199,5 +209,56 @@ func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	last := m.conv.Messages[len(m.conv.Messages)-1]
 	if !strings.Contains(last.Content, "look at") {
 		t.Fatalf("last message = %q, want the queued message sent anyway", last.Content)
+	}
+}
+
+// A queued message that leads with an image path the loader rejects still has
+// to lose the path: the release path can't hand the turn back to the textarea,
+// so whatever it sends is final, and a bare path left in the text is the
+// unknown-command-looking string this whole change exists to remove.
+func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	broken := brokenImagePath(t, m)
+	m.userInput.Queue.Enqueue(broken+" what is this", nil)
+
+	if _, released := m.releaseQueuedMessage(); !released {
+		t.Fatal("queued message was not released")
+	}
+
+	last := m.conv.Messages[len(m.conv.Messages)-1]
+	if strings.Contains(last.Content, broken) {
+		t.Fatalf("last message = %q, want the failed leading path consumed, not sent as text", last.Content)
+	}
+	if !strings.Contains(last.Content, "what is this") {
+		t.Fatalf("last message = %q, want the rest of the prompt to survive", last.Content)
+	}
+}
+
+// The inlined path is written into content that conv persists and replays, so
+// the file behind it has to outlive the turn: a follow-up question reaches a
+// model reading that same path back out of its own history. It goes at quit
+// instead.
+func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
+	m, _ := textOnlyModel(t)
+	pasted := core.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}
+
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{pasted})
+	if len(providerImages) != 0 {
+		t.Fatalf("provider images = %+v, want none", providerImages)
+	}
+	if len(m.tempImageFiles) != 1 {
+		t.Fatalf("temp files = %+v, want the pasted image materialized", m.tempImageFiles)
+	}
+	path := m.tempImageFiles[0]
+	if !strings.Contains(content, path) {
+		t.Fatalf("content = %q, want the temp path inlined", content)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("stat %s: %v — the path is in the persisted content already", path, err)
+	}
+
+	m.removeTempImageFiles()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
 	}
 }

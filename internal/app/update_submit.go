@@ -187,7 +187,8 @@ func (m *model) adaptTurnForProvider(content string, images []core.Image) (strin
 			path = img.FileName
 		}
 		if temp {
-			// Written for this turn only; OnTurnEnd removes it.
+			// The path below is inlined into content conv persists and replays, so
+			// the file has to outlive this turn — see removeTempImageFiles.
 			m.tempImageFiles = append(m.tempImageFiles, path)
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)

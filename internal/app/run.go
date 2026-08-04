@@ -64,6 +64,7 @@ func Run(opts setting.RunOptions) error {
 		// so the flush runs exactly once regardless of which handler fired it.
 		// Best-effort — the index rebuilds from the transcripts if this fails.
 		_ = fm.services.Session.FlushIndex()
+		fm.removeTempImageFiles()
 		printExitMessage(fm)
 	}
 	return nil

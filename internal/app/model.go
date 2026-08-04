@@ -142,8 +142,8 @@ type model struct {
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState
 
-	// tempImageFiles holds paths to temporary files created for clipboard
-	// images materialized by adaptTurnForProvider. Cleaned up at OnTurnEnd.
+	// tempImageFiles holds the files adaptTurnForProvider materialized for
+	// clipboard images, removed at exit — see removeTempImageFiles.
 	tempImageFiles []string
 }
 

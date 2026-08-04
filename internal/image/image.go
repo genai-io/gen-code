@@ -110,11 +110,19 @@ func EnsureFilePath(img core.Image) (path string, temp bool, err error) {
 	return f.Name(), true, nil
 }
 
+// extForMediaType picks the file extension a temp image should carry. It does
+// not reverse supportedTypes: two extensions map to image/jpeg there, and Go
+// randomises map iteration, so the same image would land on .jpg or .jpeg from
+// run to run.
 func extForMediaType(mediaType string) string {
-	for ext, mt := range supportedTypes {
-		if mt == mediaType {
-			return ext
-		}
+	switch mediaType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".png"
 	}
-	return ".png"
 }
