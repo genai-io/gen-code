@@ -233,7 +233,8 @@ def main():
         # 2. Get the tag creation date to use as cutoff
         tag_date_str = run(["git", "log", "-1", "--format=%cI", latest_tag])
         try:
-            tag_date = datetime.fromisoformat(tag_date_str)
+            # fromisoformat rejects the trailing 'Z' before Python 3.11
+            tag_date = datetime.fromisoformat(tag_date_str.replace("Z", "+00:00"))
         except Exception:
             print(
                 f"::warning:: Cannot parse tag date '{tag_date_str}', "
@@ -277,11 +278,14 @@ def main():
     merged_prs = result.get("items", [])
     # The search API already filters by merged date so we trust its results,
     # but double-check since there can be subtle timezone mismatches.
+    # Note: the search API returns merge time under pull_request.merged_at;
+    # the top-level merged_at field is always null.
     merged_prs = [
         p
         for p in merged_prs
-        if p.get("merged_at") and datetime.fromisoformat(
-            p["merged_at"].replace("Z", "+00:00")
+        if p.get("pull_request", {}).get("merged_at")
+        and datetime.fromisoformat(
+            p["pull_request"]["merged_at"].replace("Z", "+00:00")
         ) > tag_date
     ]
     print(f"Found {len(merged_prs)} merged PRs since last release")
