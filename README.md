@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/mcp.so%2Fgenpilot%2Fyanmxa.svg)](https://mcptoplist.com/server/mcp.so%2Fgenpilot%2Fyanmxa)
+
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>Minimal overhead. Maximum agent.</strong></p>
