@@ -910,23 +910,33 @@ func TestLoginPromptShowsDeviceCodeUntilSignInResolves(t *testing.T) {
 		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
 	})
 
-	hints := m.renderHints()
-	if !strings.Contains(hints, "ABCD-1234") {
-		t.Errorf("hints = %q, want the device code — it is shown nowhere else", hints)
+	// The code rides on the connecting provider's own row, so it is obvious
+	// which sign-in it belongs to; the row is where the spinner already is.
+	row := xansi.Strip(m.appendConnectResult("2 auth methods", 3))
+	if !strings.Contains(row, "ABCD-1234") {
+		t.Errorf("row = %q, want the device code beside the spinner", row)
 	}
+	if other := xansi.Strip(m.appendConnectResult("", 4)); strings.Contains(other, "ABCD-1234") {
+		t.Errorf("row 4 = %q, want the code only on the connecting row", other)
+	}
+
+	// The URL is long and the same every time, so it stays in the footer where
+	// there is width for it — alongside the Esc that abandons the sign-in.
+	hints := xansi.Strip(m.renderHints())
 	if !strings.Contains(hints, "github.com/login/device") {
 		t.Errorf("hints = %q, want the verification URL", hints)
 	}
-	// Esc is what abandons the sign-in, so the prompt must not displace it.
 	if !strings.Contains(hints, "Esc cancel") {
 		t.Errorf("hints = %q, want Esc to stay visible during a sign-in", hints)
 	}
 
-	// Once the sign-in resolves the instruction is stale, so the footer goes
-	// back to the normal key hints.
+	// Once the sign-in resolves the instruction is stale everywhere.
 	m.HandleConnectResult(providerConnectResultMsg{AuthIdx: 3, Success: false, Message: "sign-in failed"})
-	if got := m.renderHints(); strings.Contains(got, "ABCD-1234") {
-		t.Errorf("hints = %q, want the device code gone after the sign-in resolved", got)
+	if got := xansi.Strip(m.appendConnectResult("", 3)); strings.Contains(got, "ABCD-1234") {
+		t.Errorf("row = %q, want the device code gone after the sign-in resolved", got)
+	}
+	if got := xansi.Strip(m.renderHints()); strings.Contains(got, "login/device") {
+		t.Errorf("hints = %q, want the URL gone after the sign-in resolved", got)
 	}
 }
 
