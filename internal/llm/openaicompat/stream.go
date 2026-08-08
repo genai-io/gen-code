@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -20,6 +21,10 @@ type ChatStreamConfig struct {
 	ConvertAssistant func(core.Message) openai.ChatCompletionMessageParamUnion
 	ConfigureParams  func(*openai.ChatCompletionNewParams)
 	ExtractReasoning bool
+
+	// RequestOptions apply to this request only — for headers a provider has to
+	// vary per turn rather than fix on the client (e.g. Copilot's X-Initiator).
+	RequestOptions []option.RequestOption
 }
 
 // StreamChatCompletions streams an OpenAI-compatible Chat Completions request.
@@ -54,7 +59,7 @@ func StreamChatCompletions(ctx context.Context, cfg ChatStreamConfig) <-chan llm
 
 		log.LogRequestCtx(ctx, cfg.ProviderName, opts.Model, opts)
 
-		stream := cfg.Client.Chat.Completions.NewStreaming(ctx, params)
+		stream := cfg.Client.Chat.Completions.NewStreaming(ctx, params, cfg.RequestOptions...)
 		state := streamutil.NewState(cfg.ProviderName)
 		toolCalls := make(map[int]*core.ToolCall)
 

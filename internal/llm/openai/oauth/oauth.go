@@ -11,9 +11,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os/exec"
-	"runtime"
 	"time"
+
+	"github.com/genai-io/san/internal/proc"
 )
 
 const (
@@ -102,7 +102,7 @@ func Login(ctx context.Context, onURL func(string)) (Account, error) {
 	if onURL != nil {
 		onURL(authURL)
 	}
-	_ = openBrowser(authURL) // best-effort; onURL lets the caller show it if this fails.
+	_ = proc.OpenURL(authURL) // best-effort; onURL lets the caller show it if this fails.
 
 	select {
 	case <-ctx.Done():
@@ -192,20 +192,6 @@ func randomString(n int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-// openBrowser launches the OS default handler for a URL without blocking.
-func openBrowser(target string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", target)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", target)
-	default:
-		cmd = exec.Command("xdg-open", target)
-	}
-	return cmd.Start()
 }
 
 // writePage renders a minimal HTML result page for the browser callback.

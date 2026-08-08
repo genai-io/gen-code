@@ -3,7 +3,6 @@ package openai
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
@@ -58,14 +57,13 @@ var SubscriptionMeta = llm.Meta{
 // so a long session survives token expiry transparently.
 func NewSubscriptionClient(ctx context.Context) (llm.Provider, error) {
 	tokens := oauth.NewTokenSource()
-	sessionID := newSessionID()
 
 	sdk := openai.NewClient(
 		option.WithBaseURL(codexBaseURL),
 		option.WithMaxRetries(0),
 		option.WithHeader("OpenAI-Beta", "responses=experimental"),
 		option.WithHeader("originator", oauth.Originator),
-		option.WithHeader("session_id", sessionID),
+		option.WithHeader("session_id", llm.NewRequestID()),
 		option.WithHeader("User-Agent", oauth.Originator),
 		option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
 			access, accountID, err := tokens.Token(req.Context())
@@ -194,22 +192,19 @@ func (r codexModelsResponse) toModelInfos() []llm.ModelInfo {
 	return models
 }
 
-// newSessionID returns a random UUIDv4 for the per-session `session_id` header.
-func newSessionID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
-}
-
 // subscriptionAuthenticator adapts the ChatGPT OAuth flow to llm.Authenticator
 // so the app layer can trigger sign-in/out through the llm facade rather than
 // importing this provider package directly.
 type subscriptionAuthenticator struct{}
 
-func (subscriptionAuthenticator) Login(ctx context.Context, onURL func(string)) error {
-	_, err := oauth.Login(ctx, onURL)
+func (subscriptionAuthenticator) Login(ctx context.Context, onPrompt func(llm.LoginPrompt)) error {
+	// The PKCE flow needs no user code — opening the authorize URL is the whole
+	// instruction, so the prompt carries just the URL.
+	_, err := oauth.Login(ctx, func(u string) {
+		if onPrompt != nil {
+			onPrompt(llm.LoginPrompt{URL: u})
+		}
+	})
 	return err
 }
 

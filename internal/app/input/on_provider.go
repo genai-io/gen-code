@@ -159,6 +159,17 @@ type ProviderSelector struct {
 	lastConnectAuthIdx int // item index that triggered the connection
 	lastConnectSuccess bool
 
+	// loginPrompt holds the instruction for an interactive sign-in still in
+	// flight — the page to open and, for device flows, the code to type there.
+	// It replaces the hint line until the sign-in resolves; a zero value means
+	// nothing is pending.
+	loginPrompt llm.LoginPrompt
+
+	// cancelLogin stops an interactive sign-in when the user closes the
+	// selector. A device flow otherwise keeps polling GitHub every few seconds
+	// for its full 15-minute lifetime with nobody left to read the result.
+	cancelLogin context.CancelFunc
+
 	// spinnerTick advances on each providerConnectingTickMsg; used to pick a braille
 	// frame while a connect/refresh is in flight.
 	spinnerTick int
@@ -195,6 +206,13 @@ type providerConnectResultMsg struct {
 	Provider   llm.Name
 	AuthMethod llm.AuthMethod
 	Models     []llm.ModelInfo
+}
+
+// providerLoginPromptMsg carries the instruction an in-flight interactive
+// sign-in needs the user to follow.
+type providerLoginPromptMsg struct {
+	AuthIdx int
+	Prompt  llm.LoginPrompt
 }
 
 // providerModelsLoadedMsg is sent when async model loading completes.
@@ -264,6 +282,9 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 			state.Selector.AdvanceSpinner()
 			return providerConnectingTickCmd(), true
 		}
+		return nil, true
+	case providerLoginPromptMsg:
+		state.Selector.HandleLoginPrompt(msg)
 		return nil, true
 	case providerConnectResultMsg:
 		cmd := state.Selector.HandleConnectResult(msg)

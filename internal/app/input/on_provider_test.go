@@ -70,7 +70,7 @@ type storedCredentialAuthenticator struct {
 	has        bool
 }
 
-func (a *storedCredentialAuthenticator) Login(context.Context, func(string)) error {
+func (a *storedCredentialAuthenticator) Login(context.Context, func(llm.LoginPrompt)) error {
 	a.loginCalls++
 	return fmt.Errorf("unexpected login")
 }
@@ -897,5 +897,71 @@ func TestRebuildModelsTabSortsByNameDescending(t *testing.T) {
 	want := []string{"unknown", "large", "current-small", "medium-b", "medium-a"}
 	if strings.Join(ids, ",") != strings.Join(want, ",") {
 		t.Fatalf("model order = %v, want %v", ids, want)
+	}
+}
+
+func TestLoginPromptShowsDeviceCodeUntilSignInResolves(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 3)
+
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 3,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+
+	hints := m.renderHints()
+	if !strings.Contains(hints, "ABCD-1234") {
+		t.Errorf("hints = %q, want the device code — it is shown nowhere else", hints)
+	}
+	if !strings.Contains(hints, "github.com/login/device") {
+		t.Errorf("hints = %q, want the verification URL", hints)
+	}
+
+	// Once the sign-in resolves the instruction is stale, so the footer goes
+	// back to the normal key hints.
+	m.HandleConnectResult(providerConnectResultMsg{AuthIdx: 3, Success: false, Message: "sign-in failed"})
+	if got := m.renderHints(); strings.Contains(got, "ABCD-1234") {
+		t.Errorf("hints = %q, want the device code gone after the sign-in resolved", got)
+	}
+}
+
+func TestLoginPromptIgnoredWhenNoSignInIsPending(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+
+	// No connect in flight: a late prompt must not paint an instruction over a
+	// row the user is done with.
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 3,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+	if got := m.renderLoginPrompt(); got != "" {
+		t.Errorf("renderLoginPrompt = %q, want empty with no sign-in pending", got)
+	}
+
+	// A prompt for a different row is stale too.
+	m.beginConnect(providerStatusConnecting, 3)
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 9,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "WXYZ-5678"},
+	})
+	if got := m.renderLoginPrompt(); got != "" {
+		t.Errorf("renderLoginPrompt = %q, want empty for a prompt from another row", got)
+	}
+}
+
+func TestLoginPromptWithoutCodeJustPointsAtTheBrowser(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 0)
+
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		Prompt: llm.LoginPrompt{URL: "https://auth.openai.com/oauth/authorize?x=1"},
+	})
+
+	got := m.renderLoginPrompt()
+	if !strings.Contains(got, "auth.openai.com") {
+		t.Errorf("renderLoginPrompt = %q, want the authorize URL", got)
 	}
 }

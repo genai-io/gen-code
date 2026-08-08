@@ -15,6 +15,7 @@ const (
 	AgnesAI    Name = "agnesai"
 	Anthropic  Name = "anthropic"
 	OpenAI     Name = "openai"
+	Copilot    Name = "copilot"
 	Google     Name = "google"
 	Moonshot   Name = "moonshot"
 	Alibaba    Name = "alibaba"

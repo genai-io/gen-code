@@ -137,6 +137,7 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 |:--------|:---------|
 | **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
 | **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/models`) |
+| **GitHub Copilot** (all Copilot models) | a Copilot subscription (sign in via `/models`) |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
 | **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |

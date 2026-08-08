@@ -415,6 +415,9 @@ func (s *ProviderSelector) beginConnect(status string, authIdx int) bool {
 	s.lastConnectResult = status
 	s.lastConnectAuthIdx = authIdx
 	s.lastConnectSuccess = false
+	// Any sign-in instruction belongs to the connect this call starts; every
+	// connect/refresh passes through here, so clearing it once here is enough.
+	s.loginPrompt = llm.LoginPrompt{}
 	return true
 }
 
@@ -437,25 +440,41 @@ func (s *ProviderSelector) connectResultMsg(ctx context.Context, item providerAu
 	}
 }
 
-// connectInteractive runs an OAuth (PKCE) sign-in for an auth method that
+// connectInteractive runs an OAuth sign-in for an auth method that
 // authenticates in the browser, then records the connection. It reuses the
 // connect spinner and result plumbing so the row animates while the browser
 // flow is in progress.
+//
+// The sign-in also reports what the user has to do — a URL, plus a code to type
+// there for device flows. That arrives partway through the blocking Login call,
+// so it rides its own channel and its own command, letting the footer show the
+// instruction while the same flow is still waiting on the browser.
 func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authIdx int) tea.Cmd {
 	if !s.beginConnect(providerStatusConnecting, authIdx) {
 		return nil
 	}
+	prompts := make(chan llm.LoginPrompt, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancelLogin = cancel
 
 	work := func() tea.Msg {
-		ctx := context.Background()
+		defer cancel()
 
-		// Log the authorize URL so it's recoverable when the browser can't be
-		// opened automatically (e.g. over SSH).
-		onURL := func(u string) {
+		onPrompt := func(p llm.LoginPrompt) {
+			// Log it too, so it's recoverable from the log when the browser
+			// can't be opened automatically (e.g. over SSH).
 			log.Logger().Info("provider sign-in",
-				zap.String("provider", string(item.Provider)), zap.String("url", u))
+				zap.String("provider", string(item.Provider)),
+				zap.String("url", p.URL),
+				zap.String("user_code", p.UserCode))
+			select {
+			case prompts <- p:
+			default: // a prompt is already queued; the first one is the live instruction.
+			}
 		}
-		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onURL); err != nil {
+		defer close(prompts)
+
+		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onPrompt); err != nil {
 			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
@@ -464,7 +483,18 @@ func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authI
 		}
 		return s.connectResultMsg(ctx, item, authIdx)
 	}
-	return tea.Batch(providerConnectingTickCmd(), work)
+
+	// Resolves when the flow publishes an instruction, or to nil when it
+	// finishes without one (the channel closes on the way out either way).
+	waitPrompt := func() tea.Msg {
+		p, ok := <-prompts
+		if !ok {
+			return nil
+		}
+		return providerLoginPromptMsg{AuthIdx: authIdx, Prompt: p}
+	}
+
+	return tea.Batch(providerConnectingTickCmd(), work, waitPrompt)
 }
 
 // connectAuthMethod initiates an async connection to a provider auth method.
@@ -477,6 +507,27 @@ func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authId
 		return s.connectResultMsg(context.Background(), item, authIdx)
 	}
 	return tea.Batch(providerConnectingTickCmd(), work)
+}
+
+// cancelInteractiveLogin stops an in-flight sign-in, if any. It is idempotent,
+// so closing the selector twice — or closing it after the sign-in already
+// finished — is a no-op.
+func (s *ProviderSelector) cancelInteractiveLogin() {
+	if s.cancelLogin == nil {
+		return
+	}
+	s.cancelLogin()
+	s.cancelLogin = nil
+}
+
+// HandleLoginPrompt shows what an in-flight interactive sign-in needs from the
+// user. It is ignored once the sign-in it belongs to has resolved, so a late
+// prompt can't reinstate the instruction over a finished row.
+func (s *ProviderSelector) HandleLoginPrompt(msg providerLoginPromptMsg) {
+	if !s.IsConnecting() || msg.AuthIdx != s.lastConnectAuthIdx {
+		return
+	}
+	s.loginPrompt = msg.Prompt
 }
 
 // HandleConnectResult updates the selector state with connection result.

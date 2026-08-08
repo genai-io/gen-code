@@ -379,6 +379,11 @@ func (s *ProviderSelector) renderConfirmRemove() string {
 // ── Footer hints ────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) renderHints() string {
+	// A sign-in waiting on the browser takes the footer: the device code exists
+	// nowhere else, so the user can't finish without seeing it here.
+	if prompt := s.renderLoginPrompt(); prompt != "" {
+		return prompt
+	}
 	if s.customFormActive {
 		return kit.DimStyle().Render("Tab/↑/↓ switch field · Enter save & connect · Esc cancel")
 	}
@@ -401,6 +406,22 @@ func (s *ProviderSelector) renderHints() string {
 	}
 	parts = append(parts, "←/→/Tab switch", "Esc cancel")
 	return kit.DimStyle().Render(strings.Join(parts, " · "))
+}
+
+// renderLoginPrompt renders the instruction for an interactive sign-in that is
+// still waiting on the browser, or "" when none is pending. Device flows put
+// the code first and highlighted — it is the part the user has to copy, and it
+// is shown nowhere else.
+func (s *ProviderSelector) renderLoginPrompt() string {
+	if s.loginPrompt.URL == "" || !s.IsConnecting() {
+		return ""
+	}
+	if s.loginPrompt.UserCode == "" {
+		return kit.DimStyle().Render("Finish the sign-in in your browser: " + s.loginPrompt.URL)
+	}
+	code := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true).Render(s.loginPrompt.UserCode)
+	return kit.DimStyle().Render("Enter code ") + code +
+		kit.DimStyle().Render(" at "+s.loginPrompt.URL)
 }
 
 // ── Connection result ───────────────────────────────────────────────────────
