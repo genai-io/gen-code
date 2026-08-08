@@ -263,16 +263,24 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	return nil
 }
 
-// tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
-func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
+// tryConnectOrPromptKey connects if env vars are available, otherwise shows API
+// key input.
+//
+// formAuthIdx addresses the auth method within its provider, which is what the
+// API-key form needs to route the entered key. The connect helpers want
+// something different — the visible row their spinner and result render on —
+// so they take s.selectedIdx, the row the user pressed Enter on. The two agree
+// only for the first row, which is why mixing them up parks the spinner on
+// whatever provider happens to be listed first.
+func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, formAuthIdx int) tea.Cmd {
 	// Interactive (OAuth) auth signs in via the browser, not an API key. If a
 	// prior token is present, validate it with the normal connect path instead
 	// of forcing a fresh browser login.
 	if llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
 		if llm.HasInteractiveCredentials(am.Provider, am.AuthMethod) {
-			return s.connectAuthMethod(am, authIdx)
+			return s.connectAuthMethod(am, s.selectedIdx)
 		}
-		return s.connectInteractive(am, authIdx)
+		return s.connectInteractive(am, s.selectedIdx)
 	}
 
 	if am.Status == llm.StatusAvailable || providerIsEnvReady(am.EnvVars) {
@@ -285,7 +293,7 @@ func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, prov
 		return nil
 	}
 	s.apiKeyProviderIdx = providerIdx
-	s.apiKeyAuthIdx = authIdx
+	s.apiKeyAuthIdx = formAuthIdx
 	s.initAPIKeyInput(envVar)
 	return nil
 }

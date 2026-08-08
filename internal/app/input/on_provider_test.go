@@ -985,3 +985,43 @@ func TestLoginPromptDoesNotHideModalHints(t *testing.T) {
 		t.Errorf("hints = %q, want the confirm-remove keys while its modal is open", got)
 	}
 }
+
+// TestInteractiveConnectMarksTheSelectedRow pins the spinner and result to the
+// row the user pressed Enter on. The auth-method index the API-key form uses is
+// a different number, and handing that to the connect helpers instead parked the
+// spinner on whichever provider was listed first.
+func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
+	// Both interactive branches: reusing a stored token, and a fresh sign-in.
+	for _, stored := range []bool{true, false} {
+		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+			authMethod := llm.AuthMethod("subscription-row")
+
+			llm.Register(llm.Meta{
+				Provider:    providerName,
+				AuthMethod:  authMethod,
+				DisplayName: "Row Index Test",
+			}, func(context.Context) (llm.Provider, error) {
+				return &staticListProvider{name: string(providerName)}, nil
+			})
+			llm.RegisterAuthenticator(providerName, authMethod, &storedCredentialAuthenticator{has: stored})
+			t.Cleanup(func() { llm.Unregister(providerName, authMethod) })
+
+			m := NewProviderSelector()
+			m.active = true
+			m.selectedIdx = 4
+
+			// A single-auth-method provider row passes 0 as the form's auth
+			// index; the spinner must still land on row 4, not row 0.
+			m.tryConnectOrPromptKey(providerAuthMethodItem{
+				Provider:   providerName,
+				AuthMethod: authMethod,
+			}, 2, 0)
+
+			if m.lastConnectAuthIdx != 4 {
+				t.Errorf("lastConnectAuthIdx = %d, want the selected row 4", m.lastConnectAuthIdx)
+			}
+		})
+	}
+}
