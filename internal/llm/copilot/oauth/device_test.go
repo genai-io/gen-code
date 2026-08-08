@@ -57,14 +57,43 @@ func TestSlowDownWidensPollInterval(t *testing.T) {
 	}
 }
 
-func TestPollAccessTokenGivesUpWhenCancelled(t *testing.T) {
-	serveStub(t, &stubTransport{bodies: []string{`{"error":"authorization_pending"}`}})
+func TestPollAccessTokenReportsWhyItGaveUp(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		body      string
+		wantInErr string
+	}{
+		{
+			name:      "still waiting on the browser",
+			body:      `{"error":"authorization_pending"}`,
+			wantInErr: "context deadline exceeded",
+		},
+		{
+			// An org policy that bars the device flow rejects every poll; the
+			// timeout alone would tell the user nothing about why.
+			name:      "endpoint rejects every poll",
+			status:    http.StatusForbidden,
+			body:      `{}`,
+			wantInErr: "403",
+		},
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			serveStub(t, &stubTransport{status: tc.status, bodies: []string{tc.body}})
 
-	if _, err := pollAccessToken(ctx, deviceCodeResponse{DeviceCode: "dev"}, 5*time.Millisecond); err == nil {
-		t.Fatal("expected pollAccessToken to stop when the context is cancelled")
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+
+			_, err := pollAccessToken(ctx, deviceCodeResponse{DeviceCode: "dev"}, 5*time.Millisecond)
+			if err == nil {
+				t.Fatal("expected pollAccessToken to give up")
+			}
+			if !strings.Contains(err.Error(), tc.wantInErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tc.wantInErr)
+			}
+		})
 	}
 }
 
@@ -122,22 +151,5 @@ func TestPersistSignInDiscardsCredentialWithoutEntitlement(t *testing.T) {
 	}
 	if HasCredentials() {
 		t.Error("expected no stored credentials when the account has no Copilot access")
-	}
-}
-
-func TestPollAccessTokenReportsThePersistentHTTPFailure(t *testing.T) {
-	// An org policy that bars the device flow fails every poll; the timeout
-	// message alone would tell the user nothing about why.
-	serveStub(t, &stubTransport{status: http.StatusForbidden, bodies: []string{`{}`}})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-
-	_, err := pollAccessToken(ctx, deviceCodeResponse{DeviceCode: "dev"}, 5*time.Millisecond)
-	if err == nil {
-		t.Fatal("expected pollAccessToken to fail")
-	}
-	if !strings.Contains(err.Error(), "403") {
-		t.Errorf("error = %q, want the underlying HTTP failure surfaced", err)
 	}
 }

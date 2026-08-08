@@ -393,9 +393,8 @@ func (s *ProviderSelector) renderHints() string {
 	}
 
 	// A sign-in waiting on the browser takes the footer once the modals above
-	// have had their say — their own instructions are the only ones on screen,
-	// while the device code can still be recovered from the log. Esc stays
-	// visible either way, since it is what abandons the sign-in.
+	// have had their say — their keys are documented nowhere else, while the
+	// device code can still be recovered from the log.
 	if prompt := s.renderLoginPrompt(); prompt != "" {
 		return prompt + kit.DimStyle().Render(" · Esc cancel")
 	}

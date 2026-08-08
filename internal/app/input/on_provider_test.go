@@ -917,6 +917,10 @@ func TestLoginPromptShowsDeviceCodeUntilSignInResolves(t *testing.T) {
 	if !strings.Contains(hints, "github.com/login/device") {
 		t.Errorf("hints = %q, want the verification URL", hints)
 	}
+	// Esc is what abandons the sign-in, so the prompt must not displace it.
+	if !strings.Contains(hints, "Esc cancel") {
+		t.Errorf("hints = %q, want Esc to stay visible during a sign-in", hints)
+	}
 
 	// Once the sign-in resolves the instruction is stale, so the footer goes
 	// back to the normal key hints.
@@ -975,20 +979,9 @@ func TestLoginPromptDoesNotHideModalHints(t *testing.T) {
 	})
 
 	// A sign-in can be pending for 15 minutes; a modal opened during it owns the
-	// footer, because its keys are the only ones not documented anywhere else.
+	// footer, because its keys are documented nowhere else.
 	m.confirmRemoveActive = true
 	if got := m.renderHints(); !strings.Contains(got, "y confirm") {
 		t.Errorf("hints = %q, want the confirm-remove keys while its modal is open", got)
-	}
-
-	// With no modal up, the prompt shows — but never at the cost of Esc, which
-	// is what abandons the sign-in.
-	m.confirmRemoveActive = false
-	got := m.renderHints()
-	if !strings.Contains(got, "ABCD-1234") {
-		t.Errorf("hints = %q, want the device code", got)
-	}
-	if !strings.Contains(got, "Esc cancel") {
-		t.Errorf("hints = %q, want Esc to stay visible during a sign-in", got)
 	}
 }

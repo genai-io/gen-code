@@ -92,10 +92,7 @@ func (t Tokens) bearerStale() bool {
 // endpoint returns the Copilot API root to call, defaulting to the individual
 // one when the exchange didn't report a specific host.
 func (t Tokens) endpoint() string {
-	if t.APIEndpoint == "" {
-		return DefaultAPIEndpoint
-	}
-	return t.APIEndpoint
+	return cmp.Or(t.APIEndpoint, DefaultAPIEndpoint)
 }
 
 // load reads the stored credential blob. The bool is false when no usable blob exists.
@@ -152,14 +149,14 @@ type CredentialError struct{ Err error }
 func (e *CredentialError) Error() string { return e.Err.Error() }
 func (e *CredentialError) Unwrap() error { return e.Err }
 
-// NotEntitledError marks a mint that the account itself can never satisfy: the
-// GitHub token was revoked, or the plan carries no Copilot. It separates those
-// from a transient exchange failure, so a caller can tell whether the stored
-// GitHub token is still worth keeping.
-type NotEntitledError struct{ Err error }
+// notEntitledError marks a mint the account itself can never satisfy — a
+// revoked GitHub token, or a plan without Copilot — as opposed to a transient
+// exchange failure. Sign-in uses it to decide whether the credential is worth
+// keeping for a retry.
+type notEntitledError struct{ Err error }
 
-func (e *NotEntitledError) Error() string { return e.Err.Error() }
-func (e *NotEntitledError) Unwrap() error { return e.Err }
+func (e *notEntitledError) Error() string { return e.Err.Error() }
+func (e *notEntitledError) Unwrap() error { return e.Err }
 
 // TokenSource returns a valid Copilot bearer and the API endpoint to send it
 // to, re-minting the bearer when it nears expiry. It is safe for concurrent
@@ -239,9 +236,9 @@ func MintBearer(ctx context.Context, t Tokens) (Tokens, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		return Tokens{}, &NotEntitledError{errors.New("GitHub rejected the stored token — sign in again")}
+		return Tokens{}, &notEntitledError{errors.New("GitHub rejected the stored token — sign in again")}
 	case resp.StatusCode == http.StatusForbidden:
-		return Tokens{}, &NotEntitledError{errors.New("this GitHub account has no active Copilot subscription")}
+		return Tokens{}, &notEntitledError{errors.New("this GitHub account has no active Copilot subscription")}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return Tokens{}, fmt.Errorf("copilot token endpoint returned %s", resp.Status)
 	}

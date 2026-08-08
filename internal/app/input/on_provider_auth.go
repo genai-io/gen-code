@@ -348,6 +348,11 @@ const (
 	providerStatusConnecting = "Connecting..."
 )
 
+// connectVerifyTimeout caps the model listing that records a connection after an
+// interactive sign-in. It runs detached from the sign-in's cancellable context —
+// the credentials are already stored by then — so it needs its own ceiling.
+const connectVerifyTimeout = 30 * time.Second
+
 // IsConnecting reports whether a connect/refresh is in flight, so the spinner-tick
 // loop keeps ticking and the row renders an animated frame.
 func (s *ProviderSelector) IsConnecting() bool {
@@ -484,7 +489,12 @@ func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authI
 				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
-		return s.connectResultMsg(context.Background(), item, authIdx)
+		// Detached from signIn on purpose — the credentials are stored, so this
+		// must survive the user closing the selector — but still bounded, since
+		// nothing in this generic path guarantees ListModels ever returns.
+		listing, done := context.WithTimeout(context.Background(), connectVerifyTimeout)
+		defer done()
+		return s.connectResultMsg(listing, item, authIdx)
 	}
 
 	// Resolves when the flow publishes an instruction, or to nil when it

@@ -28,9 +28,9 @@ type UserCode struct {
 
 // Login runs the GitHub device-flow sign-in for Copilot. It requests a device
 // code, hands the user code to onCode, opens the verification page, polls until
-// the user authorizes, then verifies the account actually has Copilot access
-// before persisting anything. It blocks until the flow completes, the context
-// is cancelled, or it times out.
+// the user authorizes, then mints a bearer to confirm Copilot access before
+// reporting success. It blocks until the flow completes, the context is
+// cancelled, or it times out.
 func Login(ctx context.Context, onCode func(UserCode)) error {
 	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
@@ -58,18 +58,18 @@ func Login(ctx context.Context, onCode func(UserCode)) error {
 // request — minting here turns that into a clear sign-in error and warms the
 // token cache in the same round-trip.
 //
-// Only the account's own verdict (revoked token, no subscription) is worth
-// discarding the credential over. A transient exchange failure still keeps the
-// GitHub token, so a retry can re-mint instead of sending the user back through
-// a fresh 15-minute device flow.
+// Only the account's own verdict is worth discarding the credential over; a
+// transient exchange failure keeps the GitHub token so a retry can re-mint.
 func persistSignIn(ctx context.Context, githubToken string) error {
-	tokens, mintErr := MintBearer(ctx, Tokens{GitHubToken: githubToken})
+	authorized := Tokens{GitHubToken: githubToken}
+
+	tokens, mintErr := MintBearer(ctx, authorized)
 	if mintErr != nil {
-		var notEntitled *NotEntitledError
+		var notEntitled *notEntitledError
 		if errors.As(mintErr, &notEntitled) {
 			return mintErr
 		}
-		tokens = Tokens{GitHubToken: githubToken}
+		tokens = authorized
 	}
 	if err := save(tokens); err != nil {
 		return fmt.Errorf("save credentials: %w", err)
@@ -127,18 +127,14 @@ func slowDownBackoff(interval time.Duration) time.Duration { return interval + 5
 // interval GitHub asks for and backing off further when told to slow down.
 func pollAccessToken(ctx context.Context, device deviceCodeResponse, interval time.Duration) (string, error) {
 	// A poll failure is never fatal on its own — the user may still be finishing
-	// in the browser — but a permanently failing endpoint (an org policy that
-	// bars device flow, a proxy rejecting the call) would otherwise time out
-	// with nothing to show for it, so the last one is kept to report at the end.
+	// in the browser — but an endpoint that rejects every poll would otherwise
+	// time out with nothing to show for it, so keep the last one to report.
 	var lastErr error
 
 	for {
 		select {
 		case <-ctx.Done():
-			if lastErr != nil {
-				return "", fmt.Errorf("sign-in did not complete: %w", lastErr)
-			}
-			return "", fmt.Errorf("sign-in did not complete: %w", ctx.Err())
+			return "", fmt.Errorf("sign-in did not complete: %w", cmp.Or(lastErr, ctx.Err()))
 		case <-time.After(interval):
 		}
 

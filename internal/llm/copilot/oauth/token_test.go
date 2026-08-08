@@ -165,6 +165,12 @@ func TestMintBearerReportsMissingSubscription(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no active Copilot subscription") {
 		t.Fatalf("MintBearer on 403 = %v, want a missing-subscription error", err)
 	}
+	// The account's own verdict: sign-in must discard the credential, not keep
+	// it for a retry that can never succeed.
+	var notEntitled *notEntitledError
+	if !errors.As(err, &notEntitled) {
+		t.Errorf("MintBearer on 403 = %T, want *notEntitledError", err)
+	}
 }
 
 func TestMintBearerReportsRevokedToken(t *testing.T) {
@@ -173,6 +179,10 @@ func TestMintBearerReportsRevokedToken(t *testing.T) {
 	_, err := MintBearer(context.Background(), Tokens{GitHubToken: "gho_test"})
 	if err == nil || !strings.Contains(err.Error(), "sign in again") {
 		t.Fatalf("MintBearer on 401 = %v, want a sign-in-again error", err)
+	}
+	var notEntitled *notEntitledError
+	if !errors.As(err, &notEntitled) {
+		t.Errorf("MintBearer on 401 = %T, want *notEntitledError", err)
 	}
 }
 
@@ -213,21 +223,13 @@ func TestMintBearerKeepsKnownEndpointWhenReplyOmitsIt(t *testing.T) {
 	}
 }
 
-func TestMintBearerMarksAccountFailuresAsNotEntitled(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		serveStub(t, &stubTransport{status: status, bodies: []string{`{}`}})
-
-		_, err := MintBearer(context.Background(), Tokens{GitHubToken: "gho_test"})
-		var notEntitled *NotEntitledError
-		if !errors.As(err, &notEntitled) {
-			t.Errorf("MintBearer on %d = %T (%v), want *NotEntitledError", status, err, err)
-		}
-	}
-
-	// A server-side blip is transient, not an account verdict.
+func TestMintBearerTreatsServerFailuresAsTransient(t *testing.T) {
+	// A 502 is the endpoint's problem, not a verdict on the account, so sign-in
+	// keeps the credential and retries rather than discarding it.
 	serveStub(t, &stubTransport{status: http.StatusBadGateway, bodies: []string{`{}`}})
+
 	_, err := MintBearer(context.Background(), Tokens{GitHubToken: "gho_test"})
-	var notEntitled *NotEntitledError
+	var notEntitled *notEntitledError
 	if errors.As(err, &notEntitled) {
 		t.Errorf("MintBearer on 502 = %v, want a plain transient error", err)
 	}
