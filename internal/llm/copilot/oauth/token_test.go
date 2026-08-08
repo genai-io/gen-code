@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -32,10 +33,11 @@ func (s *stubTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	status := cmp.Or(s.status, http.StatusOK)
 	return &http.Response{
 		StatusCode: status,
-		Status:     http.StatusText(status),
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Request:    req,
+		// Match net/http's "403 Forbidden" form — error messages quote it.
+		Status:  fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		Header:  http.Header{"Content-Type": []string{"application/json"}},
+		Body:    io.NopCloser(strings.NewReader(body)),
+		Request: req,
 	}, nil
 }
 
@@ -191,5 +193,42 @@ func TestHasCredentialsTracksStoredGitHubToken(t *testing.T) {
 	}
 	if HasCredentials() {
 		t.Error("expected no credentials after logout")
+	}
+}
+
+func TestMintBearerKeepsKnownEndpointWhenReplyOmitsIt(t *testing.T) {
+	serveStub(t, &stubTransport{bodies: []string{`{"token":"fresh-bearer","expires_at":0}`}})
+
+	// A reply without endpoints.api must not demote an enterprise account to the
+	// individual host — that would send its bearer to the wrong API from here on.
+	got, err := MintBearer(context.Background(), Tokens{
+		GitHubToken: "gho_test",
+		APIEndpoint: "https://api.business.githubcopilot.com",
+	})
+	if err != nil {
+		t.Fatalf("MintBearer: %v", err)
+	}
+	if got.APIEndpoint != "https://api.business.githubcopilot.com" {
+		t.Errorf("APIEndpoint = %q, want the previously known enterprise host", got.APIEndpoint)
+	}
+}
+
+func TestMintBearerMarksAccountFailuresAsNotEntitled(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		serveStub(t, &stubTransport{status: status, bodies: []string{`{}`}})
+
+		_, err := MintBearer(context.Background(), Tokens{GitHubToken: "gho_test"})
+		var notEntitled *NotEntitledError
+		if !errors.As(err, &notEntitled) {
+			t.Errorf("MintBearer on %d = %T (%v), want *NotEntitledError", status, err, err)
+		}
+	}
+
+	// A server-side blip is transient, not an account verdict.
+	serveStub(t, &stubTransport{status: http.StatusBadGateway, bodies: []string{`{}`}})
+	_, err := MintBearer(context.Background(), Tokens{GitHubToken: "gho_test"})
+	var notEntitled *NotEntitledError
+	if errors.As(err, &notEntitled) {
+		t.Errorf("MintBearer on 502 = %v, want a plain transient error", err)
 	}
 }

@@ -379,11 +379,6 @@ func (s *ProviderSelector) renderConfirmRemove() string {
 // ── Footer hints ────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) renderHints() string {
-	// A sign-in waiting on the browser takes the footer: the device code exists
-	// nowhere else, so the user can't finish without seeing it here.
-	if prompt := s.renderLoginPrompt(); prompt != "" {
-		return prompt
-	}
 	if s.customFormActive {
 		return kit.DimStyle().Render("Tab/↑/↓ switch field · Enter save & connect · Esc cancel")
 	}
@@ -395,6 +390,14 @@ func (s *ProviderSelector) renderHints() string {
 	}
 	if s.confirmRemoveActive {
 		return kit.DimStyle().Render("y confirm · any other key cancel")
+	}
+
+	// A sign-in waiting on the browser takes the footer once the modals above
+	// have had their say — their own instructions are the only ones on screen,
+	// while the device code can still be recovered from the log. Esc stays
+	// visible either way, since it is what abandons the sign-in.
+	if prompt := s.renderLoginPrompt(); prompt != "" {
+		return prompt + kit.DimStyle().Render(" · Esc cancel")
 	}
 
 	var parts []string

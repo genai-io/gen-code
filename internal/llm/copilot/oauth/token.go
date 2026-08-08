@@ -11,6 +11,7 @@
 package oauth
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -151,6 +152,15 @@ type CredentialError struct{ Err error }
 func (e *CredentialError) Error() string { return e.Err.Error() }
 func (e *CredentialError) Unwrap() error { return e.Err }
 
+// NotEntitledError marks a mint that the account itself can never satisfy: the
+// GitHub token was revoked, or the plan carries no Copilot. It separates those
+// from a transient exchange failure, so a caller can tell whether the stored
+// GitHub token is still worth keeping.
+type NotEntitledError struct{ Err error }
+
+func (e *NotEntitledError) Error() string { return e.Err.Error() }
+func (e *NotEntitledError) Unwrap() error { return e.Err }
+
 // TokenSource returns a valid Copilot bearer and the API endpoint to send it
 // to, re-minting the bearer when it nears expiry. It is safe for concurrent
 // use; mints are serialized so a burst of requests triggers at most one.
@@ -184,9 +194,9 @@ func (ts *TokenSource) Token(ctx context.Context) (bearer, apiEndpoint string, e
 		}
 		return "", "", &CredentialError{fmt.Errorf("Copilot token refresh failed: %w", err)}
 	}
-	if err := save(minted); err != nil {
-		return "", "", &CredentialError{fmt.Errorf("save credentials: %w", err)}
-	}
+	// Persisting is only a warm start for the next process — the bearer in hand
+	// is valid either way, so an unwritable store must not fail a live turn.
+	_ = save(minted)
 	return minted.CopilotToken, minted.endpoint(), nil
 }
 
@@ -229,9 +239,9 @@ func MintBearer(ctx context.Context, t Tokens) (Tokens, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		return Tokens{}, errors.New("GitHub rejected the stored token — sign in again")
+		return Tokens{}, &NotEntitledError{errors.New("GitHub rejected the stored token — sign in again")}
 	case resp.StatusCode == http.StatusForbidden:
-		return Tokens{}, errors.New("this GitHub account has no active Copilot subscription")
+		return Tokens{}, &NotEntitledError{errors.New("this GitHub account has no active Copilot subscription")}
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return Tokens{}, fmt.Errorf("copilot token endpoint returned %s", resp.Status)
 	}
@@ -246,7 +256,10 @@ func MintBearer(ctx context.Context, t Tokens) (Tokens, error) {
 
 	updated := t
 	updated.CopilotToken = ctr.Token
-	updated.APIEndpoint = ctr.Endpoints.API
+	// Keep the endpoint we already know when a reply omits it: dropping back to
+	// the individual host would send an enterprise bearer to the wrong API for
+	// the rest of the session, and across restarts.
+	updated.APIEndpoint = cmp.Or(ctr.Endpoints.API, t.APIEndpoint)
 	updated.ExpiresAt = bearerExpiry(ctr.ExpiresAt)
 	return updated, nil
 }

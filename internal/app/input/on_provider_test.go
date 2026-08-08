@@ -965,3 +965,30 @@ func TestLoginPromptWithoutCodeJustPointsAtTheBrowser(t *testing.T) {
 		t.Errorf("renderLoginPrompt = %q, want the authorize URL", got)
 	}
 }
+
+func TestLoginPromptDoesNotHideModalHints(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 0)
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		Prompt: llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+
+	// A sign-in can be pending for 15 minutes; a modal opened during it owns the
+	// footer, because its keys are the only ones not documented anywhere else.
+	m.confirmRemoveActive = true
+	if got := m.renderHints(); !strings.Contains(got, "y confirm") {
+		t.Errorf("hints = %q, want the confirm-remove keys while its modal is open", got)
+	}
+
+	// With no modal up, the prompt shows — but never at the cost of Esc, which
+	// is what abandons the sign-in.
+	m.confirmRemoveActive = false
+	got := m.renderHints()
+	if !strings.Contains(got, "ABCD-1234") {
+		t.Errorf("hints = %q, want the device code", got)
+	}
+	if !strings.Contains(got, "Esc cancel") {
+		t.Errorf("hints = %q, want Esc to stay visible during a sign-in", got)
+	}
+}

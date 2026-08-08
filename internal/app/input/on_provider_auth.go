@@ -454,7 +454,10 @@ func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authI
 		return nil
 	}
 	prompts := make(chan llm.LoginPrompt, 1)
-	ctx, cancel := context.WithCancel(context.Background())
+	// The cancellable context covers the sign-in only. Once it returns the
+	// credentials are already stored, so closing the selector during the model
+	// listing that follows must not abandon a connection the user completed.
+	signIn, cancel := context.WithCancel(context.Background())
 	s.cancelLogin = cancel
 
 	work := func() tea.Msg {
@@ -474,14 +477,14 @@ func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authI
 		}
 		defer close(prompts)
 
-		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onPrompt); err != nil {
+		if err := llm.Login(signIn, item.Provider, item.AuthMethod, onPrompt); err != nil {
 			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
 				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
-		return s.connectResultMsg(ctx, item, authIdx)
+		return s.connectResultMsg(context.Background(), item, authIdx)
 	}
 
 	// Resolves when the flow publishes an instruction, or to nil when it

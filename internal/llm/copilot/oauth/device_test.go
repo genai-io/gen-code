@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -90,5 +91,53 @@ func TestPollIntervalHasFloor(t *testing.T) {
 	}
 	if got := pollInterval(deviceCodeResponse{Interval: 12}); got != 12*time.Second {
 		t.Errorf("pollInterval = %v, want GitHub's 12s", got)
+	}
+}
+
+func TestPersistSignInKeepsTokenWhenTheExchangeBlips(t *testing.T) {
+	isolateSecrets(t)
+	serveStub(t, &stubTransport{status: http.StatusBadGateway, bodies: []string{`{}`}})
+
+	// The browser authorization already succeeded, so the GitHub token is good;
+	// only the bearer exchange failed. Throwing it away would cost the user
+	// another full device flow.
+	err := persistSignIn(context.Background(), "gho_authorized")
+	if err == nil {
+		t.Fatal("expected persistSignIn to report the failed exchange")
+	}
+	stored, ok := load()
+	if !ok || stored.GitHubToken != "gho_authorized" {
+		t.Errorf("stored credentials = %+v, want the authorized GitHub token kept", stored)
+	}
+}
+
+func TestPersistSignInDiscardsCredentialWithoutEntitlement(t *testing.T) {
+	isolateSecrets(t)
+	serveStub(t, &stubTransport{status: http.StatusForbidden, bodies: []string{`{}`}})
+
+	// No Copilot subscription is the account's own verdict — retrying with the
+	// same token can never work, so nothing should be left behind.
+	if err := persistSignIn(context.Background(), "gho_authorized"); err == nil {
+		t.Fatal("expected persistSignIn to fail without a subscription")
+	}
+	if HasCredentials() {
+		t.Error("expected no stored credentials when the account has no Copilot access")
+	}
+}
+
+func TestPollAccessTokenReportsThePersistentHTTPFailure(t *testing.T) {
+	// An org policy that bars the device flow fails every poll; the timeout
+	// message alone would tell the user nothing about why.
+	serveStub(t, &stubTransport{status: http.StatusForbidden, bodies: []string{`{}`}})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := pollAccessToken(ctx, deviceCodeResponse{DeviceCode: "dev"}, 5*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected pollAccessToken to fail")
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Errorf("error = %q, want the underlying HTTP failure surfaced", err)
 	}
 }
