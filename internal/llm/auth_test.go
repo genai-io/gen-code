@@ -11,9 +11,9 @@ type fakeAuthenticator struct {
 	hasCredentials bool
 }
 
-func (f *fakeAuthenticator) Login(_ context.Context, onURL func(string)) error {
-	if onURL != nil {
-		onURL("https://example.com/authorize")
+func (f *fakeAuthenticator) Login(_ context.Context, onPrompt func(LoginPrompt)) error {
+	if onPrompt != nil {
+		onPrompt(LoginPrompt{URL: "https://example.com/authorize", UserCode: "ABCD-1234"})
 	}
 	f.loggedIn = true
 	return nil
@@ -60,15 +60,15 @@ func TestAuthenticatorRegistrationAndDispatch(t *testing.T) {
 		t.Fatal("expected stored credentials after the fake reports them")
 	}
 
-	var gotURL string
-	if err := Login(context.Background(), provider, method, func(u string) { gotURL = u }); err != nil {
+	var got LoginPrompt
+	if err := Login(context.Background(), provider, method, func(p LoginPrompt) { got = p }); err != nil {
 		t.Fatalf("Login: %v", err)
 	}
 	if !fa.loggedIn {
 		t.Error("Login was not dispatched to the authenticator")
 	}
-	if gotURL == "" {
-		t.Error("onURL callback was not invoked")
+	if got.URL == "" || got.UserCode == "" {
+		t.Errorf("onPrompt callback did not deliver the sign-in instruction: %+v", got)
 	}
 
 	if err := Logout(provider, method); err != nil || !fa.loggedOut {

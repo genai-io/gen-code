@@ -421,6 +421,7 @@ func (s *ProviderSelector) resetNavigation() {
 // Cancel cancels the selector and clears transient state so the next open starts cleanly.
 func (s *ProviderSelector) Cancel() {
 	s.active = false
+	s.cancelInteractiveLogin()
 	s.connectedProviders = nil
 	s.allProviders = nil
 	s.allModels = nil

@@ -263,16 +263,24 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	return nil
 }
 
-// tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
-func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
+// tryConnectOrPromptKey connects if env vars are available, otherwise shows API
+// key input.
+//
+// formAuthIdx addresses the auth method within its provider, which is what the
+// API-key form needs to route the entered key. The connect helpers want
+// something different — the visible row their spinner and result render on —
+// so they take s.selectedIdx, the row the user pressed Enter on. The two agree
+// only for the first row, which is why mixing them up parks the spinner on
+// whatever provider happens to be listed first.
+func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, formAuthIdx int) tea.Cmd {
 	// Interactive (OAuth) auth signs in via the browser, not an API key. If a
 	// prior token is present, validate it with the normal connect path instead
 	// of forcing a fresh browser login.
 	if llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
 		if llm.HasInteractiveCredentials(am.Provider, am.AuthMethod) {
-			return s.connectAuthMethod(am, authIdx)
+			return s.connectAuthMethod(am, s.selectedIdx)
 		}
-		return s.connectInteractive(am, authIdx)
+		return s.connectInteractive(am, s.selectedIdx)
 	}
 
 	if am.Status == llm.StatusAvailable || providerIsEnvReady(am.EnvVars) {
@@ -285,7 +293,7 @@ func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, prov
 		return nil
 	}
 	s.apiKeyProviderIdx = providerIdx
-	s.apiKeyAuthIdx = authIdx
+	s.apiKeyAuthIdx = formAuthIdx
 	s.initAPIKeyInput(envVar)
 	return nil
 }
@@ -347,6 +355,11 @@ const (
 	providerStatusRefreshing = "Refreshing..."
 	providerStatusConnecting = "Connecting..."
 )
+
+// connectVerifyTimeout caps the model listing that records a connection after an
+// interactive sign-in. It runs detached from the sign-in's cancellable context —
+// the credentials are already stored by then — so it needs its own ceiling.
+const connectVerifyTimeout = 30 * time.Second
 
 // IsConnecting reports whether a connect/refresh is in flight, so the spinner-tick
 // loop keeps ticking and the row renders an animated frame.
@@ -415,6 +428,9 @@ func (s *ProviderSelector) beginConnect(status string, authIdx int) bool {
 	s.lastConnectResult = status
 	s.lastConnectAuthIdx = authIdx
 	s.lastConnectSuccess = false
+	// Any sign-in instruction belongs to the connect this call starts; every
+	// connect/refresh passes through here, so clearing it once here is enough.
+	s.loginPrompt = llm.LoginPrompt{}
 	return true
 }
 
@@ -437,34 +453,69 @@ func (s *ProviderSelector) connectResultMsg(ctx context.Context, item providerAu
 	}
 }
 
-// connectInteractive runs an OAuth (PKCE) sign-in for an auth method that
+// connectInteractive runs an OAuth sign-in for an auth method that
 // authenticates in the browser, then records the connection. It reuses the
 // connect spinner and result plumbing so the row animates while the browser
 // flow is in progress.
+//
+// The sign-in also reports what the user has to do — a URL, plus a code to type
+// there for device flows. That arrives partway through the blocking Login call,
+// so it rides its own channel and its own command, letting the footer show the
+// instruction while the same flow is still waiting on the browser.
 func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authIdx int) tea.Cmd {
 	if !s.beginConnect(providerStatusConnecting, authIdx) {
 		return nil
 	}
+	prompts := make(chan llm.LoginPrompt, 1)
+	// The cancellable context covers the sign-in only. Once it returns the
+	// credentials are already stored, so closing the selector during the model
+	// listing that follows must not abandon a connection the user completed.
+	signIn, cancel := context.WithCancel(context.Background())
+	s.cancelLogin = cancel
 
 	work := func() tea.Msg {
-		ctx := context.Background()
+		defer cancel()
 
-		// Log the authorize URL so it's recoverable when the browser can't be
-		// opened automatically (e.g. over SSH).
-		onURL := func(u string) {
+		onPrompt := func(p llm.LoginPrompt) {
+			// Log it too, so it's recoverable from the log when the browser
+			// can't be opened automatically (e.g. over SSH).
 			log.Logger().Info("provider sign-in",
-				zap.String("provider", string(item.Provider)), zap.String("url", u))
+				zap.String("provider", string(item.Provider)),
+				zap.String("url", p.URL),
+				zap.String("user_code", p.UserCode))
+			select {
+			case prompts <- p:
+			default: // a prompt is already queued; the first one is the live instruction.
+			}
 		}
-		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onURL); err != nil {
+		defer close(prompts)
+
+		if err := llm.Login(signIn, item.Provider, item.AuthMethod, onPrompt); err != nil {
 			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
 				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
-		return s.connectResultMsg(ctx, item, authIdx)
+		// Detached from signIn on purpose — the credentials are stored, so this
+		// must survive the user closing the selector — but still bounded, since
+		// nothing in this generic path guarantees ListModels ever returns.
+		listing, done := context.WithTimeout(context.Background(), connectVerifyTimeout)
+		defer done()
+		return s.connectResultMsg(listing, item, authIdx)
 	}
-	return tea.Batch(providerConnectingTickCmd(), work)
+
+	// Resolves when the flow publishes an instruction, or to nil when it
+	// finishes without one (the channel closes on the way out either way).
+	waitPrompt := func() tea.Msg {
+		p, ok := <-prompts
+		if !ok {
+			return nil
+		}
+		return providerLoginPromptMsg{AuthIdx: authIdx, Prompt: p}
+	}
+
+	return tea.Batch(providerConnectingTickCmd(), work, waitPrompt)
 }
 
 // connectAuthMethod initiates an async connection to a provider auth method.
@@ -477,6 +528,27 @@ func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authId
 		return s.connectResultMsg(context.Background(), item, authIdx)
 	}
 	return tea.Batch(providerConnectingTickCmd(), work)
+}
+
+// cancelInteractiveLogin stops an in-flight sign-in, if any. It is idempotent,
+// so closing the selector twice — or closing it after the sign-in already
+// finished — is a no-op.
+func (s *ProviderSelector) cancelInteractiveLogin() {
+	if s.cancelLogin == nil {
+		return
+	}
+	s.cancelLogin()
+	s.cancelLogin = nil
+}
+
+// HandleLoginPrompt shows what an in-flight interactive sign-in needs from the
+// user. It is ignored once the sign-in it belongs to has resolved, so a late
+// prompt can't reinstate the instruction over a finished row.
+func (s *ProviderSelector) HandleLoginPrompt(msg providerLoginPromptMsg) {
+	if !s.IsConnecting() || msg.AuthIdx != s.lastConnectAuthIdx {
+		return
+	}
+	s.loginPrompt = msg.Prompt
 }
 
 // HandleConnectResult updates the selector state with connection result.

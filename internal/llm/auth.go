@@ -5,6 +5,15 @@ import (
 	"fmt"
 )
 
+// LoginPrompt is what the user has to do to finish an interactive sign-in: the
+// page to open and, for device-code flows, the code to type there. A
+// browser-callback (PKCE) flow leaves UserCode empty, because opening the URL
+// is the whole instruction.
+type LoginPrompt struct {
+	URL      string
+	UserCode string
+}
+
 // Authenticator performs interactive (non-API-key) sign-in for a provider auth
 // method — e.g. an OAuth subscription login. Provider packages register one per
 // (provider, authMethod) alongside their factory, so product code can trigger
@@ -12,9 +21,10 @@ import (
 // package.
 type Authenticator interface {
 	// Login runs the interactive sign-in, persisting credentials on success.
-	// onURL, if non-nil, receives a URL the user must visit — useful when a
-	// browser cannot be opened automatically (e.g. over SSH).
-	Login(ctx context.Context, onURL func(string)) error
+	// onPrompt, if non-nil, receives the instruction the user must follow —
+	// needed when a browser cannot be opened automatically (e.g. over SSH), and
+	// always needed for device-code flows, where the code exists nowhere else.
+	Login(ctx context.Context, onPrompt func(LoginPrompt)) error
 	// Logout clears any stored credentials for the auth method.
 	Logout() error
 }
@@ -58,12 +68,12 @@ func HasInteractiveCredentials(provider Name, authMethod AuthMethod) bool {
 }
 
 // Login runs the interactive sign-in for a provider auth method.
-func Login(ctx context.Context, provider Name, authMethod AuthMethod, onURL func(string)) error {
+func Login(ctx context.Context, provider Name, authMethod AuthMethod, onPrompt func(LoginPrompt)) error {
 	a := globalRegistry.authenticator(provider, authMethod)
 	if a == nil {
 		return fmt.Errorf("provider %s:%s does not support interactive login", provider, authMethod)
 	}
-	return a.Login(ctx, onURL)
+	return a.Login(ctx, onPrompt)
 }
 
 // Logout clears stored credentials for a provider auth method. It is a no-op for

@@ -392,6 +392,13 @@ func (s *ProviderSelector) renderHints() string {
 		return kit.DimStyle().Render("y confirm · any other key cancel")
 	}
 
+	// A sign-in waiting on the browser takes the footer once the modals above
+	// have had their say — their keys are documented nowhere else, while the
+	// device code can still be recovered from the log.
+	if prompt := s.renderLoginPrompt(); prompt != "" {
+		return prompt + kit.DimStyle().Render(" · Esc cancel")
+	}
+
 	var parts []string
 	parts = append(parts, "↑/↓ navigate")
 	if s.activeTab == providerTabProviders {
@@ -401,6 +408,20 @@ func (s *ProviderSelector) renderHints() string {
 	}
 	parts = append(parts, "←/→/Tab switch", "Esc cancel")
 	return kit.DimStyle().Render(strings.Join(parts, " · "))
+}
+
+// renderLoginPrompt renders where to complete an interactive sign-in that is
+// still waiting on the browser, or "" when none is pending. For a device flow
+// the code itself rides on the provider's row next to the spinner, so this only
+// carries the page to open.
+func (s *ProviderSelector) renderLoginPrompt() string {
+	if s.loginPrompt.URL == "" || !s.IsConnecting() {
+		return ""
+	}
+	if s.loginPrompt.UserCode == "" {
+		return kit.DimStyle().Render("Finish the sign-in in your browser: " + s.loginPrompt.URL)
+	}
+	return kit.DimStyle().Render("Enter the code at " + s.loginPrompt.URL)
 }
 
 // ── Connection result ───────────────────────────────────────────────────────
@@ -413,7 +434,9 @@ func (s *ProviderSelector) appendConnectResult(envInfo string, itemIdx int) stri
 		return envInfo
 	}
 	result := s.renderConnectResult()
-	if envInfo == "" {
+	// Measure, don't compare: a styled empty string still carries ANSI codes, so
+	// a provider with nothing in its info column would otherwise get the gap.
+	if lipgloss.Width(envInfo) == 0 {
 		return result
 	}
 	return envInfo + "   " + result
@@ -439,10 +462,24 @@ func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 var providerSpinnerFrames = kit.BrailleSpinnerFrames
 
 func (s *ProviderSelector) renderConnectResult() string {
-	// While in flight, show just the animated braille spinner (no text).
-	if s.IsConnecting() {
-		frame := providerSpinnerFrames[s.spinnerTick%len(providerSpinnerFrames)]
-		return kit.DimStyle().Render(frame)
+	if !s.IsConnecting() {
+		return s.connectResultStyle().Render(s.lastConnectResult)
 	}
-	return s.connectResultStyle().Render(s.lastConnectResult)
+
+	// While in flight the row shows the animated braille spinner, plus the
+	// device code when one is pending. The code sits here rather than in the
+	// footer because it belongs to this provider, and it is short enough to fit
+	// the info column at any panel width; its URL is long and identical every
+	// time, so that stays in the footer.
+	frame := kit.DimStyle().Render(providerSpinnerFrames[s.spinnerTick%len(providerSpinnerFrames)])
+	if s.loginPrompt.UserCode == "" {
+		return frame
+	}
+	return frame + " " + loginCodeStyle().Render(s.loginPrompt.UserCode)
+}
+
+// loginCodeStyle highlights the device code — it is the one thing on screen the
+// user has to copy.
+func loginCodeStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 }

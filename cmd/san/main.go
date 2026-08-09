@@ -21,6 +21,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/alibaba"
 	_ "github.com/genai-io/san/internal/llm/anthropic"
 	_ "github.com/genai-io/san/internal/llm/bigmodel"
+	_ "github.com/genai-io/san/internal/llm/copilot"
 	_ "github.com/genai-io/san/internal/llm/custom"
 	_ "github.com/genai-io/san/internal/llm/deepseek"
 	_ "github.com/genai-io/san/internal/llm/google"

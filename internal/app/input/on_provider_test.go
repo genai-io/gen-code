@@ -70,7 +70,7 @@ type storedCredentialAuthenticator struct {
 	has        bool
 }
 
-func (a *storedCredentialAuthenticator) Login(context.Context, func(string)) error {
+func (a *storedCredentialAuthenticator) Login(context.Context, func(llm.LoginPrompt)) error {
 	a.loginCalls++
 	return fmt.Errorf("unexpected login")
 }
@@ -897,5 +897,141 @@ func TestRebuildModelsTabSortsByNameDescending(t *testing.T) {
 	want := []string{"unknown", "large", "current-small", "medium-b", "medium-a"}
 	if strings.Join(ids, ",") != strings.Join(want, ",") {
 		t.Fatalf("model order = %v, want %v", ids, want)
+	}
+}
+
+func TestLoginPromptShowsDeviceCodeUntilSignInResolves(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 3)
+
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 3,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+
+	// The code rides on the connecting provider's own row, so it is obvious
+	// which sign-in it belongs to; the row is where the spinner already is.
+	row := xansi.Strip(m.appendConnectResult("2 auth methods", 3))
+	if !strings.Contains(row, "ABCD-1234") {
+		t.Errorf("row = %q, want the device code beside the spinner", row)
+	}
+	if other := xansi.Strip(m.appendConnectResult("", 4)); strings.Contains(other, "ABCD-1234") {
+		t.Errorf("row 4 = %q, want the code only on the connecting row", other)
+	}
+
+	// The URL is long and the same every time, so it stays in the footer where
+	// there is width for it — alongside the Esc that abandons the sign-in.
+	hints := xansi.Strip(m.renderHints())
+	if !strings.Contains(hints, "github.com/login/device") {
+		t.Errorf("hints = %q, want the verification URL", hints)
+	}
+	if !strings.Contains(hints, "Esc cancel") {
+		t.Errorf("hints = %q, want Esc to stay visible during a sign-in", hints)
+	}
+
+	// Once the sign-in resolves the instruction is stale everywhere.
+	m.HandleConnectResult(providerConnectResultMsg{AuthIdx: 3, Success: false, Message: "sign-in failed"})
+	if got := xansi.Strip(m.appendConnectResult("", 3)); strings.Contains(got, "ABCD-1234") {
+		t.Errorf("row = %q, want the device code gone after the sign-in resolved", got)
+	}
+	if got := xansi.Strip(m.renderHints()); strings.Contains(got, "login/device") {
+		t.Errorf("hints = %q, want the URL gone after the sign-in resolved", got)
+	}
+}
+
+func TestLoginPromptIgnoredWhenNoSignInIsPending(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+
+	// No connect in flight: a late prompt must not paint an instruction over a
+	// row the user is done with.
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 3,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+	if got := m.renderLoginPrompt(); got != "" {
+		t.Errorf("renderLoginPrompt = %q, want empty with no sign-in pending", got)
+	}
+
+	// A prompt for a different row is stale too.
+	m.beginConnect(providerStatusConnecting, 3)
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		AuthIdx: 9,
+		Prompt:  llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "WXYZ-5678"},
+	})
+	if got := m.renderLoginPrompt(); got != "" {
+		t.Errorf("renderLoginPrompt = %q, want empty for a prompt from another row", got)
+	}
+}
+
+func TestLoginPromptWithoutCodeJustPointsAtTheBrowser(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 0)
+
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		Prompt: llm.LoginPrompt{URL: "https://auth.openai.com/oauth/authorize?x=1"},
+	})
+
+	got := m.renderLoginPrompt()
+	if !strings.Contains(got, "auth.openai.com") {
+		t.Errorf("renderLoginPrompt = %q, want the authorize URL", got)
+	}
+}
+
+func TestLoginPromptDoesNotHideModalHints(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.beginConnect(providerStatusConnecting, 0)
+	m.HandleLoginPrompt(providerLoginPromptMsg{
+		Prompt: llm.LoginPrompt{URL: "https://github.com/login/device", UserCode: "ABCD-1234"},
+	})
+
+	// A sign-in can be pending for 15 minutes; a modal opened during it owns the
+	// footer, because its keys are documented nowhere else.
+	m.confirmRemoveActive = true
+	if got := m.renderHints(); !strings.Contains(got, "y confirm") {
+		t.Errorf("hints = %q, want the confirm-remove keys while its modal is open", got)
+	}
+}
+
+// TestInteractiveConnectMarksTheSelectedRow pins the spinner and result to the
+// row the user pressed Enter on. The auth-method index the API-key form uses is
+// a different number, and handing that to the connect helpers instead parked the
+// spinner on whichever provider was listed first.
+func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
+	// Both interactive branches: reusing a stored token, and a fresh sign-in.
+	for _, stored := range []bool{true, false} {
+		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+			authMethod := llm.AuthMethod("subscription-row")
+
+			llm.Register(llm.Meta{
+				Provider:    providerName,
+				AuthMethod:  authMethod,
+				DisplayName: "Row Index Test",
+			}, func(context.Context) (llm.Provider, error) {
+				return &staticListProvider{name: string(providerName)}, nil
+			})
+			llm.RegisterAuthenticator(providerName, authMethod, &storedCredentialAuthenticator{has: stored})
+			t.Cleanup(func() { llm.Unregister(providerName, authMethod) })
+
+			m := NewProviderSelector()
+			m.active = true
+			m.selectedIdx = 4
+
+			// A single-auth-method provider row passes 0 as the form's auth
+			// index; the spinner must still land on row 4, not row 0.
+			m.tryConnectOrPromptKey(providerAuthMethodItem{
+				Provider:   providerName,
+				AuthMethod: authMethod,
+			}, 2, 0)
+
+			if m.lastConnectAuthIdx != 4 {
+				t.Errorf("lastConnectAuthIdx = %d, want the selected row 4", m.lastConnectAuthIdx)
+			}
+		})
 	}
 }

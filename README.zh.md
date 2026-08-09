@@ -135,6 +135,7 @@ san --resume                 # 选择历史会话恢复
 |:--------|:---------|
 | **Anthropic** (Claude) | `ANTHROPIC_API_KEY` 或 [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
 | **OpenAI** (GPT, o 系列, Codex) | `OPENAI_API_KEY`，或使用 ChatGPT 订阅（通过 `/models` 登录） |
+| **GitHub Copilot**（Copilot 全部模型） | 使用 Copilot 订阅（通过 `/models` 登录） |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
 | **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |

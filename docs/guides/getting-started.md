@@ -50,6 +50,11 @@ for Anthropic). Supported providers and the env var each one reads:
 
 You can also set them in `.env` or `~/.san/providers.json`.
 
+Two providers take a subscription instead of a key: **ChatGPT Subscription**
+(OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in
+`/models` and San opens the browser to sign in — Copilot shows an
+eight-character code to type on the GitHub page it opens.
+
 ## First Turn
 
 Type a prompt and press `Enter`:

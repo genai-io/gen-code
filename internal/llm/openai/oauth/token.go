@@ -4,8 +4,9 @@
 //
 // It lets a user with a ChatGPT Plus/Pro/Business plan drive san's OpenAI
 // provider without a metered API key, mirroring how OpenAI's own Codex CLI
-// authenticates. The package is self-contained (stdlib + internal/secret only)
-// so a headless `san login` command could reuse it later.
+// authenticates. The package depends only on the stdlib and leaf infrastructure
+// (internal/secret, internal/proc) — never on internal/llm — so a headless
+// `san login` command could reuse it later.
 package oauth
 
 import (
