@@ -33,6 +33,15 @@ type env struct {
 	// active — see InferResponse.TotalInputTokens.
 	InputTokens  int
 	OutputTokens int
+	// CachedPrefixTokens is the latest infer call's cached prompt prefix
+	// (creation + read). On a provider whose breakpoint sits at the end of the
+	// system prompt, that prefix is exactly the tool definitions plus the
+	// system prompt — an exact measurement /context uses in place of its
+	// estimate. Zero when nothing cached: no turn yet, a provider that caches
+	// on its own boundary, or a prefix below the model's cacheable minimum
+	// (512–4096 tokens depending on the model), which is why the reading is
+	// always corroborated rather than trusted outright.
+	CachedPrefixTokens int
 	// ConversationCost is the session-cumulative spend shown in the status
 	// bar. It survives ResetContextDisplay (per-compaction) so compaction
 	// doesn't erase prior spend; only ResetTokens (/clear, /new) zeroes it.
@@ -289,6 +298,10 @@ func parseSessionMode(mode string) setting.OperationMode {
 func (m *env) ResetContextDisplay() {
 	m.InputTokens = 0
 	m.OutputTokens = 0
+	// The prefix measurement belongs to the same infer call as InputTokens;
+	// keeping it past the reset would pair an exact prefix with an estimated
+	// total and report a split neither number supports.
+	m.CachedPrefixTokens = 0
 }
 
 // ResetTokens clears all token/cost accounting for a fresh session (/clear,

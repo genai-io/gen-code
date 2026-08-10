@@ -37,6 +37,14 @@ type ContextUsage struct {
 	// completes, which falls the total back to the estimate.
 	Measured int
 
+	// CachedPrefix is the exact token count of the system prompt and the tool
+	// definitions together, read from the provider's cache accounting. When it
+	// is set, those categories and the conversation are each scaled to their
+	// own exact total instead of sharing one — which stops an estimation error
+	// in the tool schemas from being pushed onto Messages. Zero means no exact
+	// prefix was available and the whole split scales to Measured.
+	CachedPrefix int
+
 	SystemPrompt int
 	Tools        int
 	MCPTools     int
@@ -50,6 +58,11 @@ type contextCategory struct {
 	label  string
 	tokens int
 	color  kit.AdaptiveColor
+	// cached marks a category that sits inside the provider's cached prompt
+	// prefix, and so is covered by ContextUsage.CachedPrefix. These come first
+	// in render order, matching the order the provider renders the request in
+	// (tools and system ahead of the conversation).
+	cached bool
 }
 
 // categories lists the breakdown in render order, darkest to brightest. The
@@ -60,13 +73,25 @@ type contextCategory struct {
 func (u ContextUsage) categories() []contextCategory {
 	t := kit.CurrentTheme
 	return []contextCategory{
-		{"System prompt", u.SystemPrompt, t.Separator},
-		{"Tools", u.Tools, t.Accent},
-		{"MCP tools", u.MCPTools, t.TextDim},
-		{"Skills", u.Skills, t.Primary},
-		{"Memory files", u.MemoryFiles, t.Text},
-		{"Messages", u.Messages, t.Focus},
+		{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator, cached: true},
+		{label: "Tools", tokens: u.Tools, color: t.Accent, cached: true},
+		{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim, cached: true},
+		{label: "Skills", tokens: u.Skills, color: t.Primary},
+		{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
+		{label: "Messages", tokens: u.Messages, color: t.Focus},
 	}
+}
+
+// cachedPrefixEnd returns how many leading categories the provider's cached
+// prefix covers. Derived from the cached flag rather than a fixed index so
+// reordering or adding a category can't silently shift the boundary.
+func cachedPrefixEnd(cats []contextCategory) int {
+	for i, c := range cats {
+		if !c.cached {
+			return i
+		}
+	}
+	return len(cats)
 }
 
 // RenderContextUsage renders the /context body: a header naming the model and
@@ -75,17 +100,13 @@ func (u ContextUsage) categories() []contextCategory {
 func RenderContextUsage(u ContextUsage) string {
 	cats := u.categories()
 
-	estimated := 0
+	used := 0
 	for _, c := range cats {
-		estimated += c.tokens
+		used += c.tokens
 	}
-
-	used := estimated
 	if u.Measured > 0 {
+		cats = scaleToProvider(cats, u.Measured, u.CachedPrefix)
 		used = u.Measured
-		if estimated > 0 {
-			cats = scaleToMeasured(cats, estimated, u.Measured)
-		}
 	}
 
 	free := max(u.Limit-used, 0)
@@ -100,7 +121,7 @@ func RenderContextUsage(u ContextUsage) string {
 	}
 	b.WriteString(renderContextLegend(cats, free, u.Limit))
 	b.WriteString("\n")
-	b.WriteString(muted.Render(contextUsageFooter(u.Measured > 0)))
+	b.WriteString(muted.Render(u.footer()))
 	return b.String()
 }
 
@@ -121,31 +142,65 @@ func contextUsageHeader(modelName string, used, limit int) string {
 	return strings.Join(parts, " · ")
 }
 
-func contextUsageFooter(measured bool) string {
-	if measured {
+// footer names which numbers above it are measured and which are estimated, so
+// the reading is never taken for more than it is.
+func (u ContextUsage) footer() string {
+	switch {
+	case u.CachedPrefix > 0:
+		return "prompt and tools measured last turn · conversation split estimated"
+	case u.Measured > 0:
 		return "total measured last turn · split estimated"
+	default:
+		return "estimated · no turn sent yet this session"
 	}
-	return "estimated · no turn sent yet this session"
 }
 
-// scaleToMeasured spreads the provider's measured prompt size across the
-// estimated split, so the headline total matches the status bar exactly while
-// the parts still add up to it. Rounding drift lands on the largest category,
-// where it is proportionally smallest.
-func scaleToMeasured(cats []contextCategory, estimated, measured int) []contextCategory {
+// scaleToProvider fits the estimated split onto what the provider actually
+// reported, so the headline total matches the status bar exactly and the parts
+// still add up to it.
+//
+// With an exact prefix, the two groups are scaled separately — the cached
+// categories to the prefix, the conversation to what remains. That containment
+// is the point: scaling everything to one total spreads each category's
+// estimation error across all of them, so an underestimated tool schema (JSON
+// is punctuation-dense, and estimators read it low) quietly inflates Messages —
+// the one category the user acts on. Two groups keep each error inside the
+// group that produced it.
+func scaleToProvider(cats []contextCategory, measured, cachedPrefix int) []contextCategory {
 	scaled := make([]contextCategory, len(cats))
 	copy(scaled, cats)
 
-	total, largest := 0, 0
-	for i, c := range scaled {
-		scaled[i].tokens = int(float64(c.tokens) / float64(estimated) * float64(measured))
-		total += scaled[i].tokens
-		if scaled[i].tokens > scaled[largest].tokens {
+	if boundary := cachedPrefixEnd(scaled); cachedPrefix > 0 && cachedPrefix < measured {
+		scaleGroup(scaled[:boundary], cachedPrefix)
+		scaleGroup(scaled[boundary:], measured-cachedPrefix)
+		return scaled
+	}
+	scaleGroup(scaled, measured)
+	return scaled
+}
+
+// scaleGroup rescales one group of categories to sum to total. Rounding drift
+// lands on the largest member, where it is proportionally smallest; an empty
+// group is left alone rather than inventing tokens for categories the session
+// does not have.
+func scaleGroup(cats []contextCategory, total int) {
+	estimated := 0
+	for _, c := range cats {
+		estimated += c.tokens
+	}
+	if estimated <= 0 {
+		return
+	}
+
+	assigned, largest := 0, 0
+	for i, c := range cats {
+		cats[i].tokens = int(float64(c.tokens) / float64(estimated) * float64(total))
+		assigned += cats[i].tokens
+		if cats[i].tokens > cats[largest].tokens {
 			largest = i
 		}
 	}
-	scaled[largest].tokens = max(scaled[largest].tokens+measured-total, 0)
-	return scaled
+	cats[largest].tokens = max(cats[largest].tokens+total-assigned, 0)
 }
 
 // renderStackedBar draws every category end to end in its own color and fills
@@ -226,7 +281,7 @@ func renderContextLegend(cats []contextCategory, free, limit int) string {
 		}
 	}
 	if limit > 0 {
-		rows = append(rows, contextCategory{"Free space", free, kit.CurrentTheme.TextDisabled})
+		rows = append(rows, contextCategory{label: "Free space", tokens: free, color: kit.CurrentTheme.TextDisabled})
 	}
 
 	labelWidth := 0

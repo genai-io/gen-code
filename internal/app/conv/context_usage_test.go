@@ -23,21 +23,19 @@ func midSession() ContextUsage {
 	}
 }
 
-func TestScaleToMeasuredPartsSumToMeasured(t *testing.T) {
-	u := midSession()
-	cats := u.categories()
-
-	estimated := 0
-	for _, c := range cats {
-		estimated += c.tokens
-	}
-
-	scaled := scaleToMeasured(cats, estimated, u.Measured)
+func sumTokens(cats []contextCategory) int {
 	total := 0
-	for _, c := range scaled {
+	for _, c := range cats {
 		total += c.tokens
 	}
-	if total != u.Measured {
+	return total
+}
+
+func TestScaleToProviderPartsSumToMeasured(t *testing.T) {
+	u := midSession()
+
+	scaled := scaleToProvider(u.categories(), u.Measured, 0)
+	if total := sumTokens(scaled); total != u.Measured {
 		t.Errorf("scaled parts sum to %d, want the measured total %d", total, u.Measured)
 	}
 }
@@ -45,14 +43,68 @@ func TestScaleToMeasuredPartsSumToMeasured(t *testing.T) {
 // The rounding remainder must land somewhere real, not on a category that
 // holds nothing — an empty category picking up stray tokens would render a
 // row for a thing the session does not have.
-func TestScaleToMeasuredKeepsEmptyCategoriesEmpty(t *testing.T) {
+func TestScaleToProviderKeepsEmptyCategoriesEmpty(t *testing.T) {
 	u := ContextUsage{Limit: 200000, Measured: 41201, SystemPrompt: 5300, Messages: 13700}
 	cats := u.categories()
 
-	scaled := scaleToMeasured(cats, 19000, u.Measured)
+	scaled := scaleToProvider(cats, u.Measured, 0)
 	for i, c := range scaled {
 		if cats[i].tokens == 0 && c.tokens != 0 {
 			t.Errorf("%s was empty but scaled to %d", c.label, c.tokens)
+		}
+	}
+}
+
+// An exact prefix pins the cached categories to it exactly, and the
+// conversation to the remainder — the whole point of scaling two groups
+// instead of one.
+func TestScaleToProviderPinsEachGroupToItsOwnTotal(t *testing.T) {
+	u := midSession()
+	const cachedPrefix = 30000
+
+	scaled := scaleToProvider(u.categories(), u.Measured, cachedPrefix)
+	boundary := cachedPrefixEnd(scaled)
+
+	if got := sumTokens(scaled[:boundary]); got != cachedPrefix {
+		t.Errorf("cached categories sum to %d, want the exact prefix %d", got, cachedPrefix)
+	}
+	if got, want := sumTokens(scaled[boundary:]), u.Measured-cachedPrefix; got != want {
+		t.Errorf("conversation categories sum to %d, want %d", got, want)
+	}
+}
+
+// The regression the two-group split exists to prevent: an underestimated
+// toolset must not push its error onto Messages. With the prompt pinned to an
+// exact prefix, Messages is unaffected by how wrong the tool estimate was.
+func TestScaleToProviderKeepsPrefixErrorOutOfMessages(t *testing.T) {
+	u := midSession()
+	const cachedPrefix = 30000
+
+	underestimated := u
+	underestimated.Tools /= 3 // the estimator reading punctuation-dense JSON low
+
+	messagesFor := func(usage ContextUsage) int {
+		scaled := scaleToProvider(usage.categories(), usage.Measured, cachedPrefix)
+		return scaled[len(scaled)-1].tokens
+	}
+	if got, want := messagesFor(underestimated), messagesFor(u); got != want {
+		t.Errorf("Messages moved to %d (from %d) because the tool estimate changed", got, want)
+	}
+}
+
+// The cached categories have to be the leading run: scaleToProvider slices at
+// the boundary, so a cached category sitting after an uncached one would be
+// scaled against the wrong total.
+func TestCachedCategoriesAreLeading(t *testing.T) {
+	cats := midSession().categories()
+
+	boundary := cachedPrefixEnd(cats)
+	if boundary == 0 || boundary == len(cats) {
+		t.Fatalf("boundary at %d leaves one group empty", boundary)
+	}
+	for _, c := range cats[boundary:] {
+		if c.cached {
+			t.Errorf("%s is cached but sits after the boundary", c.label)
 		}
 	}
 }
@@ -101,6 +153,26 @@ func TestRenderContextUsageShowsPopulatedCategoriesOnly(t *testing.T) {
 	}
 	if !strings.Contains(out, "total measured last turn") {
 		t.Errorf("footer should name the measured total, got:\n%s", out)
+	}
+}
+
+// The footer is the only thing telling the reader how much of the panel is
+// measured, so it has to track which measurement actually landed.
+func TestRenderContextUsageFooterNamesWhatWasMeasured(t *testing.T) {
+	measuredPrefix := midSession()
+	measuredPrefix.CachedPrefix = 30000
+
+	for name, tc := range map[string]struct {
+		usage ContextUsage
+		want  string
+	}{
+		"nothing measured":     {ContextUsage{Limit: 200000, SystemPrompt: 5300}, "no turn sent yet"},
+		"total measured":       {midSession(), "total measured last turn"},
+		"prompt also measured": {measuredPrefix, "prompt and tools measured last turn"},
+	} {
+		if out := xansi.Strip(RenderContextUsage(tc.usage)); !strings.Contains(out, tc.want) {
+			t.Errorf("%s: footer missing %q in:\n%s", name, tc.want, out)
+		}
 	}
 }
 

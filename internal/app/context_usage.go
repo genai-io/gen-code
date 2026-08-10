@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/reminder"
 )
@@ -62,7 +66,48 @@ func (m *model) contextUsage() conv.ContextUsage {
 		addContextUsage(&usage, pending)
 	}
 
+	usage.CachedPrefix = m.measuredPromptPrefix(usage)
 	return usage
+}
+
+// measuredPromptPrefix returns the provider's exact token count for the system
+// prompt plus the tool definitions, or 0 when no trustworthy count is
+// available. Anthropic marks the system block as its cache breakpoint and
+// renders tools ahead of system, so the cached prefix it reports is exactly
+// those two — the one part of the window San can measure rather than estimate.
+//
+// The reading is corroborated against the estimate before being used, rather
+// than trusted on the strength of how the request happens to be built today.
+// A provider that caches on its own boundary, a moved breakpoint, or a prefix
+// that grew to include conversation would all report a number that is real but
+// measures something else; the estimate is crude but it is not wrong by
+// multiples, so disagreement on that scale means the assumption no longer
+// holds. Returning 0 then falls the display back to scaling everything to the
+// measured total, which is the same honest answer every other provider gets.
+func (m *model) measuredPromptPrefix(usage conv.ContextUsage) int {
+	prefix := m.env.CachedPrefixTokens
+	if prefix <= 0 || prefix >= usage.Measured {
+		// Nothing cached — no turn yet, or a prefix below the model's
+		// cacheable minimum (512–4096 tokens, depending on the model, so
+		// small toolsets routinely miss it). A prefix at or above the whole
+		// prompt would leave the conversation nothing and is not a prefix.
+		return 0
+	}
+	if !llm.CachesToolsAndSystemPrompt(m.env.LLMProvider) {
+		return 0
+	}
+
+	estimated := usage.SystemPrompt + usage.Tools + usage.MCPTools
+	if estimated <= 0 {
+		return 0
+	}
+	if ratio := float64(prefix) / float64(estimated); ratio < 0.5 || ratio > 2 {
+		log.Logger().Warn("cached prefix disagrees with the estimated prompt size; falling back to estimation",
+			zap.Int("cached_prefix_tokens", prefix),
+			zap.Int("estimated_tokens", estimated))
+		return 0
+	}
+	return prefix
 }
 
 // addUnstartedAgentUsage fills in the prompt and toolset for a session whose

@@ -24,28 +24,97 @@ func FormatTokenCount(count int) string {
 	}
 }
 
-// EstimateTokens approximates what a string costs in tokens without running a
-// tokenizer. Latin text averages roughly 4 characters per token; CJK and other
-// non-ASCII scripts sit closer to one token per character, so the two are
-// counted on their own ratios instead of applying one average to the whole
-// string — a Chinese SAN.md would otherwise read as a quarter of its real size.
-//
-// The result is an estimate and is always presented as one: only the provider's
-// reported prompt size is exact, and /context labels which is which.
-func EstimateTokens(s string) int {
-	asciiChars, otherRunes := 0, 0
-	for _, r := range s {
-		if r < 0x80 {
-			asciiChars++
-			continue
+// runeClass groups characters the way a BPE tokenizer's pre-tokenizer splits
+// them: it breaks text into runs of letters, digits, punctuation, and
+// whitespace before merging anything, so a run never spans two classes.
+type runeClass int
+
+const (
+	classLetter runeClass = iota
+	classDigit
+	classPunct
+	classSpace
+	// classWide is CJK and every other non-ASCII rune. Held apart because
+	// these carry roughly a token each rather than merging into long runs.
+	classWide
+)
+
+func classify(r rune) runeClass {
+	switch {
+	case r >= 0x80:
+		return classWide
+	case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+		return classSpace
+	case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+		return classLetter
+	case r >= '0' && r <= '9':
+		return classDigit
+	default:
+		return classPunct
+	}
+}
+
+// runTokens estimates how many tokens a single run of n same-class characters
+// becomes. The ratios approximate what BPE merging does within each class:
+// words merge aggressively (a five-letter word is one token), digits merge in
+// groups of about three, punctuation merges only in short common pairs, and
+// every non-ASCII rune stands roughly on its own.
+func runTokens(class runeClass, n int) int {
+	switch class {
+	case classLetter:
+		return max((n+2)/4, 1)
+	case classDigit:
+		return max((n+2)/3, 1)
+	case classPunct:
+		// JSON and code are dominated by short runs a tokenizer has learned as
+		// single units — `":"`, `":{"`, `!=`, `:=`, `))` — so punctuation
+		// merges more than one-token-per-character but far less than prose.
+		return max((n+2)/3, 1)
+	case classWide:
+		return n
+	default: // classSpace
+		// A lone space is absorbed into the token that follows it — " the" is
+		// one token, not two. Longer runs (indentation, blank lines) do cost.
+		if n <= 1 {
+			return 0
 		}
-		otherRunes++
+		return max((n+3)/4, 1)
 	}
-	tokens := asciiChars/4 + otherRunes
-	if tokens == 0 && s != "" {
-		return 1
+}
+
+// EstimateTokens approximates what a string costs in tokens without running a
+// tokenizer.
+//
+// It counts by pre-token run rather than by a flat characters-per-token ratio,
+// because a flat ratio is wrong in exactly the places /context cares about
+// most. The familiar "4 characters per token" holds for English prose, but tool
+// schemas and tool results are punctuation-dense JSON and code, where BPE emits
+// far more tokens per character — measuring those against a prose ratio
+// understates the two largest categories in the breakdown. The same reasoning
+// separates CJK, which sits near one token per character; a single ratio reads
+// a Chinese SAN.md as a quarter of its real size.
+//
+// The result is an estimate and is always presented as one: only the provider
+// reports exact counts, and /context labels which numbers are which.
+func EstimateTokens(s string) int {
+	if s == "" {
+		return 0
 	}
-	return tokens
+
+	// runLength == 0 means no run has opened yet, so the seeded class is
+	// never used to close one.
+	tokens, runLength, runClass := 0, 0, classLetter
+	for _, r := range s {
+		class := classify(r)
+		if runLength > 0 && class != runClass {
+			tokens += runTokens(runClass, runLength)
+			runLength = 0
+		}
+		runClass, runLength = class, runLength+1
+	}
+	tokens += runTokens(runClass, runLength)
+
+	return max(tokens, 1)
 }
 
 // GetMaxTokens returns the effective output limit, falling back to defaultMaxTokens.

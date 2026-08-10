@@ -148,8 +148,7 @@ func (m *model) loadSessionByID(id string) error {
 		m.services.Tracker.Reset()
 	}
 
-	m.env.InputTokens = 0
-	m.env.OutputTokens = 0
+	m.env.ResetContextDisplay()
 
 	return nil
 }

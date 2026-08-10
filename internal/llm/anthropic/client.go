@@ -67,6 +67,14 @@ func (c *Client) Name() string {
 	return c.name
 }
 
+// CachesToolsAndSystemPrompt implements llm.PromptPrefixCacheProvider. Stream
+// marks the system block ephemeral and nothing else, and Anthropic renders a
+// request as tools → system → messages, so the cached prefix is exactly the
+// tool definitions plus the system prompt. That makes the reported cache tokens
+// an exact measurement of those two — which is what /context reads them as.
+// Moving or adding a breakpoint in Stream invalidates that reading.
+func (c *Client) CachesToolsAndSystemPrompt() bool { return true }
+
 // Stream sends a completion request and returns a channel of streaming chunks
 func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
 	ch := make(chan llm.StreamChunk)
