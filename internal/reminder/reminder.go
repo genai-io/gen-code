@@ -240,6 +240,22 @@ func (s *Service) Drain() []string {
 	return out
 }
 
+// Pending returns the queued reminders (already wrapped) without clearing the
+// queue. Use it to inspect what the next user message will carry; use Drain
+// when you are the one attaching them.
+func (s *Service) Pending() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.pending) == 0 {
+		return nil
+	}
+	out := make([]string, len(s.pending))
+	for i, e := range s.pending {
+		out[i] = e.wrapped
+	}
+	return out
+}
+
 // Empty reports whether there are no pending reminders.
 func (s *Service) Empty() bool {
 	s.mu.Lock()
@@ -324,4 +340,63 @@ func AttachToContent(content string, reminders []string) string {
 		sb.WriteString(r)
 	}
 	return sb.String()
+}
+
+// Block is one <system-reminder> found inside a message: the provider that
+// emitted it (empty for a one-time notice) and the full wrapped text,
+// including the tags.
+type Block struct {
+	Source string
+	Text   string
+}
+
+// Blocks extracts the <system-reminder> blocks embedded in a message's
+// content — the inverse of AttachToContent. It lives here so the tag shape
+// has exactly one definition: WrapWithSource writes it, Blocks reads it.
+//
+// Callers use this to attribute the harness-injected bytes (the skills
+// directory, memory files) apart from what the user and the model actually
+// said. Unterminated or malformed blocks are skipped rather than guessed at.
+func Blocks(content string) []Block {
+	const (
+		openTag  = "<system-reminder"
+		closeTag = "</system-reminder>"
+	)
+
+	var blocks []Block
+	for rest := content; ; {
+		start := strings.Index(rest, openTag)
+		if start < 0 {
+			return blocks
+		}
+		tagEnd := strings.Index(rest[start:], ">")
+		if tagEnd < 0 {
+			return blocks
+		}
+		end := strings.Index(rest[start:], closeTag)
+		if end < 0 {
+			return blocks
+		}
+		end += start + len(closeTag)
+
+		blocks = append(blocks, Block{
+			Source: sourceAttr(rest[start : start+tagEnd]),
+			Text:   rest[start:end],
+		})
+		rest = rest[end:]
+	}
+}
+
+// sourceAttr reads the source="..." value out of an opening tag, or "" when
+// the tag carries no source (Wrap / Enqueue output).
+func sourceAttr(openTag string) string {
+	_, value, found := strings.Cut(openTag, `source="`)
+	if !found {
+		return ""
+	}
+	source, _, closed := strings.Cut(value, `"`)
+	if !closed {
+		return ""
+	}
+	return strings.ReplaceAll(source, "&quot;", `"`)
 }

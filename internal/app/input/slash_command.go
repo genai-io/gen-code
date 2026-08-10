@@ -70,6 +70,9 @@ type SlashCommandEnv struct {
 	// GetGoal reads the autopilot mission the session is currently driving
 	// toward, so bare /goal can report it. Empty when no goal is set.
 	GetGoal func() string
+	// ContextUsage measures what currently occupies the model's context
+	// window. It lives on the model because it reads the live agent session.
+	ContextUsage func() conv.ContextUsage
 
 	// Model-level action callbacks. These compose multiple services or
 	// touch UI state on `m`, so commands invoke them via the model.
@@ -112,6 +115,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"skills":         (*SlashCommandController).handleSkillCommand,
 		"agents":         (*SlashCommandController).handleAgentCommand,
 		"tokenlimit":     (*SlashCommandController).handleTokenLimitCommand,
+		"context":        (*SlashCommandController).handleContextCommand,
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
 		"memory":         (*SlashCommandController).handleMemoryCommand,
@@ -675,6 +679,13 @@ func (c *SlashCommandController) handleTokenLimitCommand(_ context.Context, args
 		c.env.Input.Provider.FetchingLimits = true
 	}
 	return result, cmd, err
+}
+
+// handleContextCommand reports what is filling the model's context window,
+// broken down by category. It is the "what" to the status bar's "how much" —
+// the reading you take before deciding whether /compact is worth it.
+func (c *SlashCommandController) handleContextCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	return conv.RenderContextUsage(c.env.ContextUsage()), nil, nil
 }
 
 func (c *SlashCommandController) handleCompactCommand(_ context.Context, args string) (string, tea.Cmd, error) {

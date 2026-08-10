@@ -37,6 +37,7 @@ func builtinCommands() []Info {
 		{Name: "identity", Description: "Alias of /persona — switch the active persona (/identity <name>, or /identity to open the picker)"},
 		{Name: "persona", Description: "Switch the active persona (/persona <name>, or /persona to open the picker)"},
 		{Name: "tokenlimit", Description: "View or set token limits for current model"},
+		{Name: "context", Description: "Show what is filling the context window, by category"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
 		{Name: "init", Description: "Initialize memory files (SAN.md, local, rules)"},
 		{Name: "memory", Description: "View and manage memory files (list/show/edit) with @import support"},

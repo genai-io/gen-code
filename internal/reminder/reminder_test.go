@@ -284,3 +284,63 @@ func TestServiceConcurrentAccess(t *testing.T) {
 		t.Errorf("expected 50 enqueued items, got %d", len(out))
 	}
 }
+
+// Blocks is the inverse of AttachToContent: whatever the harness attached to a
+// user turn has to be recoverable from that turn's content, with the emitting
+// provider intact, so /context can attribute those bytes to the right source.
+func TestBlocksRecoversAttachedReminders(t *testing.T) {
+	s := NewService()
+	s.Register(NewProvider(ProviderSkillsDirectory, func() string { return "skills body" }))
+	s.Register(NewProvider(ProviderMemoryProject, func() string { return "project memory body" }))
+	s.RequeueSystemReminders()
+	s.Enqueue("a one-time notice")
+
+	content := AttachToContent("what the user typed", s.Drain())
+
+	blocks := Blocks(content)
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d from:\n%s", len(blocks), content)
+	}
+	wantSources := []string{ProviderSkillsDirectory, ProviderMemoryProject, ""}
+	for i, want := range wantSources {
+		if blocks[i].Source != want {
+			t.Errorf("block %d: source = %q, want %q", i, blocks[i].Source, want)
+		}
+		if !strings.HasPrefix(blocks[i].Text, "<system-reminder") ||
+			!strings.HasSuffix(blocks[i].Text, "</system-reminder>") {
+			t.Errorf("block %d text is not a whole reminder: %q", i, blocks[i].Text)
+		}
+	}
+	if strings.Contains(blocks[0].Text, "project memory body") {
+		t.Error("blocks ran together; the skills block swallowed the memory block")
+	}
+}
+
+func TestBlocksIgnoresMalformedTags(t *testing.T) {
+	for name, content := range map[string]string{
+		"no reminder at all": "plain user text",
+		"unterminated":       "text <system-reminder>body with no close",
+		"close only":         "text </system-reminder>",
+	} {
+		if got := Blocks(content); len(got) != 0 {
+			t.Errorf("%s: expected no blocks, got %d", name, len(got))
+		}
+	}
+}
+
+// Pending has to leave the queue intact — /context inspects what the next turn
+// will carry, it does not consume it.
+func TestPendingDoesNotDrain(t *testing.T) {
+	s := NewService()
+	s.Enqueue("queued")
+
+	if got := s.Pending(); len(got) != 1 {
+		t.Fatalf("Pending returned %d entries, want 1", len(got))
+	}
+	if s.Empty() {
+		t.Error("Pending consumed the queue")
+	}
+	if got := s.Drain(); len(got) != 1 {
+		t.Errorf("Drain after Pending returned %d entries, want 1", len(got))
+	}
+}

@@ -17,6 +17,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/skills` | Manage skill states |
 | `/agents` | Manage agents |
 | `/tokenlimit` | View / set token budget |
+| `/context` | Show what is filling the context window, by category |
 | `/compact` | Compress conversation history |
 | `/init` | Create SAN.md and config files |
 | `/memory` | View / edit memory files |
@@ -33,6 +34,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/think` cycles through levels and updates the status bar indicator.
+- `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `ctx X/Y` says how full the window is; `/context` says what filled it. The total is the provider's measured prompt size for the last turn; the split across categories is estimated, since providers report one number with no breakdown.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
 
 ## Automated Tests

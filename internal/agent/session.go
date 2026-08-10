@@ -192,6 +192,19 @@ func (s *Session) System() core.System {
 	return s.agent.System()
 }
 
+// Tools returns the running agent's toolset, or nil when no agent is active.
+// Like System(), this is the toolset actually being sent — built-ins after
+// the disabled-tools filter, plus whatever MCP and conditional tools were
+// wired in — not a reconstruction of what the params asked for.
+func (s *Session) Tools() core.Tools {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.agent == nil {
+		return nil
+	}
+	return s.agent.Tools()
+}
+
 // SetPluginRoot scopes the next agent turn to a plugin. The slash command
 // flow calls this when the user invokes a /plugin-skill so subprocesses
 // spawned during the turn see PLUGIN_ROOT pointing at that plugin.

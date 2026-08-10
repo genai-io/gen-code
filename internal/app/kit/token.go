@@ -24,6 +24,30 @@ func FormatTokenCount(count int) string {
 	}
 }
 
+// EstimateTokens approximates what a string costs in tokens without running a
+// tokenizer. Latin text averages roughly 4 characters per token; CJK and other
+// non-ASCII scripts sit closer to one token per character, so the two are
+// counted on their own ratios instead of applying one average to the whole
+// string — a Chinese SAN.md would otherwise read as a quarter of its real size.
+//
+// The result is an estimate and is always presented as one: only the provider's
+// reported prompt size is exact, and /context labels which is which.
+func EstimateTokens(s string) int {
+	asciiChars, otherRunes := 0, 0
+	for _, r := range s {
+		if r < 0x80 {
+			asciiChars++
+			continue
+		}
+		otherRunes++
+	}
+	tokens := asciiChars/4 + otherRunes
+	if tokens == 0 && s != "" {
+		return 1
+	}
+	return tokens
+}
+
 // GetMaxTokens returns the effective output limit, falling back to defaultMaxTokens.
 func GetMaxTokens(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultMaxTokens int) int {
 	if limit := getEffectiveOutputLimit(store, currentModel); limit > 0 {

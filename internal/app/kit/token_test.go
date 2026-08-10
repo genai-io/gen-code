@@ -1,6 +1,7 @@
 package kit
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
@@ -124,5 +125,33 @@ func TestGetEffectiveInputLimitWithoutModelIsZero(t *testing.T) {
 	t.Setenv(llm.InputLimitEnvVar, "500000")
 	if got := GetEffectiveInputLimit(nil, nil); got != 0 {
 		t.Fatalf("GetEffectiveInputLimit(nil, nil) = %d, want 0", got)
+	}
+}
+
+// A single ratio over the whole string is what makes a Chinese SAN.md read as
+// a quarter of its real cost, so the two scripts are checked against each
+// other rather than against exact numbers a tokenizer would have to confirm.
+func TestEstimateTokensCountsCJKHeavierThanASCII(t *testing.T) {
+	const runes = 40
+	ascii := strings.Repeat("a", runes)
+	chinese := strings.Repeat("中", runes)
+
+	if got := EstimateTokens(ascii); got != runes/4 {
+		t.Errorf("EstimateTokens(%d ascii chars) = %d, want %d", runes, got, runes/4)
+	}
+	if EstimateTokens(chinese) <= EstimateTokens(ascii) {
+		t.Errorf("%d Chinese characters (%d) should cost more than %d ASCII (%d)",
+			runes, EstimateTokens(chinese), runes, EstimateTokens(ascii))
+	}
+}
+
+// Short strings must not vanish: a legend row that reports 0 for content that
+// exists reads as "this is not loaded".
+func TestEstimateTokensNeverRoundsNonEmptyToZero(t *testing.T) {
+	if got := EstimateTokens("hi"); got != 1 {
+		t.Errorf(`EstimateTokens("hi") = %d, want 1`, got)
+	}
+	if got := EstimateTokens(""); got != 0 {
+		t.Errorf(`EstimateTokens("") = %d, want 0`, got)
 	}
 }

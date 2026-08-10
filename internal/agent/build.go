@@ -71,6 +71,28 @@ type BuildParams struct {
 	OnEvent func(core.Event)
 }
 
+// System returns the system prompt these params build. Exported so a caller
+// can inspect the prompt — its size, its sections — before any session exists;
+// buildAgent renders from this same function, so the two cannot drift.
+func (p BuildParams) System() core.System {
+	return system.Build(core.ScopeMain,
+		system.WithPersona(p.Persona),
+		system.WithEnvironment(system.Environment{Cwd: p.CWD}),
+	)
+}
+
+// Schemas returns the built-in tool definitions these params produce: the
+// standard set after the disabled-tools filter, plus any conditional extras.
+// MCP tools are not included — they arrive as ready-made core.Tools rather
+// than schemas, and are wired in separately.
+func (p BuildParams) Schemas() []core.ToolSchema {
+	return (&tool.Set{
+		Disabled:       p.DisabledTools,
+		AgentDirectory: p.AgentDirectory,
+		ExtraTools:     p.ExtraTools,
+	}).Tools()
+}
+
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
@@ -79,10 +101,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	client := llm.NewClient(p.Provider, p.ModelID, p.MaxTokens)
 	client.SetThinkingEffort(p.ThinkingEffort)
 
-	sys := system.Build(core.ScopeMain,
-		system.WithPersona(p.Persona),
-		system.WithEnvironment(system.Environment{Cwd: p.CWD}),
-	)
+	sys := p.System()
 
 	cwdFunc := p.CWDFunc
 	if cwdFunc == nil {
@@ -90,11 +109,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		cwdFunc = func() string { return cwd }
 	}
 
-	schemas := (&tool.Set{
-		Disabled:       p.DisabledTools,
-		AgentDirectory: p.AgentDirectory,
-		ExtraTools:     p.ExtraTools,
-	}).Tools()
+	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
 	if p.AskUser != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(p.AskUser))
