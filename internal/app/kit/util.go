@@ -130,16 +130,16 @@ func RenderPanelRow(line string, isSelected bool, width int) string {
 	return SelectorItemLabelStyle().Width(width).Render("  " + line)
 }
 
-// alignedRowMinGap is the minimum spacing kept between the name and info
+// AlignedRowMinGap is the minimum spacing kept between the name and info
 // columns, so names longer than colWidth never collide with the info column.
-const alignedRowMinGap = 2
+const AlignedRowMinGap = 2
 
 // FormatAlignedRow formats "icon  name<padding>info" with name padded to
-// colWidth and always separated from info by at least alignedRowMinGap spaces.
+// colWidth and always separated from info by at least AlignedRowMinGap spaces.
 func FormatAlignedRow(icon, name string, colWidth int, info string) string {
 	gap := colWidth - lipgloss.Width(name) // display width, ANSI/Unicode safe
-	if gap < alignedRowMinGap {
-		gap = alignedRowMinGap
+	if gap < AlignedRowMinGap {
+		gap = AlignedRowMinGap
 	}
 	return fmt.Sprintf("%s  %s%s%s", icon, name, strings.Repeat(" ", gap), info)
 }

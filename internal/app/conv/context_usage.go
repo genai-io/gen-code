@@ -58,56 +58,53 @@ type contextCategory struct {
 	label  string
 	tokens int
 	color  kit.AdaptiveColor
-	// cached marks a category that sits inside the provider's cached prompt
-	// prefix, and so is covered by ContextUsage.CachedPrefix. These come first
-	// in render order, matching the order the provider renders the request in
-	// (tools and system ahead of the conversation).
-	cached bool
 }
 
-// categories lists the breakdown in render order, darkest to brightest. The
-// ramp is the point: the leading segments are fixed session overhead the user
-// configures once, and it brightens toward Messages — the one segment that
-// grows every turn and the one /compact acts on — which takes the theme's
-// single vivid accent.
-func (u ContextUsage) categories() []contextCategory {
+// categories splits the breakdown into the two groups that scale independently:
+// prompt is what the provider's cached prefix covers, conversation is the rest.
+// Returning them separately rather than as one slice with a flag is what keeps
+// a category from landing in the wrong group — a new prompt-side category has
+// nowhere to go but the prompt return value, where a flag could simply be
+// forgotten and the category would silently scale against the conversation.
+//
+// Within each group the order is darkest to brightest, and the ramp is the
+// point: it starts at fixed session overhead the user configures once and
+// brightens toward Messages — the one segment that grows every turn and the one
+// /compact acts on — which takes the theme's single vivid accent.
+func (u ContextUsage) categories() (prompt, conversation []contextCategory) {
 	t := kit.CurrentTheme
 	return []contextCategory{
-		{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator, cached: true},
-		{label: "Tools", tokens: u.Tools, color: t.Accent, cached: true},
-		{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim, cached: true},
-		{label: "Skills", tokens: u.Skills, color: t.Primary},
-		{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
-		{label: "Messages", tokens: u.Messages, color: t.Focus},
-	}
+			{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator},
+			{label: "Tools", tokens: u.Tools, color: t.Accent},
+			{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim},
+		}, []contextCategory{
+			{label: "Skills", tokens: u.Skills, color: t.Primary},
+			{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
+			{label: "Messages", tokens: u.Messages, color: t.Focus},
+		}
 }
 
-// cachedPrefixEnd returns how many leading categories the provider's cached
-// prefix covers. Derived from the cached flag rather than a fixed index so
-// reordering or adding a category can't silently shift the boundary.
-func cachedPrefixEnd(cats []contextCategory) int {
-	for i, c := range cats {
-		if !c.cached {
-			return i
-		}
+// totalTokens sums a group of categories.
+func totalTokens(cats []contextCategory) int {
+	total := 0
+	for _, c := range cats {
+		total += c.tokens
 	}
-	return len(cats)
+	return total
 }
 
 // RenderContextUsage renders the /context body: a header naming the model and
 // the fill, the stacked bar, one row per category, and a footer stating which
 // numbers are measured and which are estimated.
 func RenderContextUsage(u ContextUsage) string {
-	cats := u.categories()
+	prompt, conversation := u.categories()
 
-	used := 0
-	for _, c := range cats {
-		used += c.tokens
-	}
+	used := totalTokens(prompt) + totalTokens(conversation)
 	if u.Measured > 0 {
-		cats = scaleToProvider(cats, u.Measured, u.CachedPrefix)
+		u.scaleToProvider(prompt, conversation)
 		used = u.Measured
 	}
+	cats := append(prompt, conversation...)
 
 	free := max(u.Limit-used, 0)
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
@@ -166,41 +163,67 @@ func (u ContextUsage) footer() string {
 // is punctuation-dense, and estimators read it low) quietly inflates Messages —
 // the one category the user acts on. Two groups keep each error inside the
 // group that produced it.
-func scaleToProvider(cats []contextCategory, measured, cachedPrefix int) []contextCategory {
-	scaled := make([]contextCategory, len(cats))
-	copy(scaled, cats)
-
-	if boundary := cachedPrefixEnd(scaled); cachedPrefix > 0 && cachedPrefix < measured {
-		scaleGroup(scaled[:boundary], cachedPrefix)
-		scaleGroup(scaled[boundary:], measured-cachedPrefix)
-		return scaled
-	}
-	scaleGroup(scaled, measured)
-	return scaled
-}
-
-// scaleGroup rescales one group of categories to sum to total. Rounding drift
-// lands on the largest member, where it is proportionally smallest; an empty
-// group is left alone rather than inventing tokens for categories the session
-// does not have.
-func scaleGroup(cats []contextCategory, total int) {
-	estimated := 0
-	for _, c := range cats {
-		estimated += c.tokens
-	}
-	if estimated <= 0 {
+// It rescales in place.
+func (u ContextUsage) scaleToProvider(prompt, conversation []contextCategory) {
+	if u.CachedPrefix > 0 && u.CachedPrefix < u.Measured {
+		scaleGroup(prompt, u.CachedPrefix)
+		scaleGroup(conversation, u.Measured-u.CachedPrefix)
 		return
 	}
-
-	assigned, largest := 0, 0
-	for i, c := range cats {
-		cats[i].tokens = int(float64(c.tokens) / float64(estimated) * float64(total))
-		assigned += cats[i].tokens
-		if cats[i].tokens > cats[largest].tokens {
-			largest = i
-		}
+	// No exact prefix: one pool, so the groups have to be apportioned against
+	// their combined estimate rather than each on its own.
+	total := totalTokens(prompt) + totalTokens(conversation)
+	if total <= 0 {
+		return
 	}
-	cats[largest].tokens = max(cats[largest].tokens+total-assigned, 0)
+	promptShare := u.Measured * totalTokens(prompt) / total
+	scaleGroup(prompt, promptShare)
+	scaleGroup(conversation, u.Measured-promptShare)
+}
+
+// scaleGroup rescales one group of categories to sum to total, by the same
+// largest-remainder apportionment the bar uses. An empty group is left alone
+// rather than inventing tokens for categories the session does not have.
+func scaleGroup(cats []contextCategory, total int) {
+	for i, n := range apportion(cats, total) {
+		cats[i].tokens = n
+	}
+}
+
+// apportion distributes total across cats in proportion to their token counts,
+// by largest remainder: floor each share, then hand the leftover cells to the
+// categories with the strongest fractional claim. Parts always sum to total
+// (or to 0 for an empty group), and a category holding nothing always gets
+// nothing — its remainder is 0, so it can never be a claimant.
+func apportion(cats []contextCategory, total int) []int {
+	shares := make([]int, len(cats))
+
+	estimated := totalTokens(cats)
+	if estimated <= 0 || total <= 0 {
+		return shares
+	}
+
+	remainders := make([]float64, len(cats))
+	assigned := 0
+	for i, c := range cats {
+		exact := float64(c.tokens) / float64(estimated) * float64(total)
+		shares[i] = int(exact)
+		remainders[i] = exact - float64(shares[i])
+		assigned += shares[i]
+	}
+	// Flooring loses less than one unit per category, so there are strictly
+	// fewer leftovers than categories and each can claim at most one.
+	for ; assigned < total; assigned++ {
+		claimant := 0
+		for i := range remainders {
+			if remainders[i] > remainders[claimant] {
+				claimant = i
+			}
+		}
+		shares[claimant]++
+		remainders[claimant] = -1
+	}
+	return shares
 }
 
 // renderStackedBar draws every category end to end in its own color and fills
@@ -218,7 +241,7 @@ func renderStackedBar(cats []contextCategory, limit int) string {
 		filled += cells[i]
 	}
 	if free := contextUsageBarWidth - filled; free > 0 {
-		b.WriteString(freeStyle().Render(strings.Repeat("░", free)))
+		b.WriteString(lipgloss.NewStyle().Foreground(freeColor()).Render(strings.Repeat("░", free)))
 	}
 	return b.String()
 }
@@ -227,43 +250,13 @@ func renderStackedBar(cats []contextCategory, limit int) string {
 //
 // The total fill is pinned to the header's percentage first: a bar that reads
 // fuller than the number printed above it is a worse lie than one that hides a
-// small category. Those cells are then handed out by largest remainder, so a
-// category earns a cell only against the competing claims — a 263-token memory
-// file appears in the legend but not in the bar, which is the honest picture
-// of what it costs.
+// small category. Those cells are then handed out by apportion, so a category
+// earns a cell only against the competing claims — a 263-token memory file
+// appears in the legend but not in the bar, which is the honest picture of what
+// it costs.
 func barCells(cats []contextCategory, limit, width int) []int {
-	cells := make([]int, len(cats))
-
-	used := 0
-	for _, c := range cats {
-		used += c.tokens
-	}
-	target := min(int(float64(used)/float64(limit)*float64(width)+0.5), width)
-	if used <= 0 || target <= 0 {
-		return cells
-	}
-
-	remainders := make([]float64, len(cats))
-	assigned := 0
-	for i, c := range cats {
-		exact := float64(c.tokens) / float64(used) * float64(target)
-		cells[i] = int(exact)
-		remainders[i] = exact - float64(cells[i])
-		assigned += cells[i]
-	}
-	// Flooring above loses less than one cell per category, so there are
-	// strictly fewer leftovers than categories and each can claim at most one.
-	for ; assigned < target; assigned++ {
-		claimant := 0
-		for i := range remainders {
-			if remainders[i] > remainders[claimant] {
-				claimant = i
-			}
-		}
-		cells[claimant]++
-		remainders[claimant] = -1
-	}
-	return cells
+	target := min(int(float64(totalTokens(cats))/float64(limit)*float64(width)+0.5), width)
+	return apportion(cats, target)
 }
 
 // renderContextLegend renders one row per category, then the free-space row,
@@ -280,47 +273,49 @@ func renderContextLegend(cats []contextCategory, free, limit int) string {
 			rows = append(rows, c)
 		}
 	}
+	// Remembered rather than re-derived from the row's position at render time,
+	// so the glyph stays attached to the row it was appended for.
+	freeRow := -1
 	if limit > 0 {
-		rows = append(rows, contextCategory{label: "Free space", tokens: free, color: kit.CurrentTheme.TextDisabled})
+		freeRow = len(rows)
+		rows = append(rows, contextCategory{label: "Free space", tokens: free, color: freeColor()})
 	}
 
 	labelWidth := 0
 	for _, r := range rows {
-		labelWidth = max(labelWidth, len(r.label))
+		labelWidth = max(labelWidth, lipgloss.Width(r.label))
 	}
 
 	var b strings.Builder
 	for i, r := range rows {
 		glyph := "█"
-		if limit > 0 && i == len(rows)-1 {
-			glyph = "░" // the free-space row, matching the bar's tail
+		if i == freeRow {
+			glyph = "░" // matching the bar's tail
 		}
-		b.WriteString(contextLegendRow(glyph, r.color, r.label, labelWidth, r.tokens, limit))
+		b.WriteString(contextLegendRow(r, glyph, labelWidth, limit))
 	}
 	return b.String()
 }
 
-func contextLegendRow(glyph string, color kit.AdaptiveColor, label string, labelWidth, tokens, limit int) string {
-	row := fmt.Sprintf("%s  %-*s %8s",
-		lipgloss.NewStyle().Foreground(color).Render(glyph),
-		labelWidth, label,
-		kit.FormatTokenCount(tokens))
+func contextLegendRow(c contextCategory, glyph string, labelWidth, limit int) string {
+	numbers := fmt.Sprintf("%8s", kit.FormatTokenCount(c.tokens))
 	if limit > 0 {
 		// One decimal, unlike the header's whole percent: a memory file worth
 		// 0.1% of the window should not round away to nothing.
-		row += fmt.Sprintf(" %6.1f%%", float64(tokens)/float64(limit)*100)
+		numbers += fmt.Sprintf(" %6.1f%%", float64(c.tokens)/float64(limit)*100)
 	}
-	return row + "\n"
+	chip := lipgloss.NewStyle().Foreground(c.color).Render(glyph)
+	// FormatAlignedRow keeps a minimum gap after the label, so the widest label
+	// would be pushed past the column that shorter ones land on. Adding that
+	// minimum to the column width puts every row's numbers at the same offset.
+	return kit.FormatAlignedRow(chip, c.label, labelWidth+kit.AlignedRowMinGap, numbers) + "\n"
 }
 
-func freeStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled)
-}
+// freeColor is the unfilled remainder's color, shared by the bar's tail and the
+// legend's free-space row so the two always read as the same thing.
+func freeColor() kit.AdaptiveColor { return kit.CurrentTheme.TextDisabled }
 
 // percentOf rounds a share of the window to a whole percent for display.
 func percentOf(part, whole int) int {
-	if whole <= 0 {
-		return 0
-	}
 	return int(float64(part)/float64(whole)*100 + 0.5)
 }

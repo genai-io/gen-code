@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -26,14 +27,14 @@ import (
 // Persisting these with a Source lets a resumed session keep them out of the
 // visible message while preserving them in Content for the model — the same
 // split RenderUserMessage draws live from DisplayContent vs Content.
-const (
-	reminderPattern        = `<system-reminder(?:\s+source="([^"]*)")?>.*?</system-reminder>`
-	commandEnvelopePattern = `<command-name>.*?</command-name>\s*(?:<skill-invocation\b.*?</skill-invocation>|<custom-command\b.*?</custom-command>)\n*`
-)
+// The reminder half comes from internal/reminder, which is also what writes
+// the tag — spelling it out again here is how this splitter would silently
+// stop recognizing reminders after a change to the wrapper.
+const commandEnvelopePattern = `<command-name>.*?</command-name>\s*(?:<skill-invocation\b.*?</skill-invocation>|<custom-command\b.*?</custom-command>)\n*`
 
 // harnessInjectedRe matches any harness-injected span. The command envelope only
 // ever leads the message, so it's anchored; reminders can appear anywhere.
-var harnessInjectedRe = regexp.MustCompile(`(?s)` + reminderPattern + `|^` + commandEnvelopePattern)
+var harnessInjectedRe = regexp.MustCompile(`(?s)` + reminder.Pattern + `|^` + commandEnvelopePattern)
 
 const (
 	SourceReminder = "reminder"

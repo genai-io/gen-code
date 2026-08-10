@@ -63,12 +63,13 @@ func runTokens(class runeClass, n int) int {
 	switch class {
 	case classLetter:
 		return max((n+2)/4, 1)
-	case classDigit:
-		return max((n+2)/3, 1)
-	case classPunct:
-		// JSON and code are dominated by short runs a tokenizer has learned as
-		// single units — `":"`, `":{"`, `!=`, `:=`, `))` — so punctuation
-		// merges more than one-token-per-character but far less than prose.
+	case classDigit, classPunct:
+		// Both merge, but only in short groups: tokenizers chunk digits about
+		// three at a time, and JSON and code are dominated by short punctuation
+		// runs learned as single units — `":"`, `":{"`, `!=`, `:=`, `))`. So
+		// each sits well above one-token-per-character and well below prose.
+		// (The classes stay separate because they decide where runs break —
+		// `12+34` is three runs, not one — only the ratio is shared.)
 		return max((n+2)/3, 1)
 	case classWide:
 		return n

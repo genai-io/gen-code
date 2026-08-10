@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
@@ -116,25 +115,22 @@ func (m *model) measuredPromptPrefix(usage conv.ContextUsage) int {
 // reporting zero would understate a fresh window by everything the very next
 // request is about to carry.
 //
-// It goes through BuildParams so the prompt and the toolset come from the same
-// code the real session builds from, and it fills in only the fields those two
-// depend on: unlike buildAgentParams, this has to stay free of side effects —
-// no recorder, no reviewer rebuild, no hook wiring.
+// It goes through promptParams — the same side-effect-free constructor
+// buildAgentParams starts from — so both read one description of what shapes
+// the prompt. A new prompt-shaping input added there reaches this measurement
+// without anyone remembering to update it, which a second hand-written literal
+// would not.
 func (m *model) addUnstartedAgentUsage(usage *conv.ContextUsage) {
-	params := agent.BuildParams{
-		CWD:            m.env.CWD,
-		Persona:        m.personaPrompt(),
-		DisabledTools:  m.services.Setting.DisabledTools(),
-		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
-		ExtraTools:     m.selfLearnExtraTools(),
-	}
+	params := m.promptParams()
 
 	usage.SystemPrompt = kit.EstimateTokens(params.System().Prompt())
 	for _, schema := range params.Schemas() {
 		usage.Tools += kit.EstimateTokens(toolSchemaWire(schema))
 	}
-	for _, schema := range m.services.MCP.GetToolSchemas() {
-		usage.MCPTools += kit.EstimateTokens(toolSchemaWire(schema))
+	// MCP tools arrive as ready-made core.Tools rather than schemas, so they sit
+	// outside Schemas() and are counted off the same list params already carries.
+	for _, t := range params.MCPTools {
+		usage.MCPTools += kit.EstimateTokens(toolSchemaWire(t.Schema()))
 	}
 }
 

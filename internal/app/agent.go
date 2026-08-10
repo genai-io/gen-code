@@ -89,9 +89,31 @@ func (m *model) applyPersonaAgents() {
 	m.services.Subagent.ClearPersona()
 }
 
+// promptParams fills in the fields that shape the system prompt and the
+// toolset, and only those. It is free of side effects, unlike buildAgentParams
+// below, which layers the recorder, hook wiring, and permission closures on
+// top — so anything that only wants to know what the agent would send (see
+// contextUsage) can call this without starting anything.
+//
+// Both callers going through one constructor is what keeps them in step: a new
+// prompt-shaping input added here reaches the inspector for free, where a
+// second hand-written literal would silently under-report.
+func (m *model) promptParams() agent.BuildParams {
+	return agent.BuildParams{
+		CWD:            m.env.CWD,
+		Persona:        m.personaPrompt(),
+		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
+		DisabledTools:  m.services.Setting.DisabledTools(),
+		MCPTools:       mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)),
+
+		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
+		// so the model can queue its own self-learning reviews.
+		ExtraTools: m.selfLearnExtraTools(),
+	}
+}
+
 func (m *model) buildAgentParams() agent.BuildParams {
-	schemas := m.services.MCP.GetToolSchemas()
-	mcpTools := mcp.AsCoreTools(schemas, mcp.NewCaller(m.services.MCP))
+	params := m.promptParams()
 
 	maxTokens := kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	var onEvent func(core.Event)
@@ -133,148 +155,136 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		m.services.Setting.StreamIdleTimeout(),
 	)
 
-	return agent.BuildParams{
-		Provider:       m.env.LLMProvider,
-		ModelID:        m.env.GetModelID(),
-		MaxTokens:      maxTokens,
-		ThinkingEffort: m.env.EffectiveThinkingEffort(),
-		OnEvent:        onEvent,
+	params.Provider = m.env.LLMProvider
+	params.ModelID = m.env.GetModelID()
+	params.MaxTokens = maxTokens
+	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
+	params.OnEvent = onEvent
+	params.CWDFunc = func() string { return m.env.CWD }
+	params.HookEngine = m.services.Hook
 
-		CWD:     m.env.CWD,
-		CWDFunc: func() string { return m.env.CWD },
-
-		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
-		Persona:        m.personaPrompt(),
-
-		DisabledTools: m.services.Setting.DisabledTools(),
-		MCPTools:      mcpTools,
-		HookEngine:    m.services.Hook,
-
-		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
-		// so the model can queue its own self-learning reviews.
-		ExtraTools: m.selfLearnExtraTools(),
-
-		AskUser: func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
-			return m.conv.AgentToUI.Ask(ctx, 0, req)
-		},
-		ToolActivity: func(toolCallID string, msg string) {
-			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
-		},
-		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
-			// Interactive answering is opt-in via the Bash steer, read live (via
-			// the synchronized snapshot — this runs on the agent goroutine) so a
-			// mid-session toggle takes effect: without it, bash stays on the
-			// normal non-tty path even in auto-review.
-			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
-				return nil
-			}
-			return bashPromptResponder{model: m}
-		},
-
-		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
-			decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
-			mode := m.env.SessionMode()
-			input := marshalPermInput(args)
-			switch decision.Behavior {
-			case perm.Permit:
-				rec.RecordPermissionDecided(transcript.PermissionRecord{
-					Tool: name, Input: input, Decision: permDecisionFor(true), Source: transcript.PermissionSourceConfig,
-					Reason: decision.Reason, Mode: mode,
-				})
-				return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
-			case perm.Reject:
-				rec.RecordPermissionDecided(transcript.PermissionRecord{
-					Tool: name, Input: input, Decision: permDecisionFor(false), Source: transcript.PermissionSourceConfig,
-					Reason: decision.Reason, Mode: mode,
-				})
-				return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
-			default:
-				return agent.PermDecisionResult{
-					Decision:    perm.Prompt,
-					Reason:      decision.Reason,
-					ToolName:    name,
-					Description: decision.Reason,
-					RequestID:   core.NewMessageID(),
-					Reviewable:  decision.Reviewable,
-				}
-			}
-		},
-
-		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
-			// Steers are read live via the synchronized snapshot (agent goroutine)
-			// so a mid-session toggle takes effect.
-			if !m.autopilotEngaged() {
-				return agent.PermReviewResult{}
-			}
-			cfg := m.liveAutopilotConfig()
-			// Defense in depth: no steer may approve an unrecoverable action —
-			// circuit-breaker tier included — even if one somehow reaches here.
-			// The recoverable git tier is deliberately not checked — weighing it
-			// is exactly what the judge is for.
-			if r := setting.CircuitBreakerReason(name, args); r != "" {
-				m.recordDecision(ctx, false, r)
-				return agent.PermReviewResult{}
-			}
-			if r := setting.UnrecoverableReason(name, args); r != "" {
-				m.recordDecision(ctx, false, r)
-				return agent.PermReviewResult{}
-			}
-			// Skill steer: trust skill loads — approve them outright, no judge, so
-			// the copilot can pull in skills without a prompt. Deliberately separate
-			// from the Permission steer, since the judge tends to escalate a skill
-			// load (it can run scripts) and you may want skills without opening the
-			// whole gray zone.
-			if name == tool.ToolSkill && cfg.Steers.Skill {
-				m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
-				m.recordDecision(ctx, true, "skill steer: trusted skill load")
-				return agent.PermReviewResult{Allow: true, Reason: "autopilot: skill steer"}
-			}
-			// Permission steer: delegate gray-zone prompts to the judge. Off ⇒ every
-			// gray-zone call escalates to the human.
-			if !cfg.Steers.PermissionOn() {
-				return agent.PermReviewResult{}
-			}
-			rev := m.autopilot.Load().judge
-			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			verdict, err := rev.Permission(ctx, reviewer.Request{
-				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.Mission,
-				UnderGit: m.env.IsGit,
-			})
-			log.Logger().Debug("auto-review verdict",
-				zap.String("tool", name),
-				zap.Bool("allow", err == nil && verdict.Allow),
-				zap.String("reason", verdict.Reason),
-				zap.Error(err))
-			if err != nil || !verdict.Allow {
-				m.recordDecision(ctx, false, escalationReason(verdict.Reason, err))
-				return agent.PermReviewResult{} // fail closed → escalate to human
-			}
-			if rec != nil {
-				rec.RecordPermissionDecided(transcript.PermissionRecord{
-					Tool: name, Input: marshalPermInput(args), Decision: permDecisionFor(true),
-					Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
-				})
-			}
-			// Cache the approval as a session grant so an identical repeat hits the
-			// static fast path instead of the judge, shrinking the gray zone over
-			// the session. Safe to write here: the agent goroutine is the only
-			// mutator (the human-approval writer runs only while it is parked).
-			m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
-			// Tally it and stash the decision so the renderer can draw it inline
-			// under the tool call the judge just let through (the status-bar count
-			// alone doesn't say what was approved or why).
-			m.recordDecision(ctx, true, verdict.Reason)
-			return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
-		},
-
-		HookAllowResolver: func(name string, args map[string]any) bool {
-			return m.services.Setting.ResolveHookAllow(name, args, m.env.SessionPermissions)
-		},
-
-		StreamFirstChunkTimeout: streamFirstChunk,
-		StreamIdleTimeout:       streamIdle,
+	params.AskUser = func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
+		return m.conv.AgentToUI.Ask(ctx, 0, req)
 	}
+	params.ToolActivity = func(toolCallID string, msg string) {
+		m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
+	}
+	params.BashPromptResponder = func(ctx context.Context) tool.BashPromptResponder {
+		// Interactive answering is opt-in via the Bash steer, read live (via
+		// the synchronized snapshot — this runs on the agent goroutine) so a
+		// mid-session toggle takes effect: without it, bash stays on the
+		// normal non-tty path even in auto-review.
+		if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
+			return nil
+		}
+		return bashPromptResponder{model: m}
+	}
+
+	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
+		decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
+		mode := m.env.SessionMode()
+		input := marshalPermInput(args)
+		switch decision.Behavior {
+		case perm.Permit:
+			rec.RecordPermissionDecided(transcript.PermissionRecord{
+				Tool: name, Input: input, Decision: permDecisionFor(true), Source: transcript.PermissionSourceConfig,
+				Reason: decision.Reason, Mode: mode,
+			})
+			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
+		case perm.Reject:
+			rec.RecordPermissionDecided(transcript.PermissionRecord{
+				Tool: name, Input: input, Decision: permDecisionFor(false), Source: transcript.PermissionSourceConfig,
+				Reason: decision.Reason, Mode: mode,
+			})
+			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
+		default:
+			return agent.PermDecisionResult{
+				Decision:    perm.Prompt,
+				Reason:      decision.Reason,
+				ToolName:    name,
+				Description: decision.Reason,
+				RequestID:   core.NewMessageID(),
+				Reviewable:  decision.Reviewable,
+			}
+		}
+	}
+
+	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
+		// Steers are read live via the synchronized snapshot (agent goroutine)
+		// so a mid-session toggle takes effect.
+		if !m.autopilotEngaged() {
+			return agent.PermReviewResult{}
+		}
+		cfg := m.liveAutopilotConfig()
+		// Defense in depth: no steer may approve an unrecoverable action —
+		// circuit-breaker tier included — even if one somehow reaches here.
+		// The recoverable git tier is deliberately not checked — weighing it
+		// is exactly what the judge is for.
+		if r := setting.CircuitBreakerReason(name, args); r != "" {
+			m.recordDecision(ctx, false, r)
+			return agent.PermReviewResult{}
+		}
+		if r := setting.UnrecoverableReason(name, args); r != "" {
+			m.recordDecision(ctx, false, r)
+			return agent.PermReviewResult{}
+		}
+		// Skill steer: trust skill loads — approve them outright, no judge, so
+		// the copilot can pull in skills without a prompt. Deliberately separate
+		// from the Permission steer, since the judge tends to escalate a skill
+		// load (it can run scripts) and you may want skills without opening the
+		// whole gray zone.
+		if name == tool.ToolSkill && cfg.Steers.Skill {
+			m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
+			m.recordDecision(ctx, true, "skill steer: trusted skill load")
+			return agent.PermReviewResult{Allow: true, Reason: "autopilot: skill steer"}
+		}
+		// Permission steer: delegate gray-zone prompts to the judge. Off ⇒ every
+		// gray-zone call escalates to the human.
+		if !cfg.Steers.PermissionOn() {
+			return agent.PermReviewResult{}
+		}
+		rev := m.autopilot.Load().judge
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		verdict, err := rev.Permission(ctx, reviewer.Request{
+			ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.Mission,
+			UnderGit: m.env.IsGit,
+		})
+		log.Logger().Debug("auto-review verdict",
+			zap.String("tool", name),
+			zap.Bool("allow", err == nil && verdict.Allow),
+			zap.String("reason", verdict.Reason),
+			zap.Error(err))
+		if err != nil || !verdict.Allow {
+			m.recordDecision(ctx, false, escalationReason(verdict.Reason, err))
+			return agent.PermReviewResult{} // fail closed → escalate to human
+		}
+		if rec != nil {
+			rec.RecordPermissionDecided(transcript.PermissionRecord{
+				Tool: name, Input: marshalPermInput(args), Decision: permDecisionFor(true),
+				Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
+			})
+		}
+		// Cache the approval as a session grant so an identical repeat hits the
+		// static fast path instead of the judge, shrinking the gray zone over
+		// the session. Safe to write here: the agent goroutine is the only
+		// mutator (the human-approval writer runs only while it is parked).
+		m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
+		// Tally it and stash the decision so the renderer can draw it inline
+		// under the tool call the judge just let through (the status-bar count
+		// alone doesn't say what was approved or why).
+		m.recordDecision(ctx, true, verdict.Reason)
+		return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
+	}
+
+	params.HookAllowResolver = func(name string, args map[string]any) bool {
+		return m.services.Setting.ResolveHookAllow(name, args, m.env.SessionPermissions)
+	}
+
+	params.StreamFirstChunkTimeout = streamFirstChunk
+	params.StreamIdleTimeout = streamIdle
+
+	return params
 }
 
 // resolveReviewerModel picks the provider and model for the auto-review judge.

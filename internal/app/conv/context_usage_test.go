@@ -31,11 +31,19 @@ func sumTokens(cats []contextCategory) int {
 	return total
 }
 
+// scaled applies the provider fit and returns both groups, mirroring what
+// RenderContextUsage does.
+func scaled(u ContextUsage) (prompt, conversation []contextCategory) {
+	prompt, conversation = u.categories()
+	u.scaleToProvider(prompt, conversation)
+	return prompt, conversation
+}
+
 func TestScaleToProviderPartsSumToMeasured(t *testing.T) {
 	u := midSession()
 
-	scaled := scaleToProvider(u.categories(), u.Measured, 0)
-	if total := sumTokens(scaled); total != u.Measured {
+	prompt, conversation := scaled(u)
+	if total := sumTokens(prompt) + sumTokens(conversation); total != u.Measured {
 		t.Errorf("scaled parts sum to %d, want the measured total %d", total, u.Measured)
 	}
 }
@@ -45,30 +53,33 @@ func TestScaleToProviderPartsSumToMeasured(t *testing.T) {
 // row for a thing the session does not have.
 func TestScaleToProviderKeepsEmptyCategoriesEmpty(t *testing.T) {
 	u := ContextUsage{Limit: 200000, Measured: 41201, SystemPrompt: 5300, Messages: 13700}
-	cats := u.categories()
+	beforePrompt, beforeConversation := u.categories()
 
-	scaled := scaleToProvider(cats, u.Measured, 0)
-	for i, c := range scaled {
-		if cats[i].tokens == 0 && c.tokens != 0 {
-			t.Errorf("%s was empty but scaled to %d", c.label, c.tokens)
+	prompt, conversation := scaled(u)
+	for _, group := range []struct{ before, after []contextCategory }{
+		{beforePrompt, prompt}, {beforeConversation, conversation},
+	} {
+		for i, c := range group.after {
+			if group.before[i].tokens == 0 && c.tokens != 0 {
+				t.Errorf("%s was empty but scaled to %d", c.label, c.tokens)
+			}
 		}
 	}
 }
 
-// An exact prefix pins the cached categories to it exactly, and the
+// An exact prefix pins the prompt categories to it exactly, and the
 // conversation to the remainder — the whole point of scaling two groups
 // instead of one.
 func TestScaleToProviderPinsEachGroupToItsOwnTotal(t *testing.T) {
 	u := midSession()
-	const cachedPrefix = 30000
+	u.CachedPrefix = 30000
 
-	scaled := scaleToProvider(u.categories(), u.Measured, cachedPrefix)
-	boundary := cachedPrefixEnd(scaled)
+	prompt, conversation := scaled(u)
 
-	if got := sumTokens(scaled[:boundary]); got != cachedPrefix {
-		t.Errorf("cached categories sum to %d, want the exact prefix %d", got, cachedPrefix)
+	if got := sumTokens(prompt); got != u.CachedPrefix {
+		t.Errorf("prompt categories sum to %d, want the exact prefix %d", got, u.CachedPrefix)
 	}
-	if got, want := sumTokens(scaled[boundary:]), u.Measured-cachedPrefix; got != want {
+	if got, want := sumTokens(conversation), u.Measured-u.CachedPrefix; got != want {
 		t.Errorf("conversation categories sum to %d, want %d", got, want)
 	}
 }
@@ -78,34 +89,32 @@ func TestScaleToProviderPinsEachGroupToItsOwnTotal(t *testing.T) {
 // exact prefix, Messages is unaffected by how wrong the tool estimate was.
 func TestScaleToProviderKeepsPrefixErrorOutOfMessages(t *testing.T) {
 	u := midSession()
-	const cachedPrefix = 30000
+	u.CachedPrefix = 30000
 
 	underestimated := u
 	underestimated.Tools /= 3 // the estimator reading punctuation-dense JSON low
 
 	messagesFor := func(usage ContextUsage) int {
-		scaled := scaleToProvider(usage.categories(), usage.Measured, cachedPrefix)
-		return scaled[len(scaled)-1].tokens
+		_, conversation := scaled(usage)
+		return conversation[len(conversation)-1].tokens
 	}
 	if got, want := messagesFor(underestimated), messagesFor(u); got != want {
 		t.Errorf("Messages moved to %d (from %d) because the tool estimate changed", got, want)
 	}
 }
 
-// The cached categories have to be the leading run: scaleToProvider slices at
-// the boundary, so a cached category sitting after an uncached one would be
-// scaled against the wrong total.
-func TestCachedCategoriesAreLeading(t *testing.T) {
-	cats := midSession().categories()
+// Without an exact prefix there is one pool, and the parts must still sum to
+// the measured total across both groups rather than each group being scaled to
+// the whole of it.
+func TestScaleToProviderWithoutPrefixSharesOnePool(t *testing.T) {
+	u := midSession()
 
-	boundary := cachedPrefixEnd(cats)
-	if boundary == 0 || boundary == len(cats) {
-		t.Fatalf("boundary at %d leaves one group empty", boundary)
+	prompt, conversation := scaled(u)
+	if total := sumTokens(prompt) + sumTokens(conversation); total != u.Measured {
+		t.Errorf("parts sum to %d, want %d", total, u.Measured)
 	}
-	for _, c := range cats[boundary:] {
-		if c.cached {
-			t.Errorf("%s is cached but sits after the boundary", c.label)
-		}
+	if sumTokens(prompt) >= u.Measured {
+		t.Errorf("prompt group took the whole measured total (%d)", sumTokens(prompt))
 	}
 }
 
@@ -114,7 +123,8 @@ func TestCachedCategoriesAreLeading(t *testing.T) {
 // categories would show five cells the window is not actually holding.
 func TestBarCellsFillMatchesHeaderPercent(t *testing.T) {
 	u := midSession()
-	cells := barCells(u.categories(), u.Limit, contextUsageBarWidth)
+	prompt, conversation := u.categories()
+	cells := barCells(append(prompt, conversation...), u.Limit, contextUsageBarWidth)
 
 	filled := 0
 	for _, n := range cells {
@@ -129,7 +139,8 @@ func TestBarCellsFillMatchesHeaderPercent(t *testing.T) {
 
 func TestBarCellsNeverExceedWidth(t *testing.T) {
 	full := ContextUsage{Limit: 100, Measured: 100, SystemPrompt: 40, Tools: 40, Messages: 40}
-	cells := barCells(full.categories(), full.Limit, contextUsageBarWidth)
+	prompt, conversation := full.categories()
+	cells := barCells(append(prompt, conversation...), full.Limit, contextUsageBarWidth)
 
 	filled := 0
 	for _, n := range cells {
