@@ -20,8 +20,8 @@ func TestPermissionsPanelDefaultsAllowed(t *testing.T) {
 	if !p.baseline {
 		t.Fatalf("YOLO mode should default allowed (allowBypass is opt-out)")
 	}
-	if p.cursor != indexOfYolo(true) {
-		t.Fatalf("cursor = %d, want the Allowed row (%d)", p.cursor, indexOfYolo(true))
+	if got := yoloOptions[p.cursor]; !got.allowed {
+		t.Fatalf("cursor should park on the Allowed row, got %q", got.label)
 	}
 	if p.Dirty() {
 		t.Fatalf("fresh panel parked on the effective value should not be dirty")
@@ -37,9 +37,7 @@ func TestPermissionsPanelDefaultsAllowed(t *testing.T) {
 // field. A dropped field means "unset", which reads back as allowed — the
 // user would lock the gate and find it open again next launch.
 func TestPermissionsPanelLockPersistsExplicitFalse(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	home := tempHome(t)
 
 	p := newPermissionsPanel(nil)
 	p.Enter()
@@ -73,9 +71,7 @@ func TestPermissionsPanelLockPersistsExplicitFalse(t *testing.T) {
 // directions: re-allowing after a lock writes true rather than leaving the
 // explicit false behind.
 func TestPermissionsPanelReallowPersistsTrue(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	home := tempHome(t)
 
 	p := newPermissionsPanel(nil)
 	p.Enter()
@@ -100,9 +96,7 @@ func TestPermissionsPanelReallowPersistsTrue(t *testing.T) {
 // TestPermissionsPanelSaveFailureSurfacesError confirms a failed persist keeps
 // the popup open, leaves the baseline untouched, and shows the error inline.
 func TestPermissionsPanelSaveFailureSurfacesError(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	home := tempHome(t)
 	// Block the write: a regular file where the .san dir must be makes the
 	// loader's MkdirAll fail.
 	if err := os.WriteFile(filepath.Join(home, ".san"), []byte("x"), 0o644); err != nil {
@@ -129,6 +123,15 @@ func TestPermissionsPanelSaveFailureSurfacesError(t *testing.T) {
 	if out := p.Render(80, 24); !strings.Contains(out, "couldn't save") {
 		t.Fatalf("Render should surface the save error, got:\n%s", out)
 	}
+}
+
+// tempHome points the settings loader at a throwaway home directory.
+func tempHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
 }
 
 // readPersistedAllowBypass reads back the allowBypass field from the user

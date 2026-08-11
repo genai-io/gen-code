@@ -602,7 +602,7 @@ func (m OperationMode) String() string {
 	case ModeAutoPilot:
 		return "autopilot"
 	case ModeBypassPermissions:
-		return "yolo"
+		return "YOLO"
 	case ModeDontAsk:
 		return "don't ask"
 	case ModeReadOnly:

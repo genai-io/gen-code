@@ -270,12 +270,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conv.AddNotice("Saved, but couldn't re-read settings — restart for it to take effect")
 			return m, nil
 		}
-		// Locking the gate has to drop a session that is already in YOLO mode.
-		// Otherwise the switch reads "locked" while the running session keeps
-		// skipping prompts until the next restart. Go through the shared tail
-		// so the new mode is persisted too — otherwise lastOperationMode stays
-		// "bypass" and the next launch restores YOLO behind the user's back.
-		if !msg.Allowed && m.env.OperationMode == setting.ModeBypassPermissions {
+		// Reason about the effective setting, not the payload: the panel writes
+		// the user level, but a project-level allowBypass outranks it. Demoting
+		// on msg.Allowed alone would kick a session out of YOLO mode that
+		// shift+tab can walk straight back into.
+		allowed := m.services.Setting.AllowBypass()
+		if !allowed && m.env.OperationMode == setting.ModeBypassPermissions {
+			// persistOperationMode too, or lastOperationMode stays "bypass" and
+			// the next launch restores YOLO behind the user's back.
 			m.env.OperationMode = setting.ModeNormal
 			m.applyOperationMode()
 			m.persistOperationMode()
@@ -283,9 +285,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.Allowed:
 			m.conv.AddNotice("YOLO mode allowed — shift+tab to reach it")
-		case m.services.Setting.AllowBypass():
-			// The panel writes the user-level file; a project-level allowBypass
-			// outranks it. The lock did not stick — don't report success.
+		case allowed:
 			m.conv.AddNotice("Locked for your user, but project settings still allow YOLO mode")
 		default:
 			m.conv.AddNotice("YOLO mode locked")

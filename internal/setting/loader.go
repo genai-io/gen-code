@@ -555,17 +555,11 @@ func SaveContextBar(on bool) error {
 }
 
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
-// to ~/.san/settings.json. Written as an explicit pointer for the same reason
-// as ContextBar: an "off" choice must override an inherited "on" rather than
-// being dropped as a zero value.
+// to ~/.san/settings.json. It replaces the field rather than merging it: the
+// setting is opt-out, so locking the gate means persisting an explicit false,
+// which is exactly the toggle updateSettingsFile exists to make stick.
 func SaveAllowBypass(on bool) error {
-	if err := NewLoader().SaveToUser(&Data{AllowBypass: &on}); err != nil {
-		return err
-	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
+	return updateSettingsFile(true, func(d *Data) { d.AllowBypass = &on })
 }
 
 // SavePersonaAt persists the chosen persona name at the given scope: the

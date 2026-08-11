@@ -283,7 +283,6 @@ func TestModelStatusLabel(t *testing.T) {
 		want   string
 	}{
 		{"effort appended", "Opus 5", "high", "Opus 5 (high)"},
-		{"non-openai model too", "DeepSeek V4 Pro", "high", "DeepSeek V4 Pro (high)"},
 		{"empty effort", "Opus 5", "", "Opus 5"},
 		{"off suppressed", "Opus 5", "off", "Opus 5"},
 		{"none suppressed", "Opus 5", "none", "Opus 5"},

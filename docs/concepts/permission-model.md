@@ -27,7 +27,7 @@ For the Claude-Code-compatible rule syntax see
 | `ModeNormal` | `normal` | Safe tools auto-allow; everything else prompts. |
 | `ModeAutoAccept` | `accept edits` | Edit/Write auto-allow; other gated tools prompt. |
 | `ModeAutoPilot` | `autopilot` | Edits auto-allow; every other gated call becomes a **reviewable** prompt the judge may answer. |
-| `ModeBypassPermissions` | `yolo` | Allow everything except deny rules and the circuit breaker. Shown in the status bar as **YOLO mode**. |
+| `ModeBypassPermissions` | `YOLO` | Allow everything except deny rules and the circuit breaker. |
 | `ModeDontAsk` | `don't ask` | Coerce `ask` → `deny`; never prompt. |
 | `ModeReadOnly` | `read-only` | Safe tools only; everything else denied. |
 

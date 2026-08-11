@@ -8,13 +8,11 @@
 // how you take it away without hand-editing settings.json. It persists to
 // the user settings file, matching the appearance panel's user-level scope.
 //
-// Scope, precisely: `allowBypass` is read in exactly two places — the
-// shift+tab cycle (OperationMode.NextWithBypass) and the startup default
-// (env.ApplyDefaultPermissionMode). A subagent that declares
-// `mode: bypassPermissions` resolves through subagent.NormalizePermissionMode,
-// which never consults it, and still runs unrestricted. So this is a lock on
-// how *you* reach the mode, not a session-wide guarantee that nothing runs
-// unprompted — don't describe it as one.
+// Scope: `allowBypass` is read by OperationMode.NextWithBypass and
+// env.ApplyDefaultPermissionMode, and nowhere else — subagent.
+// NormalizePermissionMode never consults it, so an agent declaring
+// `mode: bypassPermissions` runs unrestricted with the gate locked. This
+// gates how you reach the mode, not what the session as a whole may do.
 package input
 
 import (
@@ -40,18 +38,17 @@ type yoloOption struct {
 	allowed bool
 }
 
-func yoloOptions() []yoloOption {
-	return []yoloOption{
-		{label: "Allowed", desc: "shift+tab reaches YOLO mode — no permission prompts", allowed: true},
-		{label: "Locked", desc: "shift+tab stops at autopilot", allowed: false},
-	}
+// yoloOptions is the row list, in display order. Allowed comes first so the
+// cursor parks on the default at Enter.
+var yoloOptions = []yoloOption{
+	{label: "Allowed", desc: "shift+tab reaches YOLO mode — no permission prompts", allowed: true},
+	{label: "Locked", desc: "shift+tab stops at autopilot", allowed: false},
 }
 
 type permissionsPanel struct {
 	settings *setting.Settings
 
-	options []yoloOption
-	cursor  int
+	cursor int
 
 	// baseline is the effective value on disk, marked "● current".
 	baseline bool
@@ -68,21 +65,21 @@ func newPermissionsPanel(settings *setting.Settings) *permissionsPanel {
 func (p *permissionsPanel) Title() string { return "permissions" }
 
 func (p *permissionsPanel) Enter() {
-	p.options = yoloOptions()
 	// Unset means allowed — mirror Settings.AllowBypass's opt-out default so a
 	// fresh install shows "Allowed ● current" instead of a wrong "Locked".
 	p.baseline = p.settings == nil || p.settings.AllowBypass()
-	p.cursor = indexOfYolo(p.baseline)
+	p.cursor = 0
+	for i, opt := range yoloOptions {
+		if opt.allowed == p.baseline {
+			p.cursor = i
+			break
+		}
+	}
 	p.saveErr = nil
 }
 
 func (p *permissionsPanel) Dirty() bool {
-	// Enter() populates options; guard so a Dirty() consulted before it (e.g.
-	// a shell that polls every tab for an unsaved marker) cannot panic.
-	if len(p.options) == 0 {
-		return false
-	}
-	return p.options[p.cursor].allowed != p.baseline
+	return yoloOptions[p.cursor].allowed != p.baseline
 }
 
 func (p *permissionsPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
@@ -93,12 +90,12 @@ func (p *permissionsPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		p.saveErr = nil
 	case "down", "j":
-		if p.cursor < len(p.options)-1 {
+		if p.cursor < len(yoloOptions)-1 {
 			p.cursor++
 		}
 		p.saveErr = nil
 	case "enter", " ":
-		return p.apply(p.options[p.cursor])
+		return p.apply(yoloOptions[p.cursor])
 	}
 	return nil, false
 }
@@ -115,24 +112,18 @@ func (p *permissionsPanel) apply(opt yoloOption) (tea.Cmd, bool) {
 	return func() tea.Msg { return AllowBypassSavedMsg{Allowed: opt.allowed} }, true
 }
 
-func (p *permissionsPanel) HintLine() string {
-	return keycap("↑↓") + " navigate  " + keycap("enter") + " apply"
-}
+func (p *permissionsPanel) HintLine() string { return radioHintLine() }
 
 func (p *permissionsPanel) Render(width, _ int) string {
 	var b strings.Builder
 
 	b.WriteString(renderAppearanceSection("YOLO MODE", width))
 	b.WriteString("\n\n")
-	for i, opt := range p.options {
-		b.WriteString(p.renderOption(i, opt))
+	for i, opt := range yoloOptions {
+		b.WriteString(renderRadioRow(opt.label, opt.desc, i == p.cursor, opt.allowed == p.baseline))
 		b.WriteString("\n")
 	}
 
-	// Two things the labels above would otherwise overpromise: what survives
-	// the mode (deny rules and the / · ~ circuit breaker do; the confirmation
-	// tiers don't), and how far "Locked" reaches — it gates the shift+tab
-	// cycle, not a subagent that declares bypassPermissions for itself.
 	b.WriteString("\n")
 	b.WriteString(appearanceDescStyle.Render(
 		"Deny rules and the / · ~ circuit breaker still hold. Other confirmations do not."))
@@ -147,33 +138,4 @@ func (p *permissionsPanel) Render(width, _ int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-func (p *permissionsPanel) renderOption(i int, opt yoloOption) string {
-	caret := "  "
-	label := appearanceLabelStyle.Render(opt.label)
-	if i == p.cursor {
-		caret = appearanceCursorStyle.Render("▸ ")
-		label = appearanceCursorStyle.Render(opt.label)
-	}
-
-	radio := appearanceRadioOffStyle.Render("○")
-	current := ""
-	if opt.allowed == p.baseline {
-		radio = appearanceRadioOnStyle.Render("●")
-		current = "  " + appearanceCurrentStyle.Render("current")
-	}
-
-	labelCell := label + strings.Repeat(" ", max(8-len(opt.label), 1))
-	return caret + radio + " " + labelCell + appearanceDescStyle.Render(opt.desc) + current
-}
-
-// indexOfYolo returns the row index for an effective value.
-func indexOfYolo(allowed bool) int {
-	for i, opt := range yoloOptions() {
-		if opt.allowed == allowed {
-			return i
-		}
-	}
-	return 0
 }
