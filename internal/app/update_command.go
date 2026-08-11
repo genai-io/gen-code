@@ -39,6 +39,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		SetThinkingEffort: m.env.SetThinkingEffort,
 		ResetTokens:       m.env.ResetTokens,
 		GetGoal:           func() string { return strings.TrimSpace(m.env.AutoPilot.Mission) },
+		ContextUsage:      m.contextUsage,
 
 		// Model actions
 		CommitMessages:          m.CommitMessages,

@@ -17,6 +17,7 @@
 package reminder
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -229,6 +230,24 @@ func (s *Service) RequeueSystemReminders() {
 func (s *Service) Drain() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	out := s.wrappedLocked()
+	s.pending = nil
+	return out
+}
+
+// Pending returns the queued reminders (already wrapped) without clearing the
+// queue. Use it to inspect what the next user message will carry; use Drain
+// when you are the one attaching them.
+func (s *Service) Pending() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.wrappedLocked()
+}
+
+// wrappedLocked returns the queue's wire strings. Shared by Drain and Pending
+// so the two views of the same queue cannot disagree about what an entry
+// renders as. Caller holds s.mu.
+func (s *Service) wrappedLocked() []string {
 	if len(s.pending) == 0 {
 		return nil
 	}
@@ -236,7 +255,6 @@ func (s *Service) Drain() []string {
 	for i, e := range s.pending {
 		out[i] = e.wrapped
 	}
-	s.pending = nil
 	return out
 }
 
@@ -246,6 +264,28 @@ func (s *Service) Empty() bool {
 	defer s.mu.Unlock()
 	return len(s.pending) == 0
 }
+
+// The one spelling of the <system-reminder> tag. Every producer and consumer
+// in the tree builds from these — WrapWithSource writes them, Blocks reads
+// them through Pattern, and the transcript splitter in internal/session
+// compiles Pattern into its own combined regexp. A change here therefore
+// reaches every reader; spelling the tag out a second time somewhere else is
+// how a reader silently stops recognizing what the writer emits.
+const (
+	tagOpen        = "<system-reminder"
+	tagClose       = "</system-reminder>"
+	sourceAttrName = "source"
+	quoteEscape    = "&quot;"
+
+	// Pattern matches one whole reminder, capturing the source attribute (empty
+	// for a one-time notice) in group 1. Callers that need it inside a larger
+	// alternation compile it themselves; Blocks uses it directly.
+	Pattern = tagOpen + `(?:\s+` + sourceAttrName + `="([^"]*)")?>.*?` + tagClose
+)
+
+// blockRe matches a whole reminder across newlines — bodies are multi-line, and
+// the non-greedy body must not run past the first closing tag.
+var blockRe = regexp.MustCompile(`(?s)` + Pattern)
 
 // Wrap returns body wrapped in <system-reminder>...</system-reminder>. Empty
 // body returns "".
@@ -263,12 +303,12 @@ func WrapWithSource(body, source string) string {
 		return ""
 	}
 	if source == "" {
-		return "<system-reminder>\n" + body + "\n</system-reminder>"
+		return tagOpen + ">\n" + body + "\n" + tagClose
 	}
 	// Escape any quotes in source defensively; provider IDs are constants
 	// today but the surface is public.
-	src := strings.ReplaceAll(source, `"`, `&quot;`)
-	return "<system-reminder source=\"" + src + "\">\n" + body + "\n</system-reminder>"
+	src := strings.ReplaceAll(source, `"`, quoteEscape)
+	return tagOpen + " " + sourceAttrName + `="` + src + `">` + "\n" + body + "\n" + tagClose
 }
 
 // WrapMemory returns the main agent's memory reminder body: a short
@@ -324,4 +364,33 @@ func AttachToContent(content string, reminders []string) string {
 		sb.WriteString(r)
 	}
 	return sb.String()
+}
+
+// Block is one <system-reminder> found inside a message: the provider that
+// emitted it (empty for a one-time notice) and the full wrapped text,
+// including the tags.
+type Block struct {
+	Source string
+	Text   string
+}
+
+// Blocks extracts the <system-reminder> blocks embedded in a message's
+// content — the inverse of AttachToContent, reading through the same Pattern
+// the writer above is built from.
+//
+// Callers use this to attribute the harness-injected bytes (the skills
+// directory, memory files) apart from what the user and the model actually
+// said. An unterminated or malformed block simply does not match, so it counts
+// as ordinary content rather than being guessed at.
+func Blocks(content string) []Block {
+	matches := blockRe.FindAllStringSubmatchIndex(content, -1)
+	blocks := make([]Block, 0, len(matches))
+	for _, m := range matches {
+		source := ""
+		if m[2] >= 0 {
+			source = strings.ReplaceAll(content[m[2]:m[3]], quoteEscape, `"`)
+		}
+		blocks = append(blocks, Block{Source: source, Text: content[m[0]:m[1]]})
+	}
+	return blocks
 }

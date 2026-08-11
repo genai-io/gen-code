@@ -123,6 +123,29 @@ func SupportsImages(p Provider, model string) bool {
 	return true
 }
 
+// PromptPrefixCacheProvider is implemented by providers that place their
+// prompt-cache breakpoint at the end of the system prompt. Anthropic renders a
+// request as tools → system → messages, so a breakpoint there makes the cached
+// prefix exactly the tool definitions plus the system prompt — and the cache
+// token counts an exact measurement of those two.
+type PromptPrefixCacheProvider interface {
+	CachesToolsAndSystemPrompt() bool
+}
+
+// CachesToolsAndSystemPrompt reports whether the provider's reported cache
+// tokens (creation plus read) count exactly the tool definitions plus the
+// system prompt.
+//
+// It defaults to false, which is the honest answer for everyone else: providers
+// that cache automatically pick their own prefix boundary, so their cache
+// counts cover an unknown span — usually rather more than the prompt, since a
+// stable conversation head caches too. Reading those as a measurement of the
+// prompt would silently overstate it.
+func CachesToolsAndSystemPrompt(p Provider) bool {
+	cp, ok := p.(PromptPrefixCacheProvider)
+	return ok && cp.CachesToolsAndSystemPrompt()
+}
+
 func ThinkingEfforts(p Provider, model string) []string {
 	ep, ok := p.(ThinkingEffortProvider)
 	if !ok {

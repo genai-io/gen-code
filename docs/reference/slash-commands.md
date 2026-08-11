@@ -17,6 +17,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/skills` | Manage skill states |
 | `/agents` | Manage agents |
 | `/tokenlimit` | View / set token budget |
+| `/context` | Show what is filling the context window, by category |
 | `/compact` | Compress conversation history |
 | `/init` | Create SAN.md and config files |
 | `/memory` | View / edit memory files |
@@ -33,6 +34,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/think` cycles through levels and updates the status bar indicator.
+- `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `ctx X/Y` says how full the window is; `/context` says what filled it. The total is the provider's measured prompt size for the last turn. On a provider whose prompt-cache breakpoint sits at the end of the system prompt (Anthropic renders tools → system → messages, so the cached prefix is exactly those two), the reported cache tokens also measure the system prompt and toolset exactly, and only the conversation split stays estimated — the footer names which numbers are which. The reading is discarded when it disagrees with the estimate by more than 2×, so a moved breakpoint degrades to estimation rather than reporting a confident wrong number.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
 
 ## Automated Tests

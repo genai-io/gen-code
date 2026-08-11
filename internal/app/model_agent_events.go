@@ -37,6 +37,10 @@ func (m *model) OnInference(resp *core.InferResponse) {
 	// context-window occupancy rather than just the uncached delta.
 	m.env.InputTokens = resp.TotalInputTokens()
 	m.env.OutputTokens = resp.OutputTokens
+	// Both halves of the cached prefix count toward it: the first turn writes
+	// it (creation), later turns read it (read), and a turn that invalidated it
+	// writes it again — the sum is the prefix size either way.
+	m.env.CachedPrefixTokens = resp.CacheCreationInputTokens + resp.CacheReadInputTokens
 
 	if m.env.CurrentModel != nil {
 		usage := llm.Usage{
