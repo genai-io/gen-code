@@ -554,6 +554,20 @@ func SaveContextBar(on bool) error {
 	return nil
 }
 
+// SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
+// to ~/.san/settings.json. Written as an explicit pointer for the same reason
+// as ContextBar: an "off" choice must override an inherited "on" rather than
+// being dropped as a zero value.
+func SaveAllowBypass(on bool) error {
+	if err := NewLoader().SaveToUser(&Data{AllowBypass: &on}); err != nil {
+		return err
+	}
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
 // SavePersonaAt persists the chosen persona name at the given scope: the
 // project file (.san/settings.json under cwd) when userLevel is false, or the
 // user file (~/.san/settings.json) when true. An empty name clears the field.

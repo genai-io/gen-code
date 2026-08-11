@@ -4,7 +4,7 @@
 // panel's body + hint. Each sub-panel implements Panel and owns its body.
 //
 // Two popups are built on this shell today:
-//   - /config  → one Appearance panel (Provider / Permissions planned).
+//   - /config  → Appearance + Permissions panels (Provider planned).
 //   - /evolve  → one self-learning panel covering both arms (skills + memory).
 //
 // To add a panel to either, implement Panel and append it in the popup's
@@ -79,13 +79,15 @@ func newPanelPopup(glyph, title, tagline string, panels ...Panel) PanelPopup {
 	return PanelPopup{glyph: glyph, title: title, tagline: tagline, panels: panels}
 }
 
-// NewConfigSelector builds the /config popup: Appearance today, with Provider
-// / Permissions planned as sibling panels.
+// NewConfigSelector builds the /config popup: Appearance and Permissions,
+// with Provider planned as a sibling panel.
 func NewConfigSelector(settings *setting.Settings) PanelPopup {
-	return newPanelPopup("⚙", "Config", "appearance & settings", newAppearancePanel(settings))
+	return newPanelPopup("⚙", "Config", "appearance & settings",
+		newAppearancePanel(settings), newPermissionsPanel(settings))
 }
 
-// Enter activates the popup with the first panel focused.
+// Enter activates the popup, re-focusing whichever panel was last open (the
+// index survives between openings, so /config reopens where you left it).
 func (c *PanelPopup) Enter(width, height int) {
 	c.width = width
 	c.height = height

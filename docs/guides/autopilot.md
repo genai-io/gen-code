@@ -11,7 +11,7 @@ tool calls, answering a command's interactive prompts, answering
 input suggestions and gray-zone permission judging are on by default.
 
 Enter Autopilot mode with `shift+tab` (cycle until the amber
-`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
+`⏵⏵ autopilot`), and configure it with the `/autopilot` panel. A resumed
 session (`san -r <id>`) comes back in the mode it was saved in. If you just want
 to see it drive, [`/goal`](#goal) is the shortest path in — it is one preset of
 everything below.

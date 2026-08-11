@@ -583,7 +583,7 @@ type OperationMode int
 const (
 	ModeNormal            OperationMode = iota
 	ModeAutoAccept                      // auto-approve edits/writes
-	ModeBypassPermissions               // allow all except deny rules and the root/home-removal circuit breaker
+	ModeBypassPermissions               // "YOLO mode": allow all except deny rules and the root/home-removal circuit breaker
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
 	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
@@ -602,7 +602,7 @@ func (m OperationMode) String() string {
 	case ModeAutoPilot:
 		return "autopilot"
 	case ModeBypassPermissions:
-		return "bypass permissions"
+		return "yolo"
 	case ModeDontAsk:
 		return "don't ask"
 	case ModeReadOnly:
@@ -636,7 +636,9 @@ func OperationModeFromString(mode string) OperationMode {
 		return ModeAutoAccept
 	case "autoPilot", "auto-pilot", "autopilot", "pilot":
 		return ModeAutoPilot
-	case "bypassPermissions", "bypass-permissions", "bypass":
+	// bypassPermissions is the wire name (Claude Code compatible); yolo is
+	// what the UI calls it, accepted here so hand-written settings match.
+	case "bypassPermissions", "bypass-permissions", "bypass", "yolo":
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":
 		return ModeDontAsk

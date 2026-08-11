@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -258,6 +259,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conv.AddNotice("Context bar on")
 		} else {
 			m.conv.AddNotice("Context bar off")
+		}
+		return m, nil
+	case input.AllowBypassSavedMsg:
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			// The in-memory handle still holds the pre-save value, and it is
+			// what cycleOperationMode consults — so a lock that cannot be
+			// re-read has not taken effect. Say so instead of claiming it did.
+			log.Logger().Warn("reload settings after YOLO-mode save failed", zap.Error(err))
+			m.conv.AddNotice("Saved, but couldn't re-read settings — restart for it to take effect")
+			return m, nil
+		}
+		// Locking the gate has to drop a session that is already in YOLO mode.
+		// Otherwise the switch reads "locked" while the running session keeps
+		// skipping prompts until the next restart. Go through the shared tail
+		// so the new mode is persisted too — otherwise lastOperationMode stays
+		// "bypass" and the next launch restores YOLO behind the user's back.
+		if !msg.Allowed && m.env.OperationMode == setting.ModeBypassPermissions {
+			m.env.OperationMode = setting.ModeNormal
+			m.applyOperationMode()
+			m.persistOperationMode()
+		}
+		switch {
+		case msg.Allowed:
+			m.conv.AddNotice("YOLO mode allowed — shift+tab to reach it")
+		case m.services.Setting.AllowBypass():
+			// The panel writes the user-level file; a project-level allowBypass
+			// outranks it. The lock did not stick — don't report success.
+			m.conv.AddNotice("Locked for your user, but project settings still allow YOLO mode")
+		default:
+			m.conv.AddNotice("YOLO mode locked")
 		}
 		return m, nil
 	case input.SkillCycleMsg:
