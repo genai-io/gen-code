@@ -13,6 +13,9 @@ Re-run the same command to upgrade. To uninstall, append `-s uninstall`.
 Alternatives:
 
 ```bash
+# via Homebrew
+brew tap genai-io/san && brew install san
+
 # via Go toolchain
 go install github.com/genai-io/san/cmd/san@latest
 

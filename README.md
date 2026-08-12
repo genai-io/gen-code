@@ -60,6 +60,13 @@ Three properties, and San refuses to trade any one of them for the others.
 
 ## Installation
 
+**Homebrew (macOS / Linux)**
+
+```bash
+brew tap genai-io/san
+brew install san
+```
+
 **macOS / Linux**
 
 ```bash
@@ -72,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-Start with `san`. On first launch, choose a model and add its API key when prompted. To update later, run `san update`.
+Start with `san`. On first launch, choose a model and add its API key when prompted. To update later, run `san update` — or `brew upgrade san` if you installed via Homebrew.
 
 <details>
 <summary><b>Other methods</b></summary>
