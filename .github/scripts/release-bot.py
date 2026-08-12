@@ -9,6 +9,8 @@ On each run:
   4. Bumps the version (patch by default)
   5. Rewrites CHANGELOG.md and cmd/san/main.go
   6. Creates (or updates) a release/vX.Y.Z PR against main
+  7. Enables auto-merge on it: the two-file version bump merges itself once
+     CI passes and a maintainer approves
 
 Usage from GitHub Actions workflow:
   python3 .github/scripts/release-bot.py
@@ -363,6 +365,19 @@ def main():
         "--body", body,
     ])
     print(f"\n✅ Release PR created: {result}")
+
+    # Enable auto-merge: the PR is a two-file version bump, so once the
+    # required checks pass and a maintainer approves it merges itself.
+    # Failure is non-fatal — the PR stays open for a human to merge.
+    auto_merge = subprocess.run(
+        ["gh", "pr", "merge", "--repo", REPO, "--auto", "--squash", result.split("/")[-1]],
+        capture_output=True,
+        text=True,
+    )
+    if auto_merge.returncode != 0:
+        print(f"::warning:: could not enable auto-merge on {result}: {auto_merge.stderr.strip()}")
+    else:
+        print(f"🔁 Auto-merge enabled: {result}")
 
 
 if __name__ == "__main__":
