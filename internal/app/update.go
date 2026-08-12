@@ -282,9 +282,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyOperationMode()
 			m.persistOperationMode()
 		}
+		// Report what is in force, not what was written. Either direction can
+		// be outranked by the project level, and saying "allowed" when
+		// shift+tab still stops at autopilot is the same lie as the reverse.
 		switch {
-		case msg.Allowed:
+		case msg.Allowed && allowed:
 			m.conv.AddNotice("YOLO mode allowed — shift+tab to reach it")
+		case msg.Allowed:
+			m.conv.AddNotice("Allowed for your user, but project settings still lock YOLO mode")
 		case allowed:
 			m.conv.AddNotice("Locked for your user, but project settings still allow YOLO mode")
 		default:

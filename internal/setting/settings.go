@@ -590,8 +590,9 @@ const (
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
-// BypassPermissions is only reachable when explicitly enabled; DontAsk and
-// ReadOnly are entered programmatically (headless subagents), not via cycling.
+// BypassPermissions is in the cycle unless `allowBypass: false` locks it out;
+// DontAsk and ReadOnly are entered programmatically (headless subagents), not
+// via cycling.
 var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot}
 var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeBypassPermissions}
 
