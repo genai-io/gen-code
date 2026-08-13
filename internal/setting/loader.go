@@ -554,6 +554,14 @@ func SaveContextBar(on bool) error {
 	return nil
 }
 
+// SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
+// to ~/.san/settings.json. It replaces the field rather than merging it: the
+// setting is opt-out, so locking the gate means persisting an explicit false,
+// which is exactly the toggle updateSettingsFile exists to make stick.
+func SaveAllowBypass(on bool) error {
+	return updateSettingsFile(true, func(d *Data) { d.AllowBypass = &on })
+}
+
 // SavePersonaAt persists the chosen persona name at the given scope: the
 // project file (.san/settings.json under cwd) when userLevel is false, or the
 // user file (~/.san/settings.json) when true. An empty name clears the field.

@@ -355,8 +355,8 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	return "", nil, nil
 }
 
-// handleConfigCommand opens the /config popup (Appearance today; Provider /
-// Permissions are planned as sibling panels). Self-learning has moved out to
+// handleConfigCommand opens the /config popup (Appearance and Permissions;
+// Provider is planned as a sibling panel). Self-learning has moved out to
 // its own /evolve popup.
 func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Config.Enter(c.env.Width, c.env.Height)

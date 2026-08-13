@@ -240,7 +240,7 @@ func TestRenderOperationModeIndicator_AutoPilotCounts(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, c.approvals, c.escalations, false))
-			if !strings.Contains(out, "autopilot on") {
+			if !strings.Contains(out, "autopilot") {
 				t.Fatalf("missing base label: %q", out)
 			}
 			if got := strings.Contains(out, "approved"); got != c.wantApprove {
@@ -263,12 +263,35 @@ func TestRenderOperationModeIndicator_CountsOnlyInAutoPilot(t *testing.T) {
 
 func TestRenderOperationModeIndicator_Thinking(t *testing.T) {
 	// While the copilot decides, the indicator shows "thinking…" and drops the
-	// "on"/counts so the transient state lives here, not in a transcript line.
+	// counts so the transient state lives here, not in a transcript line.
 	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, 3, 1, true))
 	if !strings.Contains(out, "thinking…") {
 		t.Fatalf("missing thinking label: %q", out)
 	}
 	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {
 		t.Errorf("thinking must suppress the counts: %q", out)
+	}
+}
+
+func TestModelStatusLabel(t *testing.T) {
+	// Effort rides in the model segment for every provider — the OpenAI-only
+	// special case this replaced is gone.
+	cases := []struct {
+		name   string
+		model  string
+		effort string
+		want   string
+	}{
+		{"effort appended", "Opus 5", "high", "Opus 5 (high)"},
+		{"empty effort", "Opus 5", "", "Opus 5"},
+		{"off suppressed", "Opus 5", "off", "Opus 5"},
+		{"none suppressed", "Opus 5", "none", "Opus 5"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ModelStatusLabel(c.model, c.effort); got != c.want {
+				t.Errorf("ModelStatusLabel(%q, %q) = %q, want %q", c.model, c.effort, got, c.want)
+			}
+		})
 	}
 }

@@ -58,7 +58,7 @@ func NormalizePermissionMode(s string) PermissionMode {
 		return PermissionAcceptEdits
 	case "explore", "readonly", "read-only":
 		return PermissionExplore
-	case "bypass", "bypasspermissions":
+	case "bypass", "bypasspermissions", "yolo":
 		return PermissionBypass
 	case "dontask", "dont-ask":
 		return PermissionDontAsk

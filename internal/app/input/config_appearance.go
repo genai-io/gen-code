@@ -164,9 +164,7 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (p *appearancePanel) HintLine() string {
-	return keycap("↑↓") + " navigate  " + keycap("enter") + " apply"
-}
+func (p *appearancePanel) HintLine() string { return radioHintLine() }
 
 func (p *appearancePanel) Render(width, _ int) string {
 	var b strings.Builder
@@ -181,7 +179,7 @@ func (p *appearancePanel) Render(width, _ int) string {
 			b.WriteString("\n\n")
 			prevSection = opt.section
 		}
-		b.WriteString(p.renderOption(i, opt))
+		b.WriteString(renderRadioRow(opt.label, opt.desc, i == p.cursor, p.isCurrent(opt)))
 		b.WriteString("\n")
 	}
 
@@ -200,24 +198,32 @@ func renderAppearanceSection(title string, width int) string {
 	return appearanceSectionStyle.Render(title) + " " + appearanceRuleStyle.Render(strings.Repeat("─", ruleLen))
 }
 
-func (p *appearancePanel) renderOption(i int, opt appearanceOption) string {
+// renderRadioRow renders one selectable row of a /config radio group: the
+// hover caret, the ○/● radio, a label padded to a common column so the
+// descriptions line up, and the "current" tag on the persisted choice.
+// Shared by every panel with a radio group so the tabs cannot drift apart.
+func renderRadioRow(label, desc string, hovered, current bool) string {
 	caret := "  "
-	label := appearanceLabelStyle.Render(opt.label)
-	if i == p.cursor {
+	rendered := appearanceLabelStyle.Render(label)
+	if hovered {
 		caret = appearanceCursorStyle.Render("▸ ")
-		label = appearanceCursorStyle.Render(opt.label)
+		rendered = appearanceCursorStyle.Render(label)
 	}
 
 	radio := appearanceRadioOffStyle.Render("○")
-	current := ""
-	if p.isCurrent(opt) {
+	tag := ""
+	if current {
 		radio = appearanceRadioOnStyle.Render("●")
-		current = "  " + appearanceCurrentStyle.Render("current")
+		tag = "  " + appearanceCurrentStyle.Render("current")
 	}
 
-	// Pad labels to a common column so the descriptions line up.
-	labelCell := label + strings.Repeat(" ", max(8-len(opt.label), 1))
-	return caret + radio + " " + labelCell + appearanceDescStyle.Render(opt.desc) + current
+	labelCell := rendered + strings.Repeat(" ", max(8-lipgloss.Width(label), 1))
+	return caret + radio + " " + labelCell + appearanceDescStyle.Render(desc) + tag
+}
+
+// radioHintLine is the shared bottom hint for a radio-group panel.
+func radioHintLine() string {
+	return keycap("↑↓") + " navigate  " + keycap("enter") + " apply"
 }
 
 // isCurrent reports whether opt matches the persisted value for its group.

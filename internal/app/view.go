@@ -10,7 +10,6 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -327,13 +326,7 @@ func (m *model) renderTrackerList() string {
 }
 
 func (m model) renderModeStatus() string {
-	modelName := m.env.GetModelDisplayName()
-	thinkingEffort := m.env.EffectiveThinkingEffort()
-	showThinking := true
-	if m.env.CurrentModel != nil && m.env.CurrentModel.Provider == llm.OpenAI && thinkingEffort != "" {
-		modelName += " (" + thinkingEffort + ")"
-		showThinking = false
-	}
+	modelName := conv.ModelStatusLabel(m.env.GetModelDisplayName(), m.env.EffectiveThinkingEffort())
 	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
 		modelName = status
 	}
@@ -355,8 +348,6 @@ func (m model) renderModeStatus() string {
 		Compressions:      m.env.Compressions,
 		ShowContextBar:    m.env.ShowContextBar,
 		Width:             m.env.Width,
-		ThinkingEffort:    thinkingEffort,
-		ShowThinking:      showThinking,
 		ReviewApprovals:   reviewApprovals,
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,

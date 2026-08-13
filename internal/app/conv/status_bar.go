@@ -210,8 +210,6 @@ type OperationModeParams struct {
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
-	ThinkingEffort    string
-	ShowThinking      bool
 	ReviewApprovals   int  // auto-review approvals this session, shown next to the mode
 	ReviewEscalations int  // auto-review escalations to the user this session
 	AutopilotThinking bool // the copilot is mid-decision — show "thinking…" on the mode indicator
@@ -219,19 +217,7 @@ type OperationModeParams struct {
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
-	var leftParts []string
-
-	if modeStatus := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking); modeStatus != "" {
-		leftParts = append(leftParts, modeStatus)
-	}
-
-	if params.ShowThinking {
-		if thinkingStatus := RenderThinkingIndicator(params.ThinkingEffort); thinkingStatus != "" {
-			leftParts = append(leftParts, thinkingStatus)
-		}
-	}
-
-	left := strings.Join(leftParts, "  ")
+	left := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
 
 	right := renderStatusCluster(params)
 	if right == "" || params.Width <= 0 {
@@ -305,7 +291,7 @@ func compactStatusHint(percent float64) string {
 	}
 }
 
-// RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or bypass mode.
+// RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or YOLO mode.
 func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) string {
 	var icon, label string
 	var clr kit.AdaptiveColor
@@ -313,16 +299,16 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	switch mode {
 	case setting.ModeAutoAccept:
 		icon = "⏵⏵"
-		label = " accept edits on"
+		label = " accept edits"
 		clr = kit.CurrentTheme.Success
 	case setting.ModeAutoPilot:
 		icon = "⏵⏵"
-		label = " autopilot on"
+		label = " autopilot"
 		clr = kit.CurrentTheme.Warning
 	case setting.ModeBypassPermissions:
 		icon = "⏵⏵"
-		label = " bypass permissions on"
-		clr = kit.CurrentTheme.Error
+		label = " YOLO"
+		clr = kit.CurrentTheme.Yolo
 	default:
 		return ""
 	}
@@ -346,11 +332,13 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	return "  " + style.Render(icon+label) + hint
 }
 
-func RenderThinkingIndicator(effort string) string {
+// ModelStatusLabel composes the status line's model segment: the model name
+// with its thinking effort in parentheses, e.g. "Opus 5 (high)". Effort is a
+// property of the model, so it rides along with the name instead of claiming
+// its own segment — one shape for every provider.
+func ModelStatusLabel(modelName, effort string) string {
 	if effort == "" || effort == "off" || effort == "none" {
-		return ""
+		return modelName
 	}
-	style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	hint := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (ctrl+t to cycle)")
-	return "  " + style.Render("✦ "+effort) + hint
+	return modelName + " (" + effort + ")"
 }

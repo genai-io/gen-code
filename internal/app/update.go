@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -258,6 +259,41 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conv.AddNotice("Context bar on")
 		} else {
 			m.conv.AddNotice("Context bar off")
+		}
+		return m, nil
+	case input.AllowBypassSavedMsg:
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			// The in-memory handle still holds the pre-save value, and it is
+			// what cycleOperationMode consults — so a lock that cannot be
+			// re-read has not taken effect. Say so instead of claiming it did.
+			log.Logger().Warn("reload settings after YOLO-mode save failed", zap.Error(err))
+			m.conv.AddNotice("Saved, but couldn't re-read settings — restart for it to take effect")
+			return m, nil
+		}
+		// Reason about the effective setting, not the payload: the panel writes
+		// the user level, but a project-level allowBypass outranks it. Demoting
+		// on msg.Allowed alone would kick a session out of YOLO mode that
+		// shift+tab can walk straight back into.
+		allowed := m.services.Setting.AllowBypass()
+		if !allowed && m.env.OperationMode == setting.ModeBypassPermissions {
+			// persistOperationMode too, or lastOperationMode stays "bypass" and
+			// the next launch restores YOLO behind the user's back.
+			m.env.OperationMode = setting.ModeNormal
+			m.applyOperationMode()
+			m.persistOperationMode()
+		}
+		// Report what is in force, not what was written. Either direction can
+		// be outranked by the project level, and saying "allowed" when
+		// shift+tab still stops at autopilot is the same lie as the reverse.
+		switch {
+		case msg.Allowed && allowed:
+			m.conv.AddNotice("YOLO mode allowed — shift+tab to reach it")
+		case msg.Allowed:
+			m.conv.AddNotice("Allowed for your user, but project settings still lock YOLO mode")
+		case allowed:
+			m.conv.AddNotice("Locked for your user, but project settings still allow YOLO mode")
+		default:
+			m.conv.AddNotice("YOLO mode locked")
 		}
 		return m, nil
 	case input.SkillCycleMsg:

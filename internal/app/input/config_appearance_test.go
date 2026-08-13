@@ -167,6 +167,26 @@ func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
 	}
 }
 
-// /config and /evolve each host a single panel today, so the shell's tab
-// switching is dormant; it reactivates untested-code-free when a second
-// panel is registered (see PanelPopup.HandleKeypress's tab handling).
+// TestConfigSelectorTabSwitchesPanels confirms tab / shift+tab cycle
+// /config's panels (and wrap). The shell's tab switching was dormant while
+// /config hosted a single panel; registering Permissions alongside
+// Appearance puts it back in play.
+func TestConfigSelectorTabSwitchesPanels(t *testing.T) {
+	c := NewConfigSelector(nil)
+	c.Enter(120, 40)
+	if got := c.ActivePanel().Title(); got != "appearance" {
+		t.Fatalf("default panel = %q, want appearance", got)
+	}
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := c.ActivePanel().Title(); got != "permissions" {
+		t.Fatalf("after tab = %q, want permissions", got)
+	}
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab}) // wrap
+	if got := c.ActivePanel().Title(); got != "appearance" {
+		t.Fatalf("after tab wrap = %q, want appearance", got)
+	}
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}) // wrap back
+	if got := c.ActivePanel().Title(); got != "permissions" {
+		t.Fatalf("after shift+tab wrap = %q, want permissions", got)
+	}
+}

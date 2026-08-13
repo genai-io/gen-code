@@ -55,6 +55,11 @@ type Theme struct {
 	SuccessBgStrong AdaptiveColor
 	ErrorBgStrong   AdaptiveColor
 
+	// Yolo tints the unrestricted-mode indicator. It is deliberately not
+	// Error: YOLO mode is a choice the user made, not something that went
+	// wrong, and violet keeps red meaning "failure".
+	Yolo AdaptiveColor
+
 	Border     AdaptiveColor
 	Background AdaptiveColor
 }
@@ -81,6 +86,8 @@ var CurrentTheme = Theme{
 
 	SuccessBgStrong: AdaptiveColor{Dark: "#2F5D3E", Light: "#A7F3D0"},
 	ErrorBgStrong:   AdaptiveColor{Dark: "#5E2A2A", Light: "#FCB5B5"},
+
+	Yolo: AdaptiveColor{Dark: "#C4B5FD", Light: "#6D28D9"},
 
 	Border:     AdaptiveColor{Dark: "#52525B", Light: "#D4D4D8"},
 	Background: AdaptiveColor{Dark: "#18181B", Light: "#FAFAFA"},

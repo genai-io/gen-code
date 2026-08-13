@@ -583,15 +583,16 @@ type OperationMode int
 const (
 	ModeNormal            OperationMode = iota
 	ModeAutoAccept                      // auto-approve edits/writes
-	ModeBypassPermissions               // allow all except deny rules and the root/home-removal circuit breaker
+	ModeBypassPermissions               // "YOLO mode": allow all except deny rules and the root/home-removal circuit breaker
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
 	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
-// BypassPermissions is only reachable when explicitly enabled; DontAsk and
-// ReadOnly are entered programmatically (headless subagents), not via cycling.
+// BypassPermissions is in the cycle unless `allowBypass: false` locks it out;
+// DontAsk and ReadOnly are entered programmatically (headless subagents), not
+// via cycling.
 var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot}
 var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeBypassPermissions}
 
@@ -602,7 +603,7 @@ func (m OperationMode) String() string {
 	case ModeAutoPilot:
 		return "autopilot"
 	case ModeBypassPermissions:
-		return "bypass permissions"
+		return "YOLO"
 	case ModeDontAsk:
 		return "don't ask"
 	case ModeReadOnly:
@@ -636,7 +637,9 @@ func OperationModeFromString(mode string) OperationMode {
 		return ModeAutoAccept
 	case "autoPilot", "auto-pilot", "autopilot", "pilot":
 		return ModeAutoPilot
-	case "bypassPermissions", "bypass-permissions", "bypass":
+	// bypassPermissions is the wire name (Claude Code compatible); yolo is
+	// what the UI calls it, accepted here so hand-written settings match.
+	case "bypassPermissions", "bypass-permissions", "bypass", "yolo":
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":
 		return ModeDontAsk

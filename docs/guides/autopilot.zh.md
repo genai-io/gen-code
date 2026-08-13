@@ -8,7 +8,7 @@ Autopilot 是 San 的自动驾驶系统,旨在最大限度减少人工介入:由
 工具调用、回答命令的交互问询、回答 `AskUserQuestion`,以及在回合结束后朝
 mission 继续推进。默认开启自动输入提示和灰区权限判定。
 
-用 `shift+tab` 切换到 Autopilot 模式(循环到琥珀色的 `⏵⏵ autopilot on`),
+用 `shift+tab` 切换到 Autopilot 模式(循环到琥珀色的 `⏵⏵ autopilot`),
 用 `/autopilot` 面板配置。恢复会话(`san -r <id>`)会回到保存时所在的模式。
 只想先看它跑起来的话,[`/goal`](#goal) 是最短的入口 —— 它就是下面这一整套的
 一个预设。
