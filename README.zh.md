@@ -58,6 +58,13 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 ## 安装
 
+**Homebrew (macOS / Linux)**
+
+```bash
+brew tap genai-io/san
+brew install san
+```
+
 **macOS / Linux**
 
 ```bash
@@ -70,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-升级直接重新执行同样的命令。
+升级直接重新执行同样的命令;通过 Homebrew 安装的用 `brew upgrade san`。
 
 <details>
 <summary><b>其他方式</b></summary>
