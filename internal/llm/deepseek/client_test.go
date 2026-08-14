@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -105,19 +106,36 @@ func TestDeepSeekIsTextOnly(t *testing.T) {
 	}
 }
 
+// Rates come from https://api-docs.deepseek.com/quick_start/pricing; a million
+// tokens of each kind prices one rate per case.
 func TestDeepSeekEstimateCost(t *testing.T) {
-	cost, ok := EstimateCost("deepseek-v4-flash", llm.Usage{
-		InputTokens:  1000000,
-		OutputTokens: 1000000,
-	})
-	if !ok {
-		t.Fatal("expected pricing lookup to succeed")
+	const million = 1000000
+
+	tests := []struct {
+		name  string
+		model string
+		usage llm.Usage
+		want  float64
+	}{
+		{"flash input+output", "deepseek-v4-flash", llm.Usage{InputTokens: million, OutputTokens: million}, 0.42},
+		{"flash cache hit", "deepseek-v4-flash", llm.Usage{CacheReadInputTokens: million}, 0.0028},
+		{"pro input+output", "deepseek-v4-pro", llm.Usage{InputTokens: million, OutputTokens: million}, 1.305},
+		{"pro cache hit", "deepseek-v4-pro", llm.Usage{CacheReadInputTokens: million}, 0.003625},
 	}
-	if cost.Amount < 0.419 || cost.Amount > 0.421 {
-		t.Fatalf("expected ~0.42, got %.6f", cost.Amount)
-	}
-	if cost.Currency != llm.CurrencyUSD {
-		t.Fatalf("expected USD, got %s", cost.Currency)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, ok := EstimateCost(tt.model, tt.usage)
+			if !ok {
+				t.Fatal("expected pricing lookup to succeed")
+			}
+			if math.Abs(cost.Amount-tt.want) > 1e-9 {
+				t.Errorf("cost = %.6f, want %.6f", cost.Amount, tt.want)
+			}
+			if cost.Currency != llm.CurrencyUSD {
+				t.Errorf("currency = %s, want USD", cost.Currency)
+			}
+		})
 	}
 }
 
@@ -189,6 +207,18 @@ func TestDeepSeekSupportsThinking(t *testing.T) {
 	for _, model := range tests {
 		if !supportsThinking(model) {
 			t.Errorf("supportsThinking(%q) = false, want true", model)
+		}
+	}
+}
+
+// The API keeps thinking on at effort "high" unless it is switched off, so san
+// leaves models at their strongest documented default rather than opting out.
+func TestDeepSeekDefaultThinkingEffort(t *testing.T) {
+	c := NewClient(openai.NewClient(), "deepseek:test")
+
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-pro"} {
+		if got := c.DefaultThinkingEffort(model); got != "high" {
+			t.Errorf("DefaultThinkingEffort(%q) = %q, want high", model, got)
 		}
 	}
 }

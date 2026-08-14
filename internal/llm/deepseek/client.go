@@ -50,11 +50,13 @@ func (c *Client) ThinkingEfforts(model string) []string {
 	return []string{"off", "low", "high", "xhigh", "max"}
 }
 
+// DefaultThinkingEffort mirrors the API's own default: DeepSeek runs thinking
+// unless it is switched off, at effort "high".
 func (c *Client) DefaultThinkingEffort(model string) string {
 	if !supportsThinking(model) {
 		return ""
 	}
-	return "off"
+	return "high"
 }
 
 // Stream sends a completion request and returns a channel of streaming chunks.
