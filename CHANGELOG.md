@@ -3,6 +3,17 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.3] - 2026-08-17
+
+### Added
+- Rename bypass permissions to YOLO mode, gate it from /config ([@yanmxa](https://github.com/yanmxa) in [#470](https://github.com/genai-io/san/pull/470))
+- Add /context to show what fills the context window ([@yanmxa](https://github.com/yanmxa) in [#467](https://github.com/genai-io/san/pull/467))
+- Add GitHub Copilot as a subscription provider ([@yanmxa](https://github.com/yanmxa) in [#466](https://github.com/genai-io/san/pull/466))
+- Remove the stale workflows and use the san-ci to manage the issue and pr ([@hchenxa](https://github.com/hchenxa) in [#462](https://github.com/genai-io/san/pull/462))
+### Fixed
+- Correct V4 pricing and default to the API's own thinking effort ([@yanmxa](https://github.com/yanmxa) in [#473](https://github.com/genai-io/san/pull/473))
+- Sign off release commits to pass DCO ([@hchenxa](https://github.com/hchenxa) in [#469](https://github.com/genai-io/san/pull/469))
+- Fix the issues of failing to get the Merged PR info by release bot ([@hchenxa](https://github.com/hchenxa) in [#464](https://github.com/genai-io/san/pull/464))
 ## [v1.22.3] - 2026-08-11
 
 ### Added
