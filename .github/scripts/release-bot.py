@@ -9,6 +9,9 @@ On each run:
   4. Bumps the version (patch by default)
   5. Rewrites CHANGELOG.md and cmd/san/main.go
   6. Creates (or updates) a release/vX.Y.Z PR against main
+  7. Triggers CI on the release branch via workflow_dispatch (PRs created
+     with GITHUB_TOKEN are approval-gated, workflow_dispatch is not)
+  8. Waits for CI to pass, then requests review from the OWNERS
 
 Usage from GitHub Actions workflow:
   python3 .github/scripts/release-bot.py
@@ -24,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 
@@ -222,6 +226,87 @@ def read_version_from_main_go():
     """Read the current version string from cmd/san/main.go."""
     m = re.search(r'var version = "(.*?)"', Path("cmd/san/main.go").read_text())
     return m.group(1) if m else None
+
+
+def read_owners():
+    """
+    Parse reviewer usernames from the OWNERS file — the YAML `reviewers:`
+    list, falling back to `approvers:`, then plain line-per-username.
+    """
+    try:
+        raw = Path("OWNERS").read_text()
+    except FileNotFoundError:
+        return []
+    for key in ("reviewers", "approvers"):
+        m = re.search(rf"^{key}:\s*$([\s\S]*?)(?=^[a-z]+:\s*$|\Z)", raw, re.MULTILINE)
+        if m:
+            users = re.findall(r"^\s*-\s*(\S+)", m.group(1), re.MULTILINE)
+            if users:
+                return users
+    # Plain text: one username per line, skip empty lines, comments, and keys
+    return [
+        line.strip()
+        for line in raw.splitlines()
+        if line.strip() and not line.strip().startswith("#") and ":" not in line
+    ]
+
+
+def wait_for_ci_and_request_review(pr_number, branch, owners):
+    """
+    Poll the dispatched CI run on the release branch until it finishes.
+    When it passes, request review from the OWNERS list so maintainers are
+    notified to review the release PR.
+    """
+    deadline = time.time() + 30 * 60  # give CI up to 30 minutes
+    state = None
+    while time.time() < deadline:
+        query = subprocess.run(
+            [
+                "gh", "run", "list", "--repo", REPO, "--workflow", "ci.yml",
+                "--branch", branch,
+                "--json", "databaseId,event,status,conclusion",
+                "--limit", "5",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if query.returncode == 0 and query.stdout.strip():
+            runs = json.loads(query.stdout)
+            # Only the run we dispatched — pull_request runs on this branch
+            # may exist and are approval-gated, so ignore them.
+            mine = [r for r in runs if r.get("event") == "workflow_dispatch"]
+            if mine:
+                state = mine[0]
+                if state["status"] == "completed":
+                    break
+        time.sleep(30)
+
+    if not state or state["status"] != "completed":
+        print(f"::warning:: Timed out waiting for CI on {branch} — review not requested")
+        return
+    if state["conclusion"] != "success":
+        print(
+            f"::warning:: CI on {branch} concluded {state['conclusion']} "
+            f"— review not requested"
+        )
+        return
+    if not owners:
+        print("::warning:: OWNERS list is empty — no reviewers to request")
+        return
+
+    reviewers = ",".join(owners)
+    edit = subprocess.run(
+        ["gh", "pr", "edit", str(pr_number), "--repo", REPO, "--add-reviewer", reviewers],
+        capture_output=True,
+        text=True,
+    )
+    if edit.returncode != 0:
+        print(
+            f"::warning:: could not request review on PR #{pr_number}: "
+            f"{edit.stderr.strip()}"
+        )
+    else:
+        print(f"👀 CI passed — requested review from OWNERS: {reviewers}")
 
 
 def main():
@@ -425,6 +510,8 @@ def main():
         print(f"::warning:: could not trigger CI on {branch}: {trigger.stderr.strip()}")
     else:
         print(f"🔁 CI triggered on {branch}")
+        # Once CI passes, notify the OWNERS so the release PR gets reviewed.
+        wait_for_ci_and_request_review(result.split("/")[-1], branch, read_owners())
 
 
 if __name__ == "__main__":
