@@ -11,7 +11,8 @@ On each run:
   6. Creates (or updates) a release/vX.Y.Z PR against main
   7. Triggers CI on the release branch via workflow_dispatch (PRs created
      with GITHUB_TOKEN are approval-gated, workflow_dispatch is not)
-  8. Waits for CI to pass, then requests review from the OWNERS
+  8. Waits for CI to pass, then requests review from REVIEW_REQUESTEE
+     (a single OWNERS member — pinging the whole team is noisy)
 
 Usage from GitHub Actions workflow:
   python3 .github/scripts/release-bot.py
@@ -33,6 +34,10 @@ from pathlib import Path
 
 REPO = "genai-io/san"
 MAIN_BRANCH = "main"
+
+# Only this OWNERS member gets a review request on release PRs — pinging
+# the whole team on every weekly release is noisy.
+REVIEW_REQUESTEE = "yanmxa"
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -254,8 +259,8 @@ def read_owners():
 def wait_for_ci_and_request_review(pr_number, branch, owners):
     """
     Poll the dispatched CI run on the release branch until it finishes.
-    When it passes, request review from the OWNERS list so maintainers are
-    notified to review the release PR.
+    When it passes, request review from the designated OWNERS member so
+    the release PR gets noticed.
     """
     deadline = time.time() + 30 * 60  # give CI up to 30 minutes
     state = None
@@ -293,10 +298,18 @@ def wait_for_ci_and_request_review(pr_number, branch, owners):
     if not owners:
         print("::warning:: OWNERS list is empty — no reviewers to request")
         return
+    if REVIEW_REQUESTEE not in owners:
+        print(
+            f"::warning:: {REVIEW_REQUESTEE} is not in OWNERS "
+            f"— review not requested"
+        )
+        return
 
-    reviewers = ",".join(owners)
     edit = subprocess.run(
-        ["gh", "pr", "edit", str(pr_number), "--repo", REPO, "--add-reviewer", reviewers],
+        [
+            "gh", "pr", "edit", str(pr_number), "--repo", REPO,
+            "--add-reviewer", REVIEW_REQUESTEE,
+        ],
         capture_output=True,
         text=True,
     )
@@ -306,7 +319,7 @@ def wait_for_ci_and_request_review(pr_number, branch, owners):
             f"{edit.stderr.strip()}"
         )
     else:
-        print(f"👀 CI passed — requested review from OWNERS: {reviewers}")
+        print(f"👀 CI passed — requested review from {REVIEW_REQUESTEE}")
 
 
 def main():
