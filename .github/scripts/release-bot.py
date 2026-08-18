@@ -411,6 +411,21 @@ def main():
     ])
     print(f"\n✅ Release PR created: {result}")
 
+    # Trigger CI directly on the release branch. PRs created with
+    # GITHUB_TOKEN have their pull_request-triggered runs gated behind
+    # manual approval, but workflow_dispatch runs always execute — so the
+    # release PR gets its checks without anyone clicking "Approve
+    # workflows to run". Non-fatal: the PR stays valid without it.
+    trigger = subprocess.run(
+        ["gh", "workflow", "run", "ci.yml", "--repo", REPO, "--ref", branch],
+        capture_output=True,
+        text=True,
+    )
+    if trigger.returncode != 0:
+        print(f"::warning:: could not trigger CI on {branch}: {trigger.stderr.strip()}")
+    else:
+        print(f"🔁 CI triggered on {branch}")
+
 
 if __name__ == "__main__":
     main()

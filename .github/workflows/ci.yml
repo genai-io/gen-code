@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The release bot triggers CI on release/vX.Y.Z branches this way:
+  # workflow_dispatch runs always execute, unlike pull_request runs on
+  # GITHUB_TOKEN-created PRs (which are gated behind manual approval).
+  workflow_dispatch:
 
 permissions:
   contents: read
