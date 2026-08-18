@@ -11,6 +11,13 @@ name: Release Bot
 #
 # After the PR is merged, pushing the tag triggers
 # .github/workflows/release.yml to build and publish.
+#
+# PRs created with GITHUB_TOKEN have their CI runs gated behind manual
+# approval (and GITHUB_TOKEN pushes never trigger workflows). To have CI
+# run on the release PR without approval, set a RELEASE_BOT_TOKEN secret
+# — a fine-grained PAT with Contents read/write on this repo. The script
+# uses it for the branch push and PR creation, falling back to
+# GITHUB_TOKEN when it is not set.
 
 on:
   schedule:
@@ -48,6 +55,7 @@ jobs:
       - name: Create release PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           VERSION_BUMP: ${{ inputs.version_bump || 'patch' }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: python3 .github/scripts/release-bot.py

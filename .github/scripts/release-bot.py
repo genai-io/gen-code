@@ -14,9 +14,12 @@ Usage from GitHub Actions workflow:
   python3 .github/scripts/release-bot.py
 
 Environment variables (set by the workflow):
-  GH_TOKEN       — GitHub token with contents:write + pull-requests:write
-  VERSION_BUMP   — "patch" (default) or "minor"
-  DRY_RUN        — "true" to preview without pushing
+  GH_TOKEN          — GitHub token with contents:write + pull-requests:write
+  RELEASE_BOT_TOKEN — optional PAT. When set, the branch push and PR are
+                      performed with it so CI runs on the PR without manual
+                      approval (GITHUB_TOKEN-created PRs are approval-gated)
+  VERSION_BUMP      — "patch" (default) or "minor"
+  DRY_RUN           — "true" to preview without pushing
 """
 
 import json
@@ -37,7 +40,10 @@ def run(cmd, **kwargs):
     """Run a command and return stripped stdout. Exit on failure."""
     result = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
     if result.returncode != 0:
-        print(f"::error:: command failed: {' '.join(cmd)}\n{result.stderr.strip()}")
+        shown = " ".join(cmd)
+        # Never echo credentials embedded in remote URLs to the logs.
+        shown = re.sub(r"(https://[^@\s]*:)[^@\s]*@", r"\1***@", shown)
+        print(f"::error:: command failed: {shown}\n{result.stderr.strip()}")
         sys.exit(result.returncode)
     return result.stdout.strip()
 
@@ -384,10 +390,28 @@ def main():
     print(f"Updated cmd/san/main.go -> version {next_version}")
 
     # 10. Commit, push, create PR
+    # Use a PAT when one is configured: GITHUB_TOKEN pushes never trigger
+    # workflow runs, and PRs created with GITHUB_TOKEN get their CI runs
+    # gated behind manual approval. With a PAT the push and the PR are
+    # treated as user-initiated, so CI runs on the PR head automatically.
+    bot_token = os.environ.get("RELEASE_BOT_TOKEN", "")
+    if bot_token:
+        run([
+            "git", "remote", "set-url", "origin",
+            f"https://x-access-token:{bot_token}@github.com/{REPO}.git",
+        ])
+        os.environ["GH_TOKEN"] = bot_token
+        print("::notice:: Pushing with RELEASE_BOT_TOKEN (PR CI runs without approval)")
+    else:
+        print(
+            "::notice:: No RELEASE_BOT_TOKEN set — using GITHUB_TOKEN "
+            "(PR CI will need manual approval)"
+        )
+
     # Commit as github-actions[bot] — the same identity that pushes the
-    # branch via GITHUB_TOKEN. DCO skips bot-authored commits, and its
-    # noreply email maps to a real account, so no human identity is
-    # involved. -s keeps a Signed-off-by trailer for good measure.
+    # branch. DCO skips bot-authored commits, and its noreply email maps
+    # to a real account, so no human identity is involved. -s keeps a
+    # Signed-off-by trailer for good measure.
     run(["git", "config", "user.name", "github-actions[bot]"])
     run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
     run(["git", "checkout", "-b", branch])
