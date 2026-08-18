@@ -68,6 +68,23 @@ def get_latest_tag():
     return tags.split("\n")[0]
 
 
+def version_key(version):
+    """Parse 'X.Y.Z' (optional leading 'v') into a sortable tuple."""
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)", version.lstrip("v"))
+    if not m:
+        return (0, 0, 0)
+    return tuple(int(x) for x in m.groups())
+
+
+def max_version(a, b):
+    """Return the higher of two version strings, or the one that is not None."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if version_key(a) >= version_key(b) else b
+
+
 def bump_version(current, bump_type="patch"):
     """Bump a semver string (without leading 'v')."""
     m = re.match(r"(\d+)\.(\d+)\.(\d+)", current)
@@ -211,26 +228,34 @@ def main():
     dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
     bump_type = os.environ.get("VERSION_BUMP", "patch")
 
-    # 1. Determine current version — prefer the latest tag, fall back to
-    #    the in-file version string (used on repos with no tags yet).
+    # 1. Determine current version — the higher of the latest tag and the
+    #    in-file version string. The tag records what has been *released*,
+    #    but cmd/san/main.go can be ahead of it: a release PR may have been
+    #    merged before its tag was pushed. Trusting only the tag then makes
+    #    the bot regress and re-create an already-released version, so take
+    #    the max of both sources.
     latest_tag = get_latest_tag()
-    if not latest_tag:
-        fallback = read_version_from_main_go()
-        if not fallback:
-            print("::error:: No tag and no version in cmd/san/main.go — cannot proceed.")
-            sys.exit(1)
-        current_version = fallback
-        print(f"::warning:: No version tag found. Using in-file version {current_version}")
-        # Without a tag, default to PRs from the last 7 days (weekly window).
-        tag_date = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=7)
-        print(f"Collecting PRs merged after {tag_date.date()} (no-tag fallback)")
-    else:
-        current_version = latest_tag.lstrip("v")
+    tag_version = latest_tag.lstrip("v") if latest_tag else None
+    file_version = read_version_from_main_go()
+    current_version = max_version(tag_version, file_version)
+    if not current_version:
+        print("::error:: No tag and no version in cmd/san/main.go — cannot proceed.")
+        sys.exit(1)
+    if tag_version and tag_version != current_version:
+        print(
+            f"::warning:: cmd/san/main.go ({file_version}) is ahead of the "
+            f"latest tag ({latest_tag}) — treating {current_version} as current"
+        )
+    elif latest_tag:
         print(f"Latest tag: {latest_tag}  (version {current_version})")
+    else:
+        print(f"::warning:: No version tag found. Using in-file version {current_version}")
 
-        # 2. Get the tag creation date to use as cutoff
+    # 2. Determine the merged-PR cutoff. Prefer the latest tag date: even
+    #    when main.go is ahead of the tag, everything merged since the last
+    #    real release is unreleased. Without a tag, fall back to the last
+    #    7 days (weekly window).
+    if latest_tag:
         tag_date_str = run(["git", "log", "-1", "--format=%cI", latest_tag])
         try:
             # fromisoformat rejects the trailing 'Z' before Python 3.11
@@ -243,6 +268,11 @@ def main():
             tag_date = datetime.now(timezone.utc).replace(
                 hour=0, minute=0, second=0, microsecond=0
             ) - timedelta(days=7)
+    else:
+        tag_date = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=7)
+        print(f"Collecting PRs merged after {tag_date.date()} (no-tag fallback)")
 
     # 3. Determine next version
     next_version = bump_version(current_version, bump_type)
@@ -261,6 +291,18 @@ def main():
     existing_prs = json.loads(existing) if existing.strip() else []
     if existing_prs:
         print(f"::notice:: Release PR already exists: {existing_prs[0]['url']}")
+        return
+
+    # Guard against re-releasing a version that is already in the CHANGELOG
+    # (belt-and-braces for a merged release PR whose tag was never pushed).
+    changelog_text = Path("CHANGELOG.md").read_text()
+    if re.search(
+        rf"^## \[{re.escape(version_tag)}\].*$", changelog_text, re.MULTILINE
+    ):
+        print(
+            f"::notice:: {version_tag} already released (section present in "
+            f"CHANGELOG.md) — nothing to do."
+        )
         return
 
     # 5. Fetch merged PRs since the cutoff using the Search API
@@ -290,11 +332,16 @@ def main():
     ]
     print(f"Found {len(merged_prs)} merged PRs since last release")
 
-    # 6. Filter out release PRs themselves
+    # 6. Filter out release PRs themselves, and drop PRs already mentioned
+    #    in the CHANGELOG — when the latest tag is behind main.go (missing
+    #    tag), the search window reaches into PRs from an earlier release.
     new_prs = [
         p for p in merged_prs if not p["title"].startswith("chore: bump version")
     ]
     print(f"  {len(new_prs)} after filtering out release-version bumps")
+    already_listed = set(re.findall(r"\[#(\d+)\]", changelog_text))
+    new_prs = [p for p in new_prs if str(p["number"]) not in already_listed]
+    print(f"  {len(new_prs)} after dropping PRs already in the CHANGELOG")
 
     if not new_prs:
         print("::notice:: No new PRs found. Nothing to release.")
