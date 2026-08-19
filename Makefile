@@ -12,6 +12,7 @@ export CGO_ENABLED := 0
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)
 GOIMPORTS_VERSION := v0.43.0
 GOLANGCI_VERSION := v2.12.2
+GOVULNCHECK_VERSION := v1.7.0
 
 .PHONY: build build-all install clean release release-push test cover format format-check lint lint-go install-format-tools install-lint-tools check-format-tools check-lint-tools
 
@@ -102,6 +103,15 @@ ci: format-check build-all lint
 
 clean:
 	rm -rf $(BINDIR)
+
+# vulncheck reports known vulnerabilities in the dependency graph that this
+# code can actually reach. Reachability is what makes it worth gating on: an
+# advisory in a package nobody calls is not reported, so a finding here is
+# always a real exposure. CI runs the same command.
+.PHONY: vulncheck
+vulncheck:
+	@command -v govulncheck >/dev/null || go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	govulncheck ./...
 
 # Serve the website locally for testing. Opens http://localhost:8080 in the
 # default browser. Requires Python 3 (available on macOS and most Linux distros
