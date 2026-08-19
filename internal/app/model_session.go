@@ -141,7 +141,7 @@ func (m *model) loadSessionByID(id string) error {
 	// read-before-modify gate in this one.
 	m.ResetAgentSession()
 	fs.ResetFileViews()
-	m.services.Tracker.SetStorageDir("")
+	m.setTrackerStorageDir("")
 	m.restoreSessionData(sess)
 
 	if len(sess.Tasks) == 0 {
@@ -198,8 +198,8 @@ func (m *model) initTaskStorage(sessionID string) {
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
 		dir := filepath.Join(confdir.Dir(homeDir), "tasks", taskListID)
-		m.services.Tracker.SetStorageDir(dir)
-		_ = m.services.Task.SetOutputDir(filepath.Join(dir, "outputs"))
+		m.setTrackerStorageDir(dir)
+		m.setTaskOutputDir(dir)
 		return
 	}
 
@@ -207,8 +207,29 @@ func (m *model) initTaskStorage(sessionID string) {
 		return
 	}
 	dir := filepath.Join(confdir.Dir(homeDir), "tasks", sessionID)
-	m.services.Tracker.SetStorageDir(dir)
-	_ = m.services.Task.SetOutputDir(filepath.Join(dir, "outputs"))
+	m.setTrackerStorageDir(dir)
+	m.setTaskOutputDir(dir)
+}
+
+// setTrackerStorageDir points the task tracker at dir. A failure leaves the
+// tracker working in memory but no longer persisting, which is worth a line in
+// the log — there is nothing the user can do about it mid-session, and failing
+// the session load over it would be worse than losing the task file.
+func (m *model) setTrackerStorageDir(dir string) {
+	if err := m.services.Tracker.SetStorageDir(dir); err != nil {
+		log.Logger().Warn("task tracker storage unavailable",
+			zap.String("dir", dir), zap.Error(err))
+	}
+}
+
+// setTaskOutputDir points background-task output at dir/outputs, with the same
+// degrade-and-log answer as setTrackerStorageDir.
+func (m *model) setTaskOutputDir(dir string) {
+	outputs := filepath.Join(dir, "outputs")
+	if err := m.services.Task.SetOutputDir(outputs); err != nil {
+		log.Logger().Warn("task output directory unavailable",
+			zap.String("dir", outputs), zap.Error(err))
+	}
 }
 
 func (m *model) forkSession() (string, error) {
@@ -233,7 +254,7 @@ func (m *model) forkSession() (string, error) {
 	// ensureAgentSession rebuilds with a Recorder bound to the new id, since
 	// NewRecorder invalidates its cache on exactly that mismatch.
 	m.StopAgentSession()
-	m.services.Tracker.SetStorageDir("")
+	m.setTrackerStorageDir("")
 	return originalID, nil
 }
 

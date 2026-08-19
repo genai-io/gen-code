@@ -1,0 +1,60 @@
+# golangci-lint configuration.
+#
+# `make lint` runs this alongside go vet, the format check, and layercheck.
+#
+# The linter set is deliberately narrow: every linter here reports a defect, not
+# a style preference, so a finding is always worth acting on and the gate never
+# turns into noise a contributor learns to ignore. Style is already settled by
+# gofmt + goimports.
+#
+#   errcheck     — a discarded error is a failure the code decided not to
+#                  notice. This is how config saves silently overwrote user
+#                  files (#480): the parse error was never looked at.
+#   ineffassign  — a value assigned and then overwritten before any read is
+#                  either dead code or a missing use of the first value.
+#
+# Adding a linter means fixing its findings in the same change, so the tree
+# stays clean and `make lint` keeps a zero-tolerance meaning.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - ineffassign
+
+  settings:
+    errcheck:
+      # Cleanup calls whose failure the caller genuinely cannot act on: the
+      # write already happened (or is being abandoned), and the process is on
+      # its way out of the scope. Everything not listed here must be handled.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (io.WriteCloser).Close
+        - (*os.File).Close
+        - (net.Listener).Close
+        - (*net/http.Server).Close
+        - (*compress/gzip.Reader).Close
+        - (*archive/zip.ReadCloser).Close
+        - os.Remove
+        - os.RemoveAll
+        # os.Setenv/Unsetenv only fail on a name containing "=" or NUL, which no
+        # caller here can produce — every name is a fixed provider env var.
+        - os.Setenv
+        - os.Unsetenv
+        # Writers to stdout/stderr and to in-memory builders. A failed write to
+        # a closed terminal is not something the TUI can report anywhere.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - io.WriteString
+
+  exclusions:
+    rules:
+      # Test helpers set up state whose failure surfaces as the test failing.
+      - path: _test\.go
+        linters: [errcheck]
+
+formatters:
+  enable: []

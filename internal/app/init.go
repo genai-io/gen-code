@@ -46,7 +46,9 @@ func initInfrastructure() error {
 	// Phase 3: tool infrastructure
 	tool.Initialize(tool.Options{})
 	agent.Initialize(agent.Options{})
-	task.Initialize(task.Options{})
+	if err := task.Initialize(task.Options{}); err != nil {
+		log.Logger().Warn("task output directory unavailable; task output will not persist", zap.Error(err))
+	}
 	todo.Initialize(todo.Options{})
 	cron.Initialize(cron.Options{
 		StoragePath: filepath.Join(confdir.Dir(appCwd), "scheduled_tasks.json"),

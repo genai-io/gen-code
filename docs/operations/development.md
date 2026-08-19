@@ -25,3 +25,19 @@ GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```bash
 make install-format-tools
 ```
+
+## Linting
+
+`make lint` runs four checks, and CI runs the same target:
+
+| check | what it catches |
+| --- | --- |
+| `go vet` | the standard suspicious-construct set |
+| `make format-check` | files `gofmt` / `goimports` would rewrite |
+| `make lint-go` | the linters configured in `.golangci.yml` |
+| `make lint-layers` | imports that violate the layer order |
+
+`make lint-go` installs `golangci-lint` on first use; `make install-lint-tools`
+does it ahead of time. The configured linters report defects rather than style,
+so the tree is kept at zero findings — see the comment at the top of
+`.golangci.yml` for the rule on adding one.

@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
 	coremcp "github.com/genai-io/san/internal/mcp"
 )
 
@@ -372,7 +374,9 @@ func (s *MCPSelector) HandleReconnect(name string) {
 func (s *MCPSelector) HandleRemove(name string) {
 	if s.registry != nil {
 		s.registry.SetDisabled(name, false)
-		s.registry.RemoveServer(name)
+		if err := s.registry.RemoveServer(name); err != nil {
+			log.Logger().Warn("failed to remove MCP server", zap.String("server", name), zap.Error(err))
+		}
 	}
 	s.refreshServers()
 	s.goBack()

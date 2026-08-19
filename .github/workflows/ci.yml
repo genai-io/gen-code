@@ -22,15 +22,15 @@ jobs:
         with:
           go-version: '1.25.8'
           cache: true
-      - name: Install format tools
-        run: make install-format-tools
+      - name: Install dev tools
+        run: make install-format-tools install-lint-tools
       - name: Format check
         run: make format-check
       - name: Build
         run: make build-all
       - name: Unit + integration tests (merged coverage)
         run: make cover
-      - name: Vet
+      - name: Vet + lint + layer check
         run: make lint
 
   test-windows:

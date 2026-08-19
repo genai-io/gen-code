@@ -33,13 +33,16 @@ func (t *TrackerCreateTool) Execute(ctx context.Context, params map[string]any, 
 	task := todo.Default().Create(subject, description, activeForm, metadata)
 
 	// Set dependencies if provided
+	note := ""
 	if ids := parseStringSlice(params["addBlockedBy"]); len(ids) > 0 {
-		todo.Default().Update(task.ID, todo.WithAddBlockedBy(ids))
+		if err := todo.Default().Update(task.ID, todo.WithAddBlockedBy(ids)); err != nil {
+			note = fmt.Sprintf(" (blockers not set: %v)", err)
+		}
 	}
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("Task #%s created: %s", task.ID, task.Subject),
+		Output:  fmt.Sprintf("Task #%s created: %s%s", task.ID, task.Subject, note),
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
