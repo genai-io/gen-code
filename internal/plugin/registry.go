@@ -266,8 +266,8 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 
 	// Load existing settings
 	var settings map[string]any
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		json.Unmarshal(data, &settings)
+	if err := atomicfile.ReadJSON(settingsPath, &settings); err != nil {
+		return err
 	}
 	if settings == nil {
 		settings = make(map[string]any)

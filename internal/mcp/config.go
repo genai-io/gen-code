@@ -107,8 +107,8 @@ func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope)
 
 	// Load existing config
 	var mcpConfig MCPConfig
-	if data, err := os.ReadFile(filePath); err == nil {
-		_ = json.Unmarshal(data, &mcpConfig)
+	if err := atomicfile.ReadJSON(filePath, &mcpConfig); err != nil {
+		return err
 	}
 
 	if mcpConfig.MCPServers == nil {

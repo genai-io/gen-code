@@ -126,3 +126,58 @@ func assertNoTempLeft(t *testing.T, dir string) {
 		}
 	}
 }
+
+func TestReadJSONTreatsMissingAndEmptyAsNoContent(t *testing.T) {
+	dir := t.TempDir()
+	seeds := map[string]*string{
+		"missing.json":    nil,
+		"empty.json":      ptr(""),
+		"whitespace.json": ptr("\n\t \n"),
+	}
+	for name, seed := range seeds {
+		path := filepath.Join(dir, name)
+		if seed != nil {
+			if err := os.WriteFile(path, []byte(*seed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		v := map[string]string{"kept": "yes"}
+		if err := ReadJSON(path, &v); err != nil {
+			t.Errorf("%s: ReadJSON = %v, want nil", name, err)
+		}
+		if v["kept"] != "yes" {
+			t.Errorf("%s: caller's value was clobbered: %v", name, v)
+		}
+	}
+}
+
+func TestReadJSONReportsUnparsableContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"model": "opus",}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	err := ReadJSON(path, &v)
+	if err == nil {
+		t.Fatal("ReadJSON = nil, want a parse error")
+	}
+	if !strings.Contains(err.Error(), "settings.json") {
+		t.Errorf("error should name the file, got: %v", err)
+	}
+}
+
+func TestReadJSONDecodesValidContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cfg.json")
+	if err := WriteJSON(path, map[string]int{"n": 7}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]int
+	if err := ReadJSON(path, &v); err != nil {
+		t.Fatalf("ReadJSON: %v", err)
+	}
+	if v["n"] != 7 {
+		t.Errorf("v = %v, want n=7", v)
+	}
+}
+
+func ptr(s string) *string { return &s }

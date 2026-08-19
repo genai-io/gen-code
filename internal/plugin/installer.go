@@ -612,8 +612,8 @@ func (i *Installer) AddMarketplace(source MarketplaceSource) error {
 
 	// Load existing
 	var km KnownMarketplaces
-	if data, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(data, &km)
+	if err := atomicfile.ReadJSON(path, &km); err != nil {
+		return err
 	}
 
 	// Check if already exists

@@ -191,14 +191,11 @@ func (l *Loader) SaveToUser(settings *Data) error {
 }
 
 func (l *Loader) saveToFile(path string, settings *Data) error {
-	toSave := settings
-	if data, err := os.ReadFile(path); err == nil {
-		existing := NewData()
-		if err := json.Unmarshal(data, existing); err == nil {
-			toSave = mergeSettings(existing, settings)
-		}
+	existing := NewData()
+	if err := atomicfile.ReadJSON(path, existing); err != nil {
+		return err
 	}
-	return atomicfile.WriteJSON(path, toSave, 0o644)
+	return atomicfile.WriteJSON(path, mergeSettings(existing, settings), 0o644)
 }
 
 var (
@@ -274,8 +271,8 @@ func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 	}
 
 	existing := NewData()
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, existing)
+	if err := atomicfile.ReadJSON(path, existing); err != nil {
+		return err
 	}
 	mutate(existing)
 	if err := atomicfile.WriteJSON(path, existing, 0o644); err != nil {
@@ -586,8 +583,8 @@ func SavePersonaAt(cwd, name string, userLevel bool) error {
 	path := filepath.Join(dir, "settings.json")
 
 	existing := NewData()
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, existing)
+	if err := atomicfile.ReadJSON(path, existing); err != nil {
+		return err
 	}
 	existing.Persona = name
 
