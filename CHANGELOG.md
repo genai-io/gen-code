@@ -3,6 +3,13 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.4] - 2026-08-18
+
+### Added
+- Rename bypass permissions to YOLO mode, gate it from /config ([@yanmxa](https://github.com/yanmxa) in [#470](https://github.com/genai-io/san/pull/470))
+### Fixed
+- Derive current version from main.go to avoid re-releasing old versions ([@hchenxa](https://github.com/hchenxa) in [#476](https://github.com/genai-io/san/pull/476))
+- Correct V4 pricing and default to the API's own thinking effort ([@yanmxa](https://github.com/yanmxa) in [#473](https://github.com/genai-io/san/pull/473))
 ## [v1.22.3] - 2026-08-11
 
 ### Added
