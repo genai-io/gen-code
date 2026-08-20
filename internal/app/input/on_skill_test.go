@@ -28,7 +28,7 @@ func TestSkillRowDoesNotWrapWithCJKDescription(t *testing.T) {
 	s.renderItemList(&sb, panel)
 
 	var lines []string
-	for _, l := range strings.Split(sb.String(), "\n") {
+	for l := range strings.SplitSeq(sb.String(), "\n") {
 		if strings.TrimSpace(l) != "" {
 			lines = append(lines, l)
 		}

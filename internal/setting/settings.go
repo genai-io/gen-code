@@ -25,7 +25,7 @@ import (
 
 // Data represents the complete San configuration.
 type Data struct {
-	Permissions    PermissionSettings `json:"permissions,omitempty"`
+	Permissions    PermissionSettings `json:"permissions"`
 	Model          string             `json:"model,omitempty"`
 	Hooks          map[string][]Hook  `json:"hooks,omitempty"`
 	Env            map[string]string  `json:"env,omitempty"`
@@ -61,11 +61,11 @@ type Data struct {
 	Persona string `json:"persona,omitempty"`
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
-	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
+	SelfLearn SelfLearnSettings `json:"selfLearn"`
 	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
 	// toward (JSON key "autoPilot").
-	AutoPilot AutoPilotSettings `json:"autoPilot,omitempty"`
+	AutoPilot AutoPilotSettings `json:"autoPilot"`
 	// LastOperationMode is the user-wide mode restored when starting a new session.
 	LastOperationMode string `json:"lastOperationMode,omitempty"`
 }
@@ -94,7 +94,7 @@ type AutoPilotSettings struct {
 	// briefing composed in the /autopilot Mission dialog.
 	Mission string `json:"mission,omitempty"`
 	// Steers selects which lifecycle points the copilot takes the helm at.
-	Steers SteerSettings `json:"steers,omitempty"`
+	Steers SteerSettings `json:"steers"`
 	// MaxContinuations caps how many times the TurnEnd steer may auto-continue
 	// a finished turn before yielding to the human. 0 = the default cap,
 	// negative = no cap (see AutoPilotUnlimitedContinuations).
@@ -229,8 +229,8 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 // by the model (the Evolve tool); the per-arm fields are permission / store
 // settings only. See notes/active/l1-background-review.md §3.1.
 type SelfLearnSettings struct {
-	Memory SelfLearnMemory `json:"memory,omitempty"`
-	Skills SelfLearnSkills `json:"skills,omitempty"`
+	Memory SelfLearnMemory `json:"memory"`
+	Skills SelfLearnSkills `json:"skills"`
 
 	// Strategy, when non-empty, replaces the built-in learning strategy in the
 	// reviewer prompt (edited via the /evolve Strategy entry) — it steers both
@@ -569,10 +569,8 @@ func (sp *SessionPermissions) AddWorkingDirectory(dir string) {
 // edit allowances together).
 func (sp *SessionPermissions) addWorkingDirectoryLocked(dir string) {
 	// Avoid duplicates
-	for _, d := range sp.WorkingDirectories {
-		if d == dir {
-			return
-		}
+	if slices.Contains(sp.WorkingDirectories, dir) {
+		return
 	}
 	sp.WorkingDirectories = append(sp.WorkingDirectories, dir)
 }
@@ -759,15 +757,9 @@ func (s *Data) Clone() *Data {
 		v := *s.ContextBar
 		dst.ContextBar = &v
 	}
-	for k, v := range s.Env {
-		dst.Env[k] = v
-	}
-	for k, v := range s.EnabledPlugins {
-		dst.EnabledPlugins[k] = v
-	}
-	for k, v := range s.DisabledTools {
-		dst.DisabledTools[k] = v
-	}
+	maps.Copy(dst.Env, s.Env)
+	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)
+	maps.Copy(dst.DisabledTools, s.DisabledTools)
 	for event, hooks := range s.Hooks {
 		clonedHooks := make([]Hook, len(hooks))
 		for i, hook := range hooks {

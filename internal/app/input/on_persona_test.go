@@ -161,7 +161,7 @@ func TestPersonaSelector_RenderKeepsRowsWithinPanel(t *testing.T) {
 	rendered := s.Render()
 	plain := xansi.Strip(rendered)
 	row := ""
-	for _, line := range strings.Split(plain, "\n") {
+	for line := range strings.SplitSeq(plain, "\n") {
 		if strings.Contains(line, "software-engineer") {
 			row = strings.TrimSpace(line)
 			break

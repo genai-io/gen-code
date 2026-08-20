@@ -245,8 +245,8 @@ func ExecuteApproved(ctx context.Context, agentUI *AgentToUI, toolCalls []core.T
 		prepared, err := coretool.PrepareToolCall(tc, executor)
 		if err != nil {
 			errMsg := "Error parsing tool input: " + err.Error()
-			if strings.HasPrefix(err.Error(), "unknown tool: ") {
-				errMsg = "Unknown tool: " + strings.TrimPrefix(err.Error(), "unknown tool: ")
+			if after, ok := strings.CutPrefix(err.Error(), "unknown tool: "); ok {
+				errMsg = "Unknown tool: " + after
 			}
 			return newExecResult(tc, idx, errMsg, true)
 		}

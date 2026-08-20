@@ -99,8 +99,8 @@ func ShortenPath(path string) string {
 }
 
 func ShortenPathForProject(path, cwd string) string {
-	if strings.HasPrefix(path, cwd) {
-		rel := strings.TrimPrefix(path, cwd)
+	if after, ok := strings.CutPrefix(path, cwd); ok {
+		rel := after
 		rel = strings.TrimPrefix(rel, "/")
 		if rel != "" {
 			return rel
@@ -137,10 +137,9 @@ const AlignedRowMinGap = 2
 // FormatAlignedRow formats "icon  name<padding>info" with name padded to
 // colWidth and always separated from info by at least AlignedRowMinGap spaces.
 func FormatAlignedRow(icon, name string, colWidth int, info string) string {
-	gap := colWidth - lipgloss.Width(name) // display width, ANSI/Unicode safe
-	if gap < AlignedRowMinGap {
-		gap = AlignedRowMinGap
-	}
+	gap := max(
+		// display width, ANSI/Unicode safe
+		colWidth-lipgloss.Width(name), AlignedRowMinGap)
 	return fmt.Sprintf("%s  %s%s%s", icon, name, strings.Repeat(" ", gap), info)
 }
 

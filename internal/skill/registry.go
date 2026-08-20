@@ -3,6 +3,7 @@ package skill
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -275,9 +276,7 @@ func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState {
 		src = r.projectStore.states
 	}
 	result := make(map[string]SkillState, len(src))
-	for k, v := range src {
-		result[k] = v
-	}
+	maps.Copy(result, src)
 	return result
 }
 

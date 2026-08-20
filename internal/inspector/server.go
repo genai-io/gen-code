@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -340,8 +341,8 @@ func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 }
 
 func lastNewline(b []byte) int {
-	for i := len(b) - 1; i >= 0; i-- {
-		if b[i] == '\n' {
+	for i, v := range slices.Backward(b) {
+		if v == '\n' {
 			return i
 		}
 	}

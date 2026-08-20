@@ -21,11 +21,11 @@ const (
 	ClientVersion = "1.0.0"
 )
 
-var requestIDCounter uint64
+var requestIDCounter atomic.Uint64
 
 // nextRequestID generates a unique request ID
 func nextRequestID() uint64 {
-	return atomic.AddUint64(&requestIDCounter, 1)
+	return requestIDCounter.Add(1)
 }
 
 // Client is an MCP client that connects to a single MCP server

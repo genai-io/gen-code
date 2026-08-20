@@ -234,11 +234,11 @@ func indexRunes(haystack []rune, needle string, start int) int {
 		// Convert byte position back to rune offset
 		return start + len([]rune(s[byteStart:byteStart+idx]))
 	}
-	idx := strings.Index(s, needle)
-	if idx < 0 {
+	before, _, ok := strings.Cut(s, needle)
+	if !ok {
 		return -1
 	}
-	return len([]rune(s[:idx]))
+	return len([]rune(before))
 }
 
 // HistoryUp navigates to the previous history entry.

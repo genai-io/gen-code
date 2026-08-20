@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -293,8 +294,8 @@ func (b *replayBuilder) activeMessages() []replayMessage {
 	}
 
 	var leafID string
-	for i := len(b.order) - 1; i >= 0; i-- {
-		id := b.order[i]
+	for _, id := range slices.Backward(b.order) {
+
 		if !hasChild[id] {
 			leafID = id
 			break
@@ -324,8 +325,8 @@ func (b *replayBuilder) activeMessages() []replayMessage {
 	}
 
 	out := make([]replayMessage, 0, len(reversed))
-	for i := len(reversed) - 1; i >= 0; i-- {
-		out = append(out, reversed[i])
+	for _, r := range slices.Backward(reversed) {
+		out = append(out, r)
 	}
 	return out
 }

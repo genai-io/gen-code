@@ -2,6 +2,7 @@ package transport
 
 import (
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -114,13 +115,7 @@ func Test_buildEnv(t *testing.T) {
 	env := buildEnv(configEnv)
 
 	// Check that MY_VAR is in the result
-	found := false
-	for _, e := range env {
-		if e == "MY_VAR=my_value" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(env, "MY_VAR=my_value")
 
 	if !found {
 		t.Error("MY_VAR=my_value not found in result")

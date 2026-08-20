@@ -77,16 +77,14 @@ func TestConcurrentWritesLeaveIntactContent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for _, payload := range []string{a, b} {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 50 {
 				if err := Write(path, []byte(payload), 0o644); err != nil {
 					t.Errorf("Write: %v", err)
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

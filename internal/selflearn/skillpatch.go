@@ -3,6 +3,7 @@ package selflearn
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -83,7 +84,7 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 	var starts []int
 	for i := 0; i+w <= len(contentLines); {
 		match := true
-		for j := 0; j < w; j++ {
+		for j := range w {
 			if normContent[i+j] != normOld[j] {
 				match = false
 				break
@@ -111,8 +112,8 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 	newLines := strings.Split(newText, "\n")
 	// Replace from the last match backward so earlier indices stay valid.
 	out := contentLines
-	for i := len(starts) - 1; i >= 0; i-- {
-		s := starts[i]
+	for _, s := range slices.Backward(starts) {
+
 		out = append(out[:s], append(append([]string{}, newLines...), out[s+w:]...)...)
 	}
 	return strings.Join(out, "\n"), true, nil

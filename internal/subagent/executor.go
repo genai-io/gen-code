@@ -355,10 +355,7 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 
 	permMode := e.requestPermissionMode(config, req)
 
-	maxSteps := defaultMaxSteps
-	if config.MaxSteps > maxSteps {
-		maxSteps = config.MaxSteps
-	}
+	maxSteps := max(config.MaxSteps, defaultMaxSteps)
 	if req.MaxSteps > maxSteps {
 		maxSteps = req.MaxSteps
 	}
@@ -526,12 +523,7 @@ func canEditWorkspace(mode PermissionMode, allow ToolList) bool {
 	case setting.ModeAutoAccept, setting.ModeBypassPermissions:
 		return true
 	}
-	for _, name := range allow.Names() {
-		if perm.IsEditTool(name) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(allow.Names(), perm.IsEditTool)
 }
 
 func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {

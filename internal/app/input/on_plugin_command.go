@@ -453,8 +453,8 @@ func pluginParseMarketplaceSource(source, explicitID string) (id, normalizedSour
 		}, nil
 	}
 
-	if strings.HasPrefix(source, "https://github.com/") {
-		repo := strings.TrimPrefix(source, "https://github.com/")
+	if after, ok := strings.CutPrefix(source, "https://github.com/"); ok {
+		repo := after
 		repo = strings.TrimSuffix(repo, ".git")
 		repo = strings.TrimSuffix(repo, "/")
 		return pluginParseGitHubMarketplace(repo, explicitID)

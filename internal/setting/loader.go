@@ -417,9 +417,7 @@ func IsDefaultDisabledTool(name string) bool {
 // keys fall back to the default.
 func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
 	result := make(map[string]bool, len(explicit)+len(defaultDisabledTools))
-	for name, disabled := range defaultDisabledTools {
-		result[name] = disabled
-	}
+	maps.Copy(result, defaultDisabledTools)
 	maps.Copy(result, explicit)
 	for name, disabled := range result {
 		if !disabled {

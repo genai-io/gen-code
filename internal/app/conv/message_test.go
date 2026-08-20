@@ -485,7 +485,7 @@ func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testi
 	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
 		t.Fatalf("running command must not be abbreviated, got %q", rendered)
 	}
-	for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(rendered, "\n"), "\n") {
 		if w := lipgloss.Width(line); w > width {
 			t.Fatalf("running command line width %d exceeds terminal width %d: %q", w, width, line)
 		}
@@ -619,7 +619,7 @@ func TestRenderToolCallsPutsTimerOnBashHeaderForMultilineCommand(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	header := strings.SplitN(rendered, "\n", 2)[0]
+	header, _, _ := strings.Cut(rendered, "\n")
 	if !strings.Contains(header, "· 1m 30s") {
 		t.Fatalf("RenderToolCalls() header = %q, want the timer on the Bash header line", header)
 	}

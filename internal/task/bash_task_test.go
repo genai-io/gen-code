@@ -149,7 +149,7 @@ func TestBashTask_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Multiple goroutines reading and writing
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(3)
 
 		go func() {

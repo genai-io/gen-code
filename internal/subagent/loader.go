@@ -3,6 +3,7 @@ package subagent
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -72,8 +73,8 @@ func LoadAgents(cwd string) {
 	priorityOrdered = append(priorityOrdered, additionalAgentPaths...)
 	additionalAgentPathsMu.Unlock()
 
-	for i := len(priorityOrdered) - 1; i >= 0; i-- {
-		sp := priorityOrdered[i]
+	for _, sp := range slices.Backward(priorityOrdered) {
+
 		loadAgentsFromDirWithNamespace(sp.path, sp.namespace)
 	}
 }

@@ -179,8 +179,8 @@ const (
 type Server struct {
 	Config       ServerConfig       `json:"config"`
 	Status       ServerStatus       `json:"status"`
-	Capabilities ServerCapabilities `json:"capabilities,omitempty"`
-	ServerInfo   ServerInfo         `json:"serverInfo,omitempty"`
+	Capabilities ServerCapabilities `json:"capabilities"`
+	ServerInfo   ServerInfo         `json:"serverInfo"`
 	Error        string             `json:"error,omitempty"`
 	Tools        []MCPTool          `json:"tools,omitempty"`
 	Resources    []MCPResource      `json:"resources,omitempty"`

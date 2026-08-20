@@ -58,10 +58,7 @@ func (n *ListNav) Reset() {
 // VisibleRange returns the start (inclusive) and end (exclusive) indices
 // for the currently visible window of items.
 func (n *ListNav) VisibleRange() (start, end int) {
-	end = n.Scroll + n.MaxVisible
-	if end > n.Total {
-		end = n.Total
-	}
+	end = min(n.Scroll+n.MaxVisible, n.Total)
 	return n.Scroll, end
 }
 

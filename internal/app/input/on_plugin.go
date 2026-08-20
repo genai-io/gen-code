@@ -723,8 +723,8 @@ func (s *PluginSelector) addMarketplace() tea.Cmd {
 		}
 		id = filepath.Base(absPath)
 		err = s.marketplaceManager.AddDirectory(id, absPath)
-	} else if strings.HasPrefix(source, "https://github.com/") {
-		repo := strings.TrimPrefix(source, "https://github.com/")
+	} else if after, ok := strings.CutPrefix(source, "https://github.com/"); ok {
+		repo := after
 		repo = strings.TrimSuffix(repo, ".git")
 		repo = strings.TrimSuffix(repo, "/")
 		parts := strings.Split(repo, "/")

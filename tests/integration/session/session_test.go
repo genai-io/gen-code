@@ -414,7 +414,7 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 		if line == "" {
 			continue // trailing newline is expected
 		}
-		var obj map[string]interface{}
+		var obj map[string]any
 		if err := json.Unmarshal([]byte(line), &obj); err != nil {
 			t.Errorf("line %d is not valid JSON: %v\ncontent: %s", i+1, err, line)
 		} else {
@@ -532,7 +532,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	count := 0
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		if strings.Contains(line, `"type":"message.appended"`) ||
 			strings.Contains(line, `"type":"transcript.message.appended"`) {
 			count++

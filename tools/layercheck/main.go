@@ -65,8 +65,8 @@ func main() {
 		for _, imp := range p.Imports {
 			toRel, toLayer, ok := lookupLayer(layerOf, imp)
 			if !ok {
-				if strings.HasPrefix(imp, repoModule+"/") {
-					unknown[strings.TrimPrefix(imp, repoModule+"/")] = true
+				if after, ok0 := strings.CutPrefix(imp, repoModule+"/"); ok0 {
+					unknown[after] = true
 				}
 				continue
 			}
@@ -127,7 +127,7 @@ func loadLayerMap(path string) (map[string]string, error) {
 
 func parseLayerMap(markdown string) (map[string]string, error) {
 	layerOf := map[string]string{}
-	for _, line := range strings.Split(markdown, "\n") {
+	for line := range strings.SplitSeq(markdown, "\n") {
 		cells := markdownTableCells(line)
 		if len(cells) < 2 {
 			continue

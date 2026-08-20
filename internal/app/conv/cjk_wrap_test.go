@@ -16,7 +16,7 @@ import (
 
 func nonEmptyLines(out string) []string {
 	var lines []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.TrimSpace(xansi.Strip(line)) != "" {
 			lines = append(lines, line)
 		}
@@ -58,7 +58,7 @@ func TestBlockquoteCJKPreservesContent(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	var got strings.Builder
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		plain := strings.TrimRight(xansi.Strip(line), " ")
 		plain = strings.TrimPrefix(plain, "│ ")
 		got.WriteString(plain)

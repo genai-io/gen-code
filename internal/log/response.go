@@ -54,7 +54,7 @@ func logResponse(prefix, providerName string, resp any) {
 
 	if content := rl.LogContent(); content != "" {
 		sb.WriteString("    Content:\n")
-		for _, line := range strings.Split(content, "\n") {
+		for line := range strings.SplitSeq(content, "\n") {
 			fmt.Fprintf(&sb, "        %s\n", line)
 		}
 	}

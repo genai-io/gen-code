@@ -47,10 +47,10 @@ func TestTranscriptTypesCarryProjectedState(t *testing.T) {
 
 func TestProjectedTypesDoNotExposeJSONTags(t *testing.T) {
 	fields := []reflect.StructField{
-		reflect.TypeOf(Transcript{}).Field(0),
-		reflect.TypeOf(Node{}).Field(0),
-		reflect.TypeOf(State{}).Field(0),
-		reflect.TypeOf(ListItem{}).Field(0),
+		reflect.TypeFor[Transcript]().Field(0),
+		reflect.TypeFor[Node]().Field(0),
+		reflect.TypeFor[State]().Field(0),
+		reflect.TypeFor[ListItem]().Field(0),
 	}
 
 	for _, field := range fields {

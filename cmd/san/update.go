@@ -268,10 +268,7 @@ func (pw *progressWriter) spin() {
 
 func (pw *progressWriter) printBar(width int) {
 	pct := float64(pw.written) / float64(pw.total)
-	filled := int(pct * float64(width))
-	if filled > width {
-		filled = width
-	}
+	filled := min(int(pct*float64(width)), width)
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 	fmt.Fprintf(os.Stderr, "\r  downloading [%s] %3.0f%%", bar, pct*100)
 }

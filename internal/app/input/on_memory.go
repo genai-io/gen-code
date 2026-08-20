@@ -404,7 +404,7 @@ func memoryAddToGitignore(cwd, entry string) {
 
 	content := string(data)
 	// Check line-by-line to avoid substring false positives
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		if strings.TrimSpace(line) == entry {
 			return
 		}

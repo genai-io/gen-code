@@ -4,6 +4,7 @@ package input
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -189,8 +190,8 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 		return ""
 	}
 
-	for i := len(fullSession.Messages) - 1; i >= 0; i-- {
-		msg := fullSession.Messages[i]
+	for _, msg := range slices.Backward(fullSession.Messages) {
+
 		if msg.Role != core.RoleUser && msg.Role != core.RoleAssistant {
 			continue
 		}

@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -134,9 +135,7 @@ func (w *FileWatcher) poll() {
 
 	w.mu.Lock()
 	paths := make(map[string]fileSnapshot, len(w.paths))
-	for path, snap := range w.paths {
-		paths[path] = snap
-	}
+	maps.Copy(paths, w.paths)
 	w.mu.Unlock()
 
 	var changes []change
