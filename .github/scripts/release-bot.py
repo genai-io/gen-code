@@ -9,6 +9,10 @@ On each run:
   4. Bumps the version (patch by default)
   5. Rewrites CHANGELOG.md and cmd/san/main.go
   6. Creates (or updates) a release/vX.Y.Z PR against main
+  7. Triggers CI on the release branch via workflow_dispatch (PRs created
+     with GITHUB_TOKEN are approval-gated, workflow_dispatch is not)
+  8. Waits for CI to pass, then requests review from REVIEW_REQUESTEE
+     (a single OWNERS member — pinging the whole team is noisy)
 
 Usage from GitHub Actions workflow:
   python3 .github/scripts/release-bot.py
@@ -24,11 +28,16 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 
 REPO = "genai-io/san"
 MAIN_BRANCH = "main"
+
+# Only this OWNERS member gets a review request on release PRs — pinging
+# the whole team on every weekly release is noisy.
+REVIEW_REQUESTEE = "yanmxa"
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -224,6 +233,95 @@ def read_version_from_main_go():
     return m.group(1) if m else None
 
 
+def read_owners():
+    """
+    Parse reviewer usernames from the OWNERS file — the YAML `reviewers:`
+    list, falling back to `approvers:`, then plain line-per-username.
+    """
+    try:
+        raw = Path("OWNERS").read_text()
+    except FileNotFoundError:
+        return []
+    for key in ("reviewers", "approvers"):
+        m = re.search(rf"^{key}:\s*$([\s\S]*?)(?=^[a-z]+:\s*$|\Z)", raw, re.MULTILINE)
+        if m:
+            users = re.findall(r"^\s*-\s*(\S+)", m.group(1), re.MULTILINE)
+            if users:
+                return users
+    # Plain text: one username per line, skip empty lines, comments, and keys
+    return [
+        line.strip()
+        for line in raw.splitlines()
+        if line.strip() and not line.strip().startswith("#") and ":" not in line
+    ]
+
+
+def wait_for_ci_and_request_review(pr_number, branch, owners):
+    """
+    Poll the dispatched CI run on the release branch until it finishes.
+    When it passes, request review from the designated OWNERS member so
+    the release PR gets noticed.
+    """
+    deadline = time.time() + 30 * 60  # give CI up to 30 minutes
+    state = None
+    while time.time() < deadline:
+        query = subprocess.run(
+            [
+                "gh", "run", "list", "--repo", REPO, "--workflow", "ci.yml",
+                "--branch", branch,
+                "--json", "databaseId,event,status,conclusion",
+                "--limit", "5",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if query.returncode == 0 and query.stdout.strip():
+            runs = json.loads(query.stdout)
+            # Only the run we dispatched — pull_request runs on this branch
+            # may exist and are approval-gated, so ignore them.
+            mine = [r for r in runs if r.get("event") == "workflow_dispatch"]
+            if mine:
+                state = mine[0]
+                if state["status"] == "completed":
+                    break
+        time.sleep(30)
+
+    if not state or state["status"] != "completed":
+        print(f"::warning:: Timed out waiting for CI on {branch} — review not requested")
+        return
+    if state["conclusion"] != "success":
+        print(
+            f"::warning:: CI on {branch} concluded {state['conclusion']} "
+            f"— review not requested"
+        )
+        return
+    if not owners:
+        print("::warning:: OWNERS list is empty — no reviewers to request")
+        return
+    if REVIEW_REQUESTEE not in owners:
+        print(
+            f"::warning:: {REVIEW_REQUESTEE} is not in OWNERS "
+            f"— review not requested"
+        )
+        return
+
+    edit = subprocess.run(
+        [
+            "gh", "pr", "edit", str(pr_number), "--repo", REPO,
+            "--add-reviewer", REVIEW_REQUESTEE,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if edit.returncode != 0:
+        print(
+            f"::warning:: could not request review on PR #{pr_number}: "
+            f"{edit.stderr.strip()}"
+        )
+    else:
+        print(f"👀 CI passed — requested review from {REVIEW_REQUESTEE}")
+
+
 def main():
     dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
     bump_type = os.environ.get("VERSION_BUMP", "patch")
@@ -410,6 +508,23 @@ def main():
         "--body", body,
     ])
     print(f"\n✅ Release PR created: {result}")
+
+    # Trigger CI directly on the release branch. PRs created with
+    # GITHUB_TOKEN have their pull_request-triggered runs gated behind
+    # manual approval, but workflow_dispatch runs always execute — so the
+    # release PR gets its checks without anyone clicking "Approve
+    # workflows to run". Non-fatal: the PR stays valid without it.
+    trigger = subprocess.run(
+        ["gh", "workflow", "run", "ci.yml", "--repo", REPO, "--ref", branch],
+        capture_output=True,
+        text=True,
+    )
+    if trigger.returncode != 0:
+        print(f"::warning:: could not trigger CI on {branch}: {trigger.stderr.strip()}")
+    else:
+        print(f"🔁 CI triggered on {branch}")
+        # Once CI passes, notify the OWNERS so the release PR gets reviewed.
+        wait_for_ci_and_request_review(result.split("/")[-1], branch, read_owners())
 
 
 if __name__ == "__main__":
