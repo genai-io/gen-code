@@ -14,7 +14,23 @@ type modelCatalogEntry struct {
 	pricing pricing
 }
 
+// Prices are CNY per million tokens, from
+// https://platform.minimaxi.com/docs/guides/pricing-paygo (last checked
+// 2026-08-20).
 var catalog = []modelCatalogEntry{
+	{
+		// M3's rate card is tiered by prompt size; these are the <=512k rates,
+		// which is the tier a single entry can express. Above 512k MiniMax
+		// bills double, so a long-prompt turn costs more than estimated here.
+		info: llm.ModelInfo{
+			ID:               "MiniMax-M3",
+			Name:             "MiniMax M3",
+			DisplayName:      "MiniMax M3",
+			InputTokenLimit:  1000000,
+			OutputTokenLimit: 8192,
+		},
+		pricing: pricing{inputPerMTokens: 2.1, outputPerMTokens: 8.4, cacheReadPerMTokens: 0.42, cacheWritePerMTokens: 2.625},
+	},
 	{
 		info: llm.ModelInfo{
 			ID:               "MiniMax-M2.7",

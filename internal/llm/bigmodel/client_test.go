@@ -226,29 +226,40 @@ func TestBigModelListModelsFallsBackToStaticLimit(t *testing.T) {
 	for _, m := range models {
 		byID[m.ID] = m.InputTokenLimit
 	}
-	if byID["glm-4.7"] != 256_000 {
-		t.Errorf("glm-4.7 limit = %d, want 256000 (static fallback)", byID["glm-4.7"])
+	if byID["glm-4.7"] != 200_000 {
+		t.Errorf("glm-4.7 limit = %d, want 200000 (static fallback)", byID["glm-4.7"])
 	}
-	if byID["glm-5.2"] != 1_000_000 {
-		t.Errorf("glm-5.2 limit = %d, want 1000000 (static fallback)", byID["glm-5.2"])
+	if byID["glm-5.2"] != 200_000 {
+		t.Errorf("glm-5.2 limit = %d, want 200000 (static fallback)", byID["glm-5.2"])
 	}
 }
 
-func TestStaticInputLimit(t *testing.T) {
+func TestStaticLimits(t *testing.T) {
 	cases := []struct {
-		model string
-		want  int
+		model      string
+		wantInput  int
+		wantOutput int
 	}{
-		{"glm-5.2", 1_000_000},
-		{"glm-5.2-flash", 1_000_000},
-		{"glm-5.1", 256_000},
-		{"glm-4.7", 256_000},
-		{"glm-4-long", 256_000},
-		{"glm-4.7-flash", 256_000},
+		{"glm-5.2", 200_000, 128_000},
+		{"glm-5.2-flash", 200_000, 128_000},
+		{"glm-5", 200_000, 128_000},
+		{"glm-4.7", 200_000, 128_000},
+		{"glm-4.7-flashx", 200_000, 128_000},
+		{"glm-4.6", 200_000, 128_000},
+		// GLM-4-Long is the outlier: a 1M window with a 4K output cap.
+		{"glm-4-long", 1_000_000, 4_096},
+		// An unknown GLM reports "unknown" rather than a blanket default, so
+		// San skips proactive compaction instead of compacting against a
+		// figure nobody checked.
+		{"glm-4-flash-250414", 0, 0},
+		{"glm-3-turbo", 0, 0},
 	}
 	for _, c := range cases {
-		if got := staticInputLimit(c.model); got != c.want {
-			t.Errorf("staticInputLimit(%q) = %d, want %d", c.model, got, c.want)
+		if got := staticInputLimit(c.model); got != c.wantInput {
+			t.Errorf("staticInputLimit(%q) = %d, want %d", c.model, got, c.wantInput)
+		}
+		if got := staticOutputLimit(c.model); got != c.wantOutput {
+			t.Errorf("staticOutputLimit(%q) = %d, want %d", c.model, got, c.wantOutput)
 		}
 	}
 }
