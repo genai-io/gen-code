@@ -84,7 +84,20 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 
 		// Sanitizer for cross-provider tool ID compatibility (lazy, single-pass)
 		var ids toolIDSanitizer
-		thinkingBudget := int64(anthropicThinkingBudget(opts.Model, opts.ThinkingEffort))
+
+		// How this model wants reasoning configured. A budget is only ever
+		// sent on the pre-4.6 shape; under adaptive thinking the model sizes
+		// its own reasoning, and Opus 4.7 and later reject a budget outright.
+		style := modelThinkingStyle(opts.Model)
+		var thinkingBudget int64
+		if style == styleBudget {
+			thinkingBudget = int64(anthropicThinkingBudget(opts.Model, opts.ThinkingEffort))
+		}
+		// Whether reasoning runs at all, under either shape. It gates
+		// replaying a prior thinking block, which the API rejects in a
+		// request that is not itself thinking.
+		thinkingOn := thinkingBudget > 0 ||
+			(style == styleAdaptive && opts.ThinkingEffort != "" && opts.ThinkingEffort != ThinkingOff)
 
 		// Remove orphaned tool_result blocks whose tool_use_id doesn't match
 		// any tool_use in the nearest preceding assistant core. This guards
@@ -138,7 +151,7 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 					))
 				}
 			case core.RoleAssistant:
-				blocks := assistantContentBlocks(msg, thinkingBudget)
+				blocks := assistantContentBlocks(msg, thinkingOn)
 				if len(msg.ToolCalls) > 0 {
 					for _, tc := range msg.ToolCalls {
 						var input any
@@ -181,8 +194,25 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 			Messages:  anthropicMsgs,
 		}
 
-		// Configure extended thinking
-		if thinkingBudget > 0 {
+		// Configure thinking. Claude 4.6 and later take adaptive thinking with
+		// the level in output_config.effort; everything older, and every
+		// Anthropic-compatible third-party endpoint, takes a token budget.
+		switch {
+		case style == styleAdaptive && thinkingOn:
+			params.Thinking = anthropic.ThinkingConfigParamUnion{
+				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+			}
+			if effort := adaptiveEffort(opts.ThinkingEffort); effort != "" {
+				params.OutputConfig = anthropic.OutputConfigParam{Effort: effort}
+			}
+		case style == styleAdaptive && opts.ThinkingEffort == ThinkingOff:
+			// These models think by default, so switching it off has to be
+			// said explicitly. No effort is paired with it: Opus 5 rejects
+			// disabled thinking above effort "high".
+			params.Thinking = anthropic.ThinkingConfigParamUnion{
+				OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
+			}
+		case thinkingBudget > 0:
 			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(thinkingBudget)
 		}
 
@@ -416,6 +446,22 @@ func resolveModelOpts(model string) (string, []option.RequestOption) {
 	return model, nil
 }
 
+// adaptiveEffort maps San's thinking levels onto output_config.effort, which
+// is how adaptive thinking is dialed. San offers four levels and the API five;
+// "medium" is the one San does not surface.
+func adaptiveEffort(effort string) anthropic.OutputConfigEffort {
+	switch effort {
+	case ThinkingNormal:
+		return anthropic.OutputConfigEffortLow
+	case ThinkingHigh:
+		return anthropic.OutputConfigEffortHigh
+	case ThinkingUltra:
+		return anthropic.OutputConfigEffortMax
+	default:
+		return ""
+	}
+}
+
 func anthropicThinkingBudget(model, effort string) int {
 	if !supportsThinkingModel(model) {
 		return 0
@@ -513,9 +559,13 @@ func anyStrings(v any) []string {
 }
 
 // assistantContentBlocks builds the thinking + text content blocks for an assistant core.
-func assistantContentBlocks(msg core.Message, thinkingBudget int64) []anthropic.ContentBlockParamUnion {
+//
+// A thinking block is replayed only when its signature came back with it and
+// thinking is on for this request: the API rejects an unsigned thinking block,
+// and replaying one into a non-thinking request is equally invalid.
+func assistantContentBlocks(msg core.Message, thinkingOn bool) []anthropic.ContentBlockParamUnion {
 	blocks := make([]anthropic.ContentBlockParamUnion, 0, 2)
-	if msg.Thinking != "" && thinkingBudget > 0 && msg.ThinkingSignature != "" {
+	if msg.Thinking != "" && thinkingOn && msg.ThinkingSignature != "" {
 		blocks = append(blocks, anthropic.NewThinkingBlock(msg.ThinkingSignature, msg.Thinking))
 	}
 	if msg.Content != "" {

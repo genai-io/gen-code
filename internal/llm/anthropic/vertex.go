@@ -27,18 +27,29 @@ var VertexMeta = llm.Meta{
 //
 // Note: Vertex AI does not provide a stable Anthropic Models API, so we use a
 // static list and refresh it when Anthropic/Vertex documentation changes.
+// Last checked 2026-08-20.
+//
+// This list is deliberately longer than the first-party catalog: Opus 4.1,
+// Opus 4 and Sonnet 4 are retired on the Claude API but remain available on
+// Google Cloud, which the pricing page states per model.
+//
+// There is no separate 1M-context variant. Claude 4.6 and later carry the full
+// 1M window at standard pricing, so the "[1m]" suffix that used to select a
+// beta header is meaningless on them.
 var vertexModels = []llm.ModelInfo{
-	newVertexModel("claude-opus-4-7", "Claude Opus 4.7", "Claude Opus 4.7 (Most Capable)"),
-	newVertexModel("claude-opus-4-6[1m]", "Claude Opus 4.6 (1M)", "Claude Opus 4.6 (1M Context)"),
+	newVertexModel("claude-fable-5", "Claude Fable 5", "Claude Fable 5 (Most Capable)"),
+	newVertexModel("claude-opus-5", "Claude Opus 5", "Claude Opus 5"),
+	newVertexModel("claude-opus-4-8", "Claude Opus 4.8", "Claude Opus 4.8"),
+	newVertexModel("claude-opus-4-7", "Claude Opus 4.7", "Claude Opus 4.7"),
 	newVertexModel("claude-opus-4-6", "Claude Opus 4.6", "Claude Opus 4.6"),
-	newVertexModel("claude-opus-4-5", "Claude Opus 4.5", "Claude Opus 4.5"),
+	newVertexModel("claude-opus-4-5@20251101", "Claude Opus 4.5", "Claude Opus 4.5"),
 	newVertexModel("claude-opus-4-1@20250805", "Claude Opus 4.1", "Claude Opus 4.1"),
 	newVertexModel("claude-opus-4@20250514", "Claude Opus 4", "Claude Opus 4"),
+	newVertexModel("claude-sonnet-5", "Claude Sonnet 5", "Claude Sonnet 5"),
 	newVertexModel("claude-sonnet-4-6", "Claude Sonnet 4.6", "Claude Sonnet 4.6"),
-	newVertexModel("claude-sonnet-4-5", "Claude Sonnet 4.5", "Claude Sonnet 4.5"),
+	newVertexModel("claude-sonnet-4-5@20250929", "Claude Sonnet 4.5", "Claude Sonnet 4.5"),
 	newVertexModel("claude-sonnet-4@20250514", "Claude Sonnet 4", "Claude Sonnet 4"),
-	newVertexModel("claude-3-7-sonnet@20250219", "Claude Sonnet 3.7", "Claude Sonnet 3.7"),
-	newVertexModel("claude-haiku-4-5", "Claude Haiku 4.5", "Claude Haiku 4.5 (Fast)"),
+	newVertexModel("claude-haiku-4-5@20251001", "Claude Haiku 4.5", "Claude Haiku 4.5 (Fast)"),
 	newVertexModel("claude-3-5-haiku@20241022", "Claude Haiku 3.5", "Claude Haiku 3.5"),
 }
 
