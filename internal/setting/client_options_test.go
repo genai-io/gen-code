@@ -11,7 +11,7 @@ func TestDefaultModel(t *testing.T) {
 		want     string
 	}{
 		{name: "anthropic vertex", provider: "anthropic", auth: "vertex", want: "claude-sonnet-4-5@20250929"},
-		{name: "anthropic", provider: "anthropic", want: "claude-sonnet-4-20250514"},
+		{name: "anthropic", provider: "anthropic", want: "claude-sonnet-5"},
 		{name: "openai", provider: "openai", want: "gpt-4o"},
 		{name: "ollama", provider: "ollama", want: "llama4"},
 		{name: "mimo", provider: "mimo", want: "xiaomi/mimo-v2.5-pro"},
