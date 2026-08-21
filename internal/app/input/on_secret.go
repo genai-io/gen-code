@@ -88,10 +88,7 @@ func (p *SecretPromptModel) Render() string {
 		return ""
 	}
 
-	contentWidth := p.width - 2
-	if contentWidth < 40 {
-		contentWidth = 40
-	}
+	contentWidth := max(p.width-2, 40)
 	p.input.SetWidth(inputWidth(contentWidth))
 
 	var sb strings.Builder

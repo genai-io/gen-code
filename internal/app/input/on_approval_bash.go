@@ -67,10 +67,7 @@ func (b *approvalBashPreview) render(width int) string {
 	}
 
 	const indent = 3
-	contentWidth := width - indent
-	if contentWidth < 8 {
-		contentWidth = 8
-	}
+	contentWidth := max(width-indent, 8)
 
 	for i := 0; i < showCount; i++ {
 		sb.WriteString("   ")

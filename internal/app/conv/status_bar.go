@@ -94,10 +94,9 @@ func RenderContextBar(used, limit int) string {
 	if pct > 100 {
 		pct = 100
 	}
-	filled := int((pct/100)*float64(contextBarWidth) + 0.5) // round to nearest cell
-	if filled > contextBarWidth {
-		filled = contextBarWidth
-	}
+	filled := min(
+		// round to nearest cell
+		int((pct/100)*float64(contextBarWidth)+0.5), contextBarWidth)
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", contextBarWidth-filled)
 	style := classifyContextTier(pct).style()
 	return style.Render(fmt.Sprintf("[%s] %d%%", bar, int(pct+0.5)))

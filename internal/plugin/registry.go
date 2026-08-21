@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -123,9 +124,7 @@ func (r *Registry) loadEnabledPlugins(cwd string) (map[string]bool, error) {
 		if err := json.Unmarshal(data, &settings); err != nil {
 			continue
 		}
-		for k, v := range settings.EnabledPlugins {
-			result[k] = v
-		}
+		maps.Copy(result, settings.EnabledPlugins)
 	}
 
 	return result, nil
@@ -395,9 +394,7 @@ func (r *Registry) GetAllLSPServers() map[string]LSPServerConfig {
 		if !p.Enabled || p.Components.LSP == nil {
 			continue
 		}
-		for name, config := range p.Components.LSP {
-			result[name] = config
-		}
+		maps.Copy(result, p.Components.LSP)
 	}
 	return result
 }

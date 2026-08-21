@@ -126,7 +126,7 @@ func TestStoreTick(t *testing.T) {
 
 func TestStore_maxJobs(t *testing.T) {
 	store := NewScheduler()
-	for i := 0; i < maxJobs; i++ {
+	for i := range maxJobs {
 		_, err := store.Create("*/5 * * * *", "job", true, false)
 		if err != nil {
 			t.Fatalf("Create %d failed: %v", i, err)

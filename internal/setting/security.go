@@ -108,7 +108,7 @@ func isRootOrHomeRemoval(cmd string) bool {
 // letting an unparseable root/home removal through.
 func crudeRootOrHomeRemovalScan(cmd string) bool {
 	hasRM, recursive, rootHome := false, false, false
-	for _, f := range strings.Fields(cmd) {
+	for f := range strings.FieldsSeq(cmd) {
 		switch {
 		case f == "rm" || strings.HasSuffix(f, "/rm"):
 			hasRM = true
@@ -498,7 +498,7 @@ func hasZshDangerousCommand(cmd string) bool {
 	segments := extractBashCommands(cmd)
 	var expanded []string
 	for _, seg := range segments {
-		for _, pipePart := range strings.Split(seg, "|") {
+		for pipePart := range strings.SplitSeq(seg, "|") {
 			if s := strings.TrimSpace(pipePart); s != "" {
 				expanded = append(expanded, s)
 			}

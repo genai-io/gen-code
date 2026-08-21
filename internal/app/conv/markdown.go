@@ -507,7 +507,7 @@ type listLevel struct {
 func parseListItems(content string) []listItem {
 	var items []listItem
 	var stack []listLevel // one entry per active nesting level, outermost first
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		indent, ordered, number, text, ok := parseListMarker(line)
 		if !ok {
 			mergeContinuation(items, line)

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -55,9 +56,7 @@ func connectedClient(t *testing.T, cfg ServerConfig, tr transport.Transport) *Cl
 
 func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Registry {
 	r := newEmptyRegistry()
-	for name, cfg := range configs {
-		r.configs[name] = cfg
-	}
+	maps.Copy(r.configs, configs)
 	for name, c := range clients {
 		r.clients[name] = c
 		r.getOrCreateConnectionState(name).retainWithoutLeases = true

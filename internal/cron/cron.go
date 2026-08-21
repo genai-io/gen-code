@@ -69,7 +69,7 @@ func parse(expr string) (*expression, error) {
 func parseField(raw string, spec fieldSpec) (field, error) {
 	f := field{values: make(map[int]bool)}
 
-	for _, part := range strings.Split(raw, ",") {
+	for part := range strings.SplitSeq(raw, ",") {
 		if err := parsePart(part, spec, f.values); err != nil {
 			return f, err
 		}

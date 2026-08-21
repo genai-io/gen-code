@@ -33,14 +33,14 @@ func hydrateToolResultBlocks(blocks []ContentBlock, marker string, load func(too
 }
 
 func persistedToolResultID(text, marker string) (string, bool) {
-	idx := strings.Index(text, marker)
-	if idx < 0 {
+	_, after, ok := strings.Cut(text, marker)
+	if !ok {
 		return "", false
 	}
-	suffix := text[idx+len(marker):]
-	end := strings.Index(suffix, "]")
-	if end < 0 {
+	suffix := after
+	before0, _, ok0 := strings.Cut(suffix, "]")
+	if !ok0 {
 		return "", false
 	}
-	return suffix[:end], true
+	return before0, true
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -415,9 +416,9 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.
 func LastAssistantChatContent(msgs []ChatMessage) string {
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == RoleAssistant && msgs[i].Content != "" {
-			return msgs[i].Content
+	for _, msg := range slices.Backward(msgs) {
+		if msg.Role == RoleAssistant && msg.Content != "" {
+			return msg.Content
 		}
 	}
 	return ""

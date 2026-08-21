@@ -3,6 +3,7 @@ package transcript
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/genai-io/san/internal/todo"
 )
@@ -190,8 +191,8 @@ func materializeActiveChain(messageMap map[string]Node, order []string, boundary
 	}
 
 	var leafID string
-	for i := len(order) - 1; i >= 0; i-- {
-		id := order[i]
+	for _, id := range slices.Backward(order) {
+
 		if !hasChild[id] {
 			leafID = id
 			break
@@ -225,8 +226,8 @@ func materializeActiveChain(messageMap map[string]Node, order []string, boundary
 	}
 
 	out := make([]Node, 0, len(reversed))
-	for i := len(reversed) - 1; i >= 0; i-- {
-		out = append(out, reversed[i])
+	for _, r := range slices.Backward(reversed) {
+		out = append(out, r)
 	}
 	return out
 }

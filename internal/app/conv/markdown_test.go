@@ -203,7 +203,7 @@ func TestMDRenderer_TableInListNotFolded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render error: %v", err)
 	}
-	for _, line := range strings.Split(stripANSI(out), "\n") {
+	for line := range strings.SplitSeq(stripANSI(out), "\n") {
 		if strings.Contains(line, "kube-apiserver") && strings.Contains(line, "etcd") {
 			t.Errorf("table rows were folded onto one line:\n%s", stripANSI(out))
 		}
@@ -227,7 +227,7 @@ func TestMDRenderer_ListContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render error: %v", err)
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		plain := strings.TrimRight(stripANSI(line), " ")
 		if plain == "" {
 			continue

@@ -41,7 +41,7 @@ func TestQueueDequeueIsFIFO(t *testing.T) {
 
 func TestQueueMaxSize(t *testing.T) {
 	var q Queue
-	for i := 0; i < maxQueueSize; i++ {
+	for range maxQueueSize {
 		q.Enqueue("item", nil)
 	}
 	if q.Enqueue("overflow", nil) != -1 {

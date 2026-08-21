@@ -71,8 +71,8 @@ func RenderToolResult(result toolresult.ToolResult, width int) string {
 		}
 	case "WebFetch":
 		if result.Output != "" {
-			lines := strings.Split(result.Output, "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(result.Output, "\n")
+			for line := range lines {
 				sb.WriteString("  ")
 				sb.WriteString(line)
 				sb.WriteString("\n")
@@ -585,10 +585,7 @@ func renderLines(lines []toolresult.ContentLine) string {
 			maxLineNo = line.LineNo
 		}
 	}
-	lineNoWidth := len(fmt.Sprintf("%d", maxLineNo))
-	if lineNoWidth < 4 {
-		lineNoWidth = 4
-	}
+	lineNoWidth := max(len(fmt.Sprintf("%d", maxLineNo)), 4)
 
 	for _, line := range lines {
 		switch line.Type {
@@ -1318,10 +1315,7 @@ func maxToolLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	maxWidth := width * 80 / 100
-	if maxWidth < 50 {
-		maxWidth = 50
-	}
+	maxWidth := max(width*80/100, 50)
 	labelWidth := maxWidth - lipgloss.Width("● ")
 	if labelWidth < 20 {
 		return 20

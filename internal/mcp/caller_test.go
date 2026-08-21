@@ -67,14 +67,12 @@ func TestConcurrentLeaseAcquisitionSharesOneConnectionUntilFinalRelease(t *testi
 	errors := make(chan []error, 2)
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			cleanup, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 			cleanups <- cleanup
 			errors <- errs
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()

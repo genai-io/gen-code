@@ -46,7 +46,7 @@ func TestManager_List(t *testing.T) {
 	defer cancel()
 
 	// Create multiple tasks
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
 		m.CreateBashTask(cmd, "echo test", "Test task", cancel)
@@ -66,7 +66,7 @@ func TestManager_ListRunning(t *testing.T) {
 
 	// Create 3 tasks
 	var tasks []*BashTask
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
 		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
@@ -110,7 +110,7 @@ func TestManager_GenerateUniqueIDs(t *testing.T) {
 
 	ids := make(map[string]bool)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
 		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)

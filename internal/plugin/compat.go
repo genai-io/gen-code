@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -56,9 +57,7 @@ func (r *Registry) LoadClaudePlugins(ctx context.Context) error {
 	}
 
 	r.mu.Lock()
-	for key, p := range collected {
-		r.plugins[key] = p
-	}
+	maps.Copy(r.plugins, collected)
 	r.mu.Unlock()
 
 	return nil

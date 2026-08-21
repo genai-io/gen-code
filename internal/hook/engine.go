@@ -177,11 +177,9 @@ func (e *Engine) Execute(ctx context.Context, event EventType, input HookInput) 
 	for _, hook := range hooks {
 		if hook.Command != nil && (hook.Command.Async || hook.Command.AsyncRewake) {
 			hookCopy, inputCopy := hook, input
-			e.detachedWg.Add(1)
-			go func() {
-				defer e.detachedWg.Done()
+			e.detachedWg.Go(func() {
 				e.executeDetachedHook(context.Background(), hookCopy, inputCopy)
-			}()
+			})
 			// Emit at launch; the detached goroutine re-emits with the real
 			// outcome when it finishes. Two records make the lifecycle visible.
 			e.audit(HookFiredAudit{
@@ -264,11 +262,9 @@ func (e *Engine) ExecuteAsync(event EventType, input HookInput) {
 	hooks := e.getMatchingHooks(event, &input)
 	for _, hook := range hooks {
 		hookCopy, inputCopy := hook, input
-		e.detachedWg.Add(1)
-		go func() {
-			defer e.detachedWg.Done()
+		e.detachedWg.Go(func() {
 			e.executeDetachedHook(context.Background(), hookCopy, inputCopy)
-		}()
+		})
 	}
 }
 

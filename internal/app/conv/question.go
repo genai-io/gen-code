@@ -375,10 +375,7 @@ func (p *QuestionPrompt) Render() string {
 	}
 
 	var sb strings.Builder
-	contentWidth := p.width - 2
-	if contentWidth < 40 {
-		contentWidth = 40
-	}
+	contentWidth := max(p.width-2, 40)
 
 	currentQ := p.request.Questions[p.currentQuestion]
 

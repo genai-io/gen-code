@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -200,8 +201,8 @@ func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
 }
 
 func ExtractLastUserText(msgs []core.Message) string {
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if text, ok := extractUserText(msgs[i]); ok {
+	for _, msg := range slices.Backward(msgs) {
+		if text, ok := extractUserText(msg); ok {
 			return text
 		}
 	}

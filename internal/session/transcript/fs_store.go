@@ -514,8 +514,8 @@ func (s *FileStore) Fork(ctx context.Context, cmd ForkCommand) error {
 
 func rewriteRecordSessionID(id, oldSessionID, newSessionID string) string {
 	prefix := oldSessionID + ":"
-	if strings.HasPrefix(id, prefix) {
-		return newSessionID + ":" + strings.TrimPrefix(id, prefix)
+	if after, ok := strings.CutPrefix(id, prefix); ok {
+		return newSessionID + ":" + after
 	}
 	return id
 }
@@ -1076,11 +1076,11 @@ func firstUserText(messages []Node) string {
 }
 
 func lastUserText(messages []Node) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role != "user" {
+	for _, message := range slices.Backward(messages) {
+		if message.Role != "user" {
 			continue
 		}
-		if text := firstTextBlock(messages[i].Content); text != "" {
+		if text := firstTextBlock(message.Content); text != "" {
 			return text
 		}
 	}
@@ -1100,9 +1100,9 @@ func firstTextBlock(content []ContentBlock) string {
 }
 
 func lastGitBranch(messages []Node) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].GitBranch != "" {
-			return messages[i].GitBranch
+	for _, message := range slices.Backward(messages) {
+		if message.GitBranch != "" {
+			return message.GitBranch
 		}
 	}
 	return ""

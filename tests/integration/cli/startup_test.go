@@ -286,8 +286,8 @@ func filteredEnv(removeKeys ...string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
 		key := kv
-		if idx := strings.Index(kv, "="); idx >= 0 {
-			key = kv[:idx]
+		if before, _, ok := strings.Cut(kv, "="); ok {
+			key = before
 		}
 		if !remove[key] {
 			env = append(env, kv)

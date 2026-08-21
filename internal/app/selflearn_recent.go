@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -48,8 +49,8 @@ func (l *RecentLearnLog) recent() []RecentLearnEvent {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := make([]RecentLearnEvent, 0, len(l.events))
-	for i := len(l.events) - 1; i >= 0; i-- {
-		out = append(out, l.events[i])
+	for _, v := range slices.Backward(l.events) {
+		out = append(out, v)
 	}
 	return out
 }

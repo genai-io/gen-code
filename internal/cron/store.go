@@ -413,10 +413,7 @@ func computeRecurringJitter(expr *expression, base time.Time, jobID string) time
 		return 0
 	}
 
-	maxJitter := period / 10
-	if maxJitter > maxRecurringJitter {
-		maxJitter = maxRecurringJitter
-	}
+	maxJitter := min(period/10, maxRecurringJitter)
 	if maxJitter <= 0 {
 		return 0
 	}

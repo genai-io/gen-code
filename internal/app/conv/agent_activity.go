@@ -2,6 +2,7 @@ package conv
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -98,8 +99,8 @@ func agentSummary(input string, activity []string, stats AgentStats) string {
 }
 
 func agentModel(activity []string, fallback string) string {
-	for i := len(activity) - 1; i >= 0; i-- {
-		if model, ok := strings.CutPrefix(strings.TrimSpace(activity[i]), "Model: "); ok {
+	for _, a := range slices.Backward(activity) {
+		if model, ok := strings.CutPrefix(strings.TrimSpace(a), "Model: "); ok {
 			return strings.TrimSpace(model)
 		}
 	}
@@ -127,8 +128,8 @@ func tokenSummary(inputTokens, outputTokens int) string {
 }
 
 func agentTokens(activity []string, stats AgentStats) string {
-	for i := len(activity) - 1; i >= 0; i-- {
-		inputTokens, outputTokens, ok := parseUsageActivity(activity[i])
+	for _, a := range slices.Backward(activity) {
+		inputTokens, outputTokens, ok := parseUsageActivity(a)
 		if ok {
 			return tokenSummary(inputTokens, outputTokens)
 		}
@@ -143,7 +144,7 @@ func parseUsageActivity(line string) (int, int, bool) {
 		return 0, 0, false
 	}
 	var inputTokens, outputTokens int
-	for _, field := range strings.Fields(rest) {
+	for field := range strings.FieldsSeq(rest) {
 		key, value, ok := strings.Cut(field, "=")
 		if !ok {
 			continue
@@ -163,8 +164,8 @@ func parseUsageActivity(line string) (int, int, bool) {
 }
 
 func agentStatus(activity []string) string {
-	for i := len(activity) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(activity[i])
+	for _, a := range slices.Backward(activity) {
+		line := strings.TrimSpace(a)
 		if line == "" || isAgentToolLine(line) || strings.HasPrefix(line, "Mode: ") || strings.HasPrefix(line, "Model: ") || strings.HasPrefix(line, "Usage: ") {
 			continue
 		}
