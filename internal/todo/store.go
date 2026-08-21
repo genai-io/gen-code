@@ -76,7 +76,9 @@ func (s *Store) SetStorageDir(dir string) error {
 	// Create lock file
 	lockPath := filepath.Join(dir, ".lock")
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
-		os.WriteFile(lockPath, nil, 0o644)
+		if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
+			return fmt.Errorf("failed to create item storage lock file: %w", err)
+		}
 	}
 
 	// Load existing items from disk, then reconcile: this is the moment a

@@ -172,7 +172,7 @@ func loopIntervalToCadence(interval string, now time.Time) (loopCadence, error) 
 	}
 
 	requestedMinutes := intervalSpecToMinutes(spec)
-	effectiveMinutes := requestedMinutes
+	var effectiveMinutes int
 	switch {
 	case requestedMinutes < 60:
 		effectiveMinutes = nearestAllowed(requestedMinutes, []int{1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60})

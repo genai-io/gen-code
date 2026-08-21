@@ -7,13 +7,18 @@ type Options struct {
 	OutputDir string
 }
 
-// Initialize creates the package-level *Manager and configures it.
-func Initialize(opts Options) {
+// Initialize creates the package-level *Manager and configures it. It returns
+// the error from configuring the output directory: the manager is installed
+// either way, so a caller that cannot use the directory still gets a working
+// in-memory manager and can decide what to say about the lost persistence.
+func Initialize(opts Options) error {
 	m := NewManager()
+	var err error
 	if opts.OutputDir != "" {
-		m.SetOutputDir(opts.OutputDir)
+		err = m.SetOutputDir(opts.OutputDir)
 	}
 	defaultManager = m
+	return err
 }
 
 // Default returns the package-level *Manager.

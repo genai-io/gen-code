@@ -132,7 +132,7 @@ func (s *PluginSelector) getMaxIndex() int {
 }
 
 func (s *PluginSelector) ensureVisible() {
-	visible := s.maxVisible
+	var visible int
 	switch s.level {
 	case pluginLevelBrowsePlugins:
 		visible = max(4, s.height-14)
