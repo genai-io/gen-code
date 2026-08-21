@@ -59,25 +59,25 @@ func openAIModelInfo(modelID string) llm.ModelInfo {
 }
 
 // openAILimits returns known context/output windows for OpenAI model IDs.
-// OpenAI's /v1/models endpoint doesn't include limits, so we rely on
-// published specs. Returns 0,0 for unrecognized IDs.
+// OpenAI's /v1/models endpoint doesn't include limits, so we rely on the
+// published per-model pages. Returns 0,0 for unrecognized IDs.
+//
+// Last checked 2026-08-20 against developers.openai.com: the whole GPT-5
+// family — 5.4 through the 5.6 variants — carries a 1,050,000-token window and
+// a 128,000-token output cap.
 func openAILimits(modelID string) (input, output int) {
 	m := strings.ToLower(strings.TrimSpace(modelID))
 	switch {
 	case strings.HasPrefix(m, "gpt-6"),
-		strings.HasPrefix(m, "gpt-5.5"),
-		strings.HasPrefix(m, "gpt-5.4"):
-		return 400_000, 16_384
-	case strings.HasPrefix(m, "gpt-5"):
-		return 400_000, 16_384
+		strings.HasPrefix(m, "gpt-5"),
+		strings.Contains(m, "codex"):
+		return 1_050_000, 128_000
 	case strings.HasPrefix(m, "o1"),
 		strings.HasPrefix(m, "o3"),
 		strings.HasPrefix(m, "o4"):
 		return 200_000, 100_000
-	case strings.Contains(m, "codex"):
-		return 400_000, 16_384
 	case strings.HasPrefix(m, "gpt-4.1"):
-		return 1_048_576, 16_384
+		return 1_047_576, 32_768
 	case strings.HasPrefix(m, "gpt-4o"):
 		return 128_000, 16_384
 	}

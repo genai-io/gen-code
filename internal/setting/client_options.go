@@ -16,11 +16,13 @@ func DefaultModel(providerName string, authMethod string) string {
 	case "agnesai":
 		return "agnes-2.0-flash"
 	case "anthropic":
-		return "claude-sonnet-4-20250514"
+		// Sonnet 4 retired on the Claude API; Sonnet 5 is the same tier.
+		return "claude-sonnet-5"
 	case "openai":
 		return "gpt-4o"
 	case "google":
-		return "gemini-2.0-flash"
+		// Gemini 2.0 is no longer in Google's published model list.
+		return "gemini-2.5-flash"
 	case "moonshot":
 		return "moonshot-v1-auto"
 	case "alibaba":

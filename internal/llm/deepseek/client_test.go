@@ -106,8 +106,8 @@ func TestDeepSeekIsTextOnly(t *testing.T) {
 	}
 }
 
-// Rates come from https://api-docs.deepseek.com/quick_start/pricing; a million
-// tokens of each kind prices one rate per case.
+// Rates come from https://api-docs.deepseek.com/quick_start/pricing (standard,
+// peak); a million tokens of each kind prices one rate per case.
 func TestDeepSeekEstimateCost(t *testing.T) {
 	const million = 1000000
 
@@ -117,10 +117,10 @@ func TestDeepSeekEstimateCost(t *testing.T) {
 		usage llm.Usage
 		want  float64
 	}{
-		{"flash input+output", "deepseek-v4-flash", llm.Usage{InputTokens: million, OutputTokens: million}, 0.42},
-		{"flash cache hit", "deepseek-v4-flash", llm.Usage{CacheReadInputTokens: million}, 0.0028},
-		{"pro input+output", "deepseek-v4-pro", llm.Usage{InputTokens: million, OutputTokens: million}, 1.305},
-		{"pro cache hit", "deepseek-v4-pro", llm.Usage{CacheReadInputTokens: million}, 0.003625},
+		{"flash input+output", "deepseek-v4-flash", llm.Usage{InputTokens: million, OutputTokens: million}, 1.76},
+		{"flash cache hit", "deepseek-v4-flash", llm.Usage{CacheReadInputTokens: million}, 0.014},
+		{"pro input+output", "deepseek-v4-pro", llm.Usage{InputTokens: million, OutputTokens: million}, 5.28},
+		{"pro cache hit", "deepseek-v4-pro", llm.Usage{CacheReadInputTokens: million}, 0.044},
 	}
 
 	for _, tt := range tests {

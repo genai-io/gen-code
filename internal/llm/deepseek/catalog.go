@@ -15,9 +15,14 @@ type modelCatalogEntry struct {
 }
 
 // Prices are USD per million tokens, from
-// https://api-docs.deepseek.com/quick_start/pricing — inputPerMTokens is the
-// cache-miss rate and cacheReadPerMTokens the cache-hit rate. DeepSeek does
-// not bill cache writes separately, so the write rate mirrors the miss rate.
+// https://api-docs.deepseek.com/quick_start/pricing (last checked 2026-08-20).
+// inputPerMTokens is the cache-miss rate and cacheReadPerMTokens the cache-hit
+// rate; DeepSeek does not bill cache writes separately, so the write rate
+// mirrors the miss rate.
+//
+// These are the standard (peak) rates. DeepSeek bills 50% of them off-peak —
+// outside 09:00-12:00 and 14:00-18:00 Beijing time — which a single rate card
+// cannot express, so a turn's estimate is an upper bound during those hours.
 var catalog = []modelCatalogEntry{
 	{
 		info: llm.ModelInfo{
@@ -27,7 +32,7 @@ var catalog = []modelCatalogEntry{
 			InputTokenLimit:  1_000_000,
 			OutputTokenLimit: 384000,
 		},
-		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.0028, cacheWritePerMTokens: 0.14},
+		pricing: pricing{inputPerMTokens: 0.44, outputPerMTokens: 1.32, cacheReadPerMTokens: 0.014, cacheWritePerMTokens: 0.44},
 	},
 	{
 		info: llm.ModelInfo{
@@ -37,7 +42,7 @@ var catalog = []modelCatalogEntry{
 			InputTokenLimit:  1_000_000,
 			OutputTokenLimit: 384000,
 		},
-		pricing: pricing{inputPerMTokens: 0.435, outputPerMTokens: 0.87, cacheReadPerMTokens: 0.003625, cacheWritePerMTokens: 0.435},
+		pricing: pricing{inputPerMTokens: 1.32, outputPerMTokens: 3.96, cacheReadPerMTokens: 0.044, cacheWritePerMTokens: 1.32},
 	},
 }
 

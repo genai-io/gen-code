@@ -64,6 +64,17 @@ func ResetDefaultConn()       // test-only
   metadata and falls back to `ThinkingEffortProvider` for catalogs (such as the
   standard OpenAI `/v1/models` response) that omit reasoning capabilities.
 - `stream/` — provider-side helpers for SSE parsing.
+- Thinking is configured two different ways on the Anthropic protocol, and
+  which one a model wants is catalog data, not something to infer from the
+  model ID. Claude 4.6 and later take `thinking: {"type": "adaptive"}` with the
+  level in `output_config.effort`; everything older — and every
+  Anthropic-compatible third-party endpoint (MiniMax, Xiaomi MiMo, Volcengine
+  Ark), which implements only the older shape — takes
+  `thinking: {"type": "enabled", "budget_tokens": N}`. From Opus 4.7 on, a
+  budget is rejected with a 400 rather than merely deprecated, so the two are
+  not interchangeable. `anthropic/catalog.go` records the style per model and
+  defaults an unknown model to the budget shape, which is what keeps the
+  third-party endpoints working.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
   `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `sensenova/`, `volcengine/`, `agnesai/`, `openaicompat/`.
 
@@ -75,6 +86,25 @@ func ResetDefaultConn()       // test-only
 - Switching: `/models` slash command calls `SetCurrentModel` + reload.
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
+
+## Model catalogs
+
+Provider subpackages carry a small static catalog used as a fallback where the
+endpoint's `/models` response omits context windows — most OpenAI-compatible
+vendors return the bare `id`/`object`/`owned_by` shape and publish limits only
+in their docs. The live listing stays authoritative; the catalog fills gaps.
+
+Two rules keep the fallback honest:
+
+- An unrecognised model reports **0**, not a blanket default. San treats 0 as
+  "window unknown" and skips proactive compaction, which is recoverable; a
+  guessed window is acted on silently and is wrong in both directions —
+  guessing low burns context on every compaction, guessing high never fires.
+- Each catalog records the date its figures were last checked against the
+  vendor's documentation, because a stale window or price reads exactly like a
+  fresh one.
+
+Catalogs were last verified against vendor documentation on **2026-08-20**.
 
 ## Tests
 
