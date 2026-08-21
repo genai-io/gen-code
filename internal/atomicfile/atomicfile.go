@@ -12,7 +12,9 @@
 package atomicfile
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,4 +68,32 @@ func WriteJSON(path string, v any, perm os.FileMode) error {
 		return fmt.Errorf("marshal %s: %w", path, err)
 	}
 	return Write(path, data, perm)
+}
+
+// ReadJSON decodes the JSON file at path into v as the read half of a
+// read-modify-write cycle that ends in WriteJSON.
+//
+// A file that is missing — or present but empty — is not an error: v is left as
+// the caller initialized it, which is the correct base for creating the file.
+//
+// A file that exists with content it cannot parse IS an error, and callers must
+// abort the write rather than continue from an empty base. WriteJSON replaces
+// the whole file, so continuing would overwrite everything the user had in it
+// with just the block being saved: one stray comma in settings.json, and the
+// next persona switch takes model, permissions and env down with it.
+func ReadJSON(path string, v any) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	return nil
 }
