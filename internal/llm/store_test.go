@@ -300,7 +300,7 @@ func TestStore_CachedModelLimitsForProvider(t *testing.T) {
 	}
 
 	// Backdate the subscription cache well past the TTL to reproduce the bug.
-	key := makemodelCacheKey(OpenAI, AuthSubscription)
+	key := providerKey(OpenAI, AuthSubscription)
 	cache := store.data.Models[key]
 	cache.CachedAt = cache.CachedAt.Add(-2 * modelCacheTTL)
 	store.data.Models[key] = cache

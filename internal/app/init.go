@@ -38,7 +38,7 @@ func initInfrastructure() error {
 
 	// Phase 1: foundation — no cross-service deps
 	setting.Initialize(setting.Options{CWD: appCwd})
-	llm.Initialize(llm.Options{})
+	llm.Initialize()
 
 	// Phase 2: extensions — plugin first, then dependents
 	initExtensions(appCwd)

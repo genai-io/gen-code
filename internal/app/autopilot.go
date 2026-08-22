@@ -21,7 +21,6 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/llmerr"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
@@ -740,7 +739,7 @@ func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse f
 			}
 		} else {
 			var retryable core.RetryableError
-			if !errors.As(llmerr.Wrap(err), &retryable) {
+			if !errors.As(llm.Classify(err), &retryable) {
 				return zero, err
 			}
 			retryFloor = retryable.RetryAfter() // a 429's Retry-After outranks our own spacing

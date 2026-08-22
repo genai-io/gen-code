@@ -449,7 +449,7 @@ func TestEnterLoadsCachedModelsAndPutsCurrentFirst(t *testing.T) {
 
 func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
 	store := newProviderTestStore(t)
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_REFRESH_WITH_CACHE_KEY"
 	t.Setenv(envVar, "test")
 
@@ -510,7 +510,7 @@ func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
 
 func TestRefreshAuthMethodReplacesModelsImmediately(t *testing.T) {
 	store := newProviderTestStore(t)
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_REFRESH_AUTH_METHOD_KEY"
 	t.Setenv(envVar, "test")
 
@@ -625,7 +625,7 @@ func TestSetModelPersistsSelection(t *testing.T) {
 
 func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_CONNECT_FAIL_KEY"
 	t.Setenv(envVar, "test")
 	llm.Register(llm.Meta{
@@ -671,7 +671,7 @@ func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 
 func TestInteractiveAuthReusesStoredCredentials(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	authMethod := llm.AuthMethod("subscription-reuse")
 
 	llm.Register(llm.Meta{
@@ -1005,7 +1005,7 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 	for _, stored := range []bool{true, false} {
 		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+			providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 			authMethod := llm.AuthMethod("subscription-row")
 
 			llm.Register(llm.Meta{

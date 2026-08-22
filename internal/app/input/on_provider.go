@@ -49,7 +49,7 @@ type providerListItem struct {
 
 // providerProviderItem represents a provider with its auth methods.
 type providerProviderItem struct {
-	Provider    llm.Name
+	Provider    llm.ProviderID
 	DisplayName string
 	AuthMethods []providerAuthMethodItem
 	Connected   bool // whether this provider has at least one connected auth method
@@ -57,7 +57,7 @@ type providerProviderItem struct {
 
 // providerAuthMethodItem represents an auth method in the second level.
 type providerAuthMethodItem struct {
-	Provider    llm.Name
+	Provider    llm.ProviderID
 	AuthMethod  llm.AuthMethod
 	DisplayName string
 	Status      llm.Status
@@ -203,7 +203,7 @@ type providerConnectResultMsg struct {
 	Success    bool
 	Message    string
 	NewStatus  llm.Status
-	Provider   llm.Name
+	Provider   llm.ProviderID
 	AuthMethod llm.AuthMethod
 	Models     []llm.ModelInfo
 }
@@ -318,15 +318,15 @@ func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg pro
 
 	deps.SetCurrentModel(&llm.CurrentModelInfo{
 		ModelID:    msg.ModelID,
-		Provider:   llm.Name(msg.ProviderName),
+		Provider:   llm.ProviderID(msg.ProviderName),
 		AuthMethod: msg.AuthMethod,
 	})
 	ctx := context.Background()
-	providerRefreshConnection(deps, state, ctx, llm.Name(msg.ProviderName), msg.AuthMethod)
+	providerRefreshConnection(deps, state, ctx, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
 	return tea.Batch(deps.CommitMessages()...)
 }
 
-func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.Name, authMethod llm.AuthMethod) {
+func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.ProviderID, authMethod llm.AuthMethod) {
 	p, err := llm.GetProvider(ctx, providerName, authMethod)
 	if err != nil {
 		log.Logger().Warn("failed to refresh provider connection",

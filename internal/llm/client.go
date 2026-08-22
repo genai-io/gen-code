@@ -6,8 +6,15 @@ import (
 	"sync"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm/llmerr"
 )
+
+// A Provider plus a model, as the agent loop sees it.
+//
+// core.LLM is what the loop actually holds, and Client is the only thing that
+// implements it: it fixes a model on a provider, resolves the two token limits
+// that model implies, tags a failure with what the loop needs to know about
+// it, and keeps a running token count for the session. Everything above it
+// talks about "the LLM"; everything below it talks about a vendor.
 
 // defaultMaxTokens is the fallback max output tokens when neither the caller
 // nor the provider specifies a limit.
@@ -16,13 +23,9 @@ const defaultMaxTokens = 8192
 // completeMaxAttempts bounds in-place retries for one-shot utility completions.
 const completeMaxAttempts = 3
 
-// Client adapts a Provider to core.LLM.
-//
-// It also provides streaming and completion methods for the loop/app layer,
-// plus cumulative token usage tracking.
-//
-// SetThinking can be called while the agent is running.
-// Changes take effect on the next Infer/Stream call.
+// Client adapts one Provider and one model to core.LLM, and is also what the
+// loop and app layers stream and complete through. SetThinkingEffort may be
+// called while the agent is running; it takes effect on the next call.
 type Client struct {
 	mu             sync.RWMutex
 	provider       Provider
@@ -62,9 +65,8 @@ func (c *cachedLimit) get(p Provider, model string, resolve func(Provider, strin
 	return c.value
 }
 
-// NewClient wraps an existing provider as a core.LLM with streaming and
-// completion support. maxTokens=0 means resolve from provider metadata
-// or fall back to defaultMaxTokens.
+// NewClient fixes a model on a provider. maxTokens=0 means resolve the cap
+// from the model's own metadata, falling back to defaultMaxTokens.
 func NewClient(p Provider, model string, maxTokens int) *Client {
 	return &Client{provider: p, model: model, maxTokens: maxTokens}
 }
@@ -119,9 +121,10 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 					return
 				}
 			case ChunkTypeError:
-				// Classify here so the agent loop can decide whether to
-				// retry without importing the provider SDKs.
-				send(core.Chunk{Err: llmerr.WrapStream(sc.Error)})
+				// The vendor seam already tagged what it recognised; this is
+				// the last chance to tag a terminal error that arrived with
+				// its type lost, which is routine on a broken stream.
+				send(core.Chunk{Err: ClassifyStream(sc.Error)})
 				return
 			}
 		}
@@ -187,7 +190,7 @@ func (l *Client) Complete(ctx context.Context,
 			return resp, nil
 		}
 		var re core.RetryableError
-		if !errors.As(llmerr.WrapStream(err), &re) || attempt == completeMaxAttempts {
+		if !errors.As(ClassifyStream(err), &re) || attempt == completeMaxAttempts {
 			return resp, err
 		}
 		if werr := core.BackoffSleep(ctx, attempt, re.RetryAfter()); werr != nil {
@@ -195,13 +198,6 @@ func (l *Client) Complete(ctx context.Context,
 		}
 	}
 	return resp, err
-}
-
-// send sends a non-streaming completion request and returns the full response.
-func (l *Client) send(ctx context.Context, msgs []core.Message,
-	tools []ToolSchema, sysPrompt string,
-) (CompletionResponse, error) {
-	return Complete(ctx, l.provider, l.completionOpts(msgs, tools, sysPrompt))
 }
 
 // ---------------------------------------------------------------------------
@@ -267,9 +263,9 @@ func (l *Client) InputLimit() int {
 	// Both store methods are nil-receiver safe, and EffectiveInputLimit is
 	// called unconditionally so the env override it checks first is honored
 	// even before a store exists.
-	var provider Name
+	var provider ProviderID
 	if p != nil {
-		provider = Name(p.Name())
+		provider = ProviderID(p.Name())
 	}
 	store := Default().Store()
 	auth := store.ConnectionAuthMethod(provider)

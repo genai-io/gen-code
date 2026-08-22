@@ -14,34 +14,31 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
-const (
-	// modelCacheTTL is the time-to-live for cached models
-	modelCacheTTL = 24 * time.Hour
-)
+// What the user connected, and what they chose.
+//
+// The store is one JSON file — providers.json in San's config directory —
+// holding the decisions a session should not have to ask about again: which
+// providers are connected and how, which model is current, and the per-model
+// preferences (token limits, thinking effort) that go with it. Everything a
+// provider merely told San about itself is cached rather than decided; that
+// half lives in modelcache.go.
+//
+// Several Stores are open at once — the app has one, the /models picker opens
+// its own — so a write lands on disk and the others catch up via Reload.
 
-// ConnectionInfo stores connection information for a provider
+// ConnectionInfo records that a provider is connected, and by which method.
 type ConnectionInfo struct {
 	AuthMethod  AuthMethod `json:"authMethod"`
 	ConnectedAt time.Time  `json:"connectedAt"`
 }
 
-// modelCache stores cached model information
-type modelCache struct {
-	CachedAt time.Time   `json:"cachedAt"`
-	Models   []ModelInfo `json:"models"`
-}
-
-// CurrentModelInfo stores the current model with its provider info
+// CurrentModelInfo names the model San is inferring through. The provider and
+// auth method travel with the ID because the same ID can be served by several
+// of them, with different windows and different pricing.
 type CurrentModelInfo struct {
 	ModelID    string     `json:"modelId"`
-	Provider   Name       `json:"provider"`
+	Provider   ProviderID `json:"provider"`
 	AuthMethod AuthMethod `json:"authMethod"`
-}
-
-// tokenLimitOverride stores custom token limits for a model
-type tokenLimitOverride struct {
-	InputTokenLimit  int `json:"inputTokenLimit"`
-	OutputTokenLimit int `json:"outputTokenLimit"`
 }
 
 // The user-defined OpenAI-compatible provider.
@@ -54,7 +51,7 @@ type tokenLimitOverride struct {
 const (
 	// CustomProvider is the provider name the user-defined endpoint is
 	// registered and stored under.
-	CustomProvider Name = "custom"
+	CustomProvider ProviderID = "custom"
 	// CustomAPIKeyEnvVar is where its credential is kept.
 	CustomAPIKeyEnvVar = "SAN_CUSTOM_API_KEY"
 )
@@ -67,7 +64,7 @@ type CustomProviderConfig struct {
 	BaseURL string `json:"baseURL"`
 }
 
-// storeData is the persisted data structure
+// storeData is providers.json, as written.
 type storeData struct {
 	Connections     map[string]ConnectionInfo     `json:"connections"`               // key: provider
 	Models          map[string]modelCache         `json:"models"`                    // key: provider:authMethod
@@ -78,14 +75,16 @@ type storeData struct {
 	CustomProvider  *CustomProviderConfig         `json:"customProvider,omitempty"`  // user-defined OpenAI-compatible provider
 }
 
-// Store manages provider configuration persistence
+// Store is providers.json, open. Every accessor locks; the data is unexported
+// so nothing can read it half-written.
 type Store struct {
 	mu   sync.RWMutex
 	path string
 	data storeData
 }
 
-// NewStore creates a new Store instance
+// NewStore opens the store, creating the config directory if it is missing. A
+// file that is not there yet is not an error — it is a first run.
 func NewStore() (*Store, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -105,7 +104,6 @@ func NewStore() (*Store, error) {
 		},
 	}
 
-	// Load existing data if available
 	if err := store.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -113,7 +111,7 @@ func NewStore() (*Store, error) {
 	return store, nil
 }
 
-// load reads the store data from disk
+// load reads providers.json into memory.
 func (s *Store) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,8 +125,7 @@ func (s *Store) load() error {
 		return fmt.Errorf("parse provider store: %w", err)
 	}
 
-	// Initialize maps if nil
-	s.ensureMapsInitialized()
+	s.initMaps()
 	return nil
 }
 
@@ -148,8 +145,9 @@ func (s *Store) Reload() error {
 	return nil
 }
 
-// ensureMapsInitialized ensures all map fields are non-nil
-func (s *Store) ensureMapsInitialized() {
+// initMaps fills in the maps an older file — or a hand-edited one — may not
+// have, so every writer can assign without checking first.
+func (s *Store) initMaps() {
 	if s.data.Connections == nil {
 		s.data.Connections = make(map[string]ConnectionInfo)
 	}
@@ -164,13 +162,13 @@ func (s *Store) ensureMapsInitialized() {
 	}
 }
 
-// save writes the store data to disk
+// save writes the store back, atomically. Callers hold the lock.
 func (s *Store) save() error {
 	return atomicfile.WriteJSON(s.path, s.data, 0o644)
 }
 
-// Connect saves a connection for a provider
-func (s *Store) Connect(provider Name, authMethod AuthMethod) error {
+// Connect records that a provider is connected by this auth method.
+func (s *Store) Connect(provider ProviderID, authMethod AuthMethod) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -182,8 +180,8 @@ func (s *Store) Connect(provider Name, authMethod AuthMethod) error {
 	return s.save()
 }
 
-// IsConnected checks if a provider is connected with the specified auth method
-func (s *Store) IsConnected(provider Name, authMethod AuthMethod) bool {
+// IsConnected reports whether a provider is connected by this auth method.
+func (s *Store) IsConnected(provider ProviderID, authMethod AuthMethod) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -194,8 +192,8 @@ func (s *Store) IsConnected(provider Name, authMethod AuthMethod) bool {
 	return conn.AuthMethod == authMethod
 }
 
-// GetConnection returns the connection info for a provider
-func (s *Store) GetConnection(provider Name) (ConnectionInfo, bool) {
+// GetConnection returns a provider's connection, if it has one.
+func (s *Store) GetConnection(provider ProviderID) (ConnectionInfo, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -221,7 +219,7 @@ func (s *Store) ResolveAuthMethod(current *CurrentModelInfo) AuthMethod {
 // ConnectionAuthMethod returns the auth method of a provider's active
 // connection, or "" when it has none. Nil-receiver safe, for callers that hold
 // a provider but no model (llm.Client resolving its own context window).
-func (s *Store) ConnectionAuthMethod(provider Name) AuthMethod {
+func (s *Store) ConnectionAuthMethod(provider ProviderID) AuthMethod {
 	if s == nil {
 		return ""
 	}
@@ -231,7 +229,7 @@ func (s *Store) ConnectionAuthMethod(provider Name) AuthMethod {
 	return ""
 }
 
-// GetConnections returns all connections
+// GetConnections returns a copy of every connection, keyed by provider.
 func (s *Store) GetConnections() map[string]ConnectionInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -242,20 +240,11 @@ func (s *Store) GetConnections() map[string]ConnectionInfo {
 }
 
 // Disconnect removes the connection for a provider.
-func (s *Store) Disconnect(provider Name) error {
+func (s *Store) Disconnect(provider ProviderID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	delete(s.data.Connections, string(provider))
-	return s.save()
-}
-
-// RemoveCachedModels removes cached models for a provider and auth method.
-func (s *Store) RemoveCachedModels(provider Name, authMethod AuthMethod) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.data.Models, makemodelCacheKey(provider, authMethod))
 	return s.save()
 }
 
@@ -268,187 +257,8 @@ func (s *Store) ClearCurrentModel() error {
 	return s.save()
 }
 
-// CacheModels saves model information for a provider.
-func (s *Store) CacheModels(provider Name, authMethod AuthMethod, models []ModelInfo) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	key := makemodelCacheKey(provider, authMethod)
-	s.data.Models[key] = modelCache{
-		CachedAt: time.Now(),
-		Models:   models,
-	}
-
-	return s.save()
-}
-
-// GetCachedModels returns cached models if they exist and are not expired
-func (s *Store) GetCachedModels(provider Name, authMethod AuthMethod) ([]ModelInfo, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cache, ok := s.data.Models[makemodelCacheKey(provider, authMethod)]
-	if !ok {
-		return nil, false
-	}
-	if time.Since(cache.CachedAt) > modelCacheTTL {
-		return nil, false
-	}
-
-	return cache.Models, true
-}
-
-// makemodelCacheKey creates a cache key for provider and auth method
-func makemodelCacheKey(provider Name, authMethod AuthMethod) string {
-	return string(provider) + ":" + string(authMethod)
-}
-
-// GetAllCachedModels returns all cached models grouped by provider key
-func (s *Store) GetAllCachedModels() map[string][]ModelInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string][]ModelInfo)
-	for key, cache := range s.data.Models {
-		if time.Since(cache.CachedAt) > modelCacheTTL {
-			continue
-		}
-		result[key] = cache.Models
-	}
-	return result
-}
-
-// GetAllCachedModelsIncludeExpired returns all cached models regardless of TTL.
-// Used to show stale data immediately rather than blocking the UI.
-func (s *Store) GetAllCachedModelsIncludeExpired() map[string][]ModelInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string][]ModelInfo)
-	for key, cache := range s.data.Models {
-		if len(cache.Models) > 0 {
-			result[key] = cache.Models
-		}
-	}
-	return result
-}
-
-// CachedModelDisplayName returns the display name for a model ID found in any
-// cached provider list, ignoring TTL. Returns "" if the ID isn't cached.
-//
-// The same model can be cached under several provider/auth keys (e.g. a model
-// offered both directly and via an aggregator). One provider may list a real
-// display name ("DeepSeek V4 Pro") while another only echoes the raw ID
-// ("deepseek-v4-pro"). Returning whichever entry we hit first would make the
-// status bar flicker between the two, because Go randomizes map iteration
-// order between renders. So we prefer a real display name — one that differs
-// from the ID — and only fall back to the raw name/ID when no real name
-// exists. Scans in place without allocating, since it runs on every render.
-func (s *Store) CachedModelDisplayName(id string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	raw := "" // the raw ID echoed back as a name; used only if no real name is found
-	for _, cache := range s.data.Models {
-		for _, m := range cache.Models {
-			if m.ID != id {
-				continue
-			}
-			name := m.DisplayName
-			if name == "" {
-				name = m.Name
-			}
-			if name != "" && name != id {
-				return name // a real, human-readable display name
-			}
-			raw = name // keep scanning in case another provider has a real name
-		}
-	}
-	return raw
-}
-
-// CachedModelLimitsForProvider returns the token limits for a model ID from a
-// single provider/auth cache, ignoring TTL. Returns (0, 0) when that cache has
-// no entry reporting a context window for the ID.
-//
-// Unlike CachedModelLimits it reads only the one cache keyed by provider+auth,
-// so it is deterministic: it can never flicker between two providers that
-// advertise different windows for the same ID (e.g. gpt-5.5 at 400k via Direct
-// API and 272k via the ChatGPT subscription). It ignores TTL on purpose — the
-// status bar wants the current model's own window even from a stale cache,
-// since context windows rarely change and a stale-but-correct value beats
-// falling back to a random cross-provider one once the cache expires.
-func (s *Store) CachedModelLimitsForProvider(provider Name, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cache, ok := s.data.Models[makemodelCacheKey(provider, authMethod)]
-	if !ok {
-		return 0, 0
-	}
-	for _, m := range cache.Models {
-		if m.ID == id && m.InputTokenLimit > 0 {
-			return m.InputTokenLimit, m.OutputTokenLimit
-		}
-	}
-	return 0, 0
-}
-
-// CachedModelReasoningForProvider returns normalized reasoning metadata for one
-// model from a single provider/auth cache, ignoring TTL. Like token limits, the
-// same model ID can expose different capabilities through different auth paths,
-// so this lookup must remain provider-scoped and deterministic.
-func (s *Store) CachedModelReasoningForProvider(provider Name, authMethod AuthMethod, id string) (*ReasoningCapability, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cache, ok := s.data.Models[makemodelCacheKey(provider, authMethod)]
-	if !ok {
-		return nil, false
-	}
-	for _, model := range cache.Models {
-		// The cached capability was already normalized by NewReasoningCapability
-		// at write time, so hand it back as-is rather than re-normalizing on every
-		// (hot-path) lookup. Callers treat it as read-only.
-		if model.ID == id && model.Reasoning != nil {
-			return model.Reasoning, true
-		}
-	}
-	return nil, false
-}
-
-// CachedModelLimits returns the token limits for a model ID found in any
-// cached provider list, ignoring TTL. Returns (0, 0) when no cached entry
-// reports a context window for the ID.
-//
-// The companion to CachedModelDisplayName, and for the same reason: the same
-// model can be cached under several provider/auth keys, and only some report a
-// context window. An OpenAI-compatible aggregator often echoes the raw model ID
-// with no context length (limit 0), while the model's native provider knows the
-// real window (e.g. DeepSeek V4 Pro at 1M). Resolving the limit from only the
-// current provider's cache would then render "--" even though another cache
-// knows the answer. So we scan all caches for the ID. When several report a
-// non-zero window we keep the largest, both because it best reflects the
-// model's real capability and because a fixed choice is deterministic — Go
-// randomizes map iteration order, so returning the first hit would flicker the
-// status bar between providers. Scans in place without allocating, since it
-// feeds the status bar on every render.
-func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, cache := range s.data.Models {
-		for _, m := range cache.Models {
-			if m.ID == id && m.InputTokenLimit > inputLimit {
-				inputLimit, outputLimit = m.InputTokenLimit, m.OutputTokenLimit
-			}
-		}
-	}
-	return inputLimit, outputLimit
-}
-
-// SetCurrentModel sets the current model with provider info
-func (s *Store) SetCurrentModel(modelID string, provider Name, authMethod AuthMethod) error {
+// SetCurrentModel records the model San infers through, and where to reach it.
+func (s *Store) SetCurrentModel(modelID string, provider ProviderID, authMethod AuthMethod) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -460,7 +270,7 @@ func (s *Store) SetCurrentModel(modelID string, provider Name, authMethod AuthMe
 	return s.save()
 }
 
-// GetCurrentModel returns the current model info
+// GetCurrentModel returns the model San infers through, or nil if none is set.
 func (s *Store) GetCurrentModel() *CurrentModelInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -468,7 +278,7 @@ func (s *Store) GetCurrentModel() *CurrentModelInfo {
 	return s.data.Current
 }
 
-// GetSearchProvider returns the current search provider name
+// GetSearchProvider returns the chosen web-search backend, or "" for the default.
 func (s *Store) GetSearchProvider() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -479,53 +289,12 @@ func (s *Store) GetSearchProvider() string {
 	return *s.data.SearchProvider
 }
 
-// SetSearchProvider sets the search provider
+// SetSearchProvider records the web-search backend to use.
 func (s *Store) SetSearchProvider(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.data.SearchProvider = &name
-	return s.save()
-}
-
-// SetTokenLimit sets custom token limits for a model.
-// It also updates the model cache so subsequent model listings reflect these limits.
-func (s *Store) SetTokenLimit(modelID string, inputLimit, outputLimit int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.ensureMapsInitialized()
-	s.data.TokenLimits[modelID] = tokenLimitOverride{
-		InputTokenLimit:  inputLimit,
-		OutputTokenLimit: outputLimit,
-	}
-
-	// Update the model cache entry so model listings show the limits.
-	// We copy the slice before modifying to avoid mutating arrays shared with
-	// callers that received a slice from GetCachedModels.
-	for key, cache := range s.data.Models {
-		modified := false
-		for _, m := range cache.Models {
-			if m.ID == modelID {
-				modified = true
-				break
-			}
-		}
-		if !modified {
-			continue
-		}
-		newModels := make([]ModelInfo, len(cache.Models))
-		copy(newModels, cache.Models)
-		for i := range newModels {
-			if newModels[i].ID == modelID {
-				newModels[i].InputTokenLimit = inputLimit
-				newModels[i].OutputTokenLimit = outputLimit
-			}
-		}
-		cache.Models = newModels
-		s.data.Models[key] = cache
-	}
-
 	return s.save()
 }
 
@@ -543,25 +312,13 @@ func (s *Store) SetThinkingEffort(modelID, effort string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.ensureMapsInitialized()
+	s.initMaps()
 	if effort == "" {
 		delete(s.data.ThinkingEfforts, modelID)
 	} else {
 		s.data.ThinkingEfforts[modelID] = effort
 	}
 	return s.save()
-}
-
-// GetTokenLimit returns custom token limits for a model
-func (s *Store) GetTokenLimit(modelID string) (inputLimit, outputLimit int, ok bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	override, exists := s.data.TokenLimits[modelID]
-	if !exists {
-		return 0, 0, false
-	}
-	return override.InputTokenLimit, override.OutputTokenLimit, true
 }
 
 // CustomProvider returns the stored custom provider config, or nil when the

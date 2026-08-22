@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
@@ -562,12 +560,12 @@ func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
 	}
 }
 
-// llmerr classifies a failure a second time, from the vendor SDK's own error
-// type, and that is the only reason San still depends on anthropic-sdk-go and
-// openai-go directly. It works because the SDK wraps rather than replaces what
-// its driver was given — assert it, so that if the SDK ever stops, the
-// second net is known to have gone rather than quietly reading as "unknown".
-func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
+// A vendor's transient failure has to reach the agent loop as one. The SDK
+// classifies it from the provider's typed error; San's job is to carry that
+// answer across onto core.RetryableError, which is the only thing the loop
+// reads. Assert the whole path, because a break anywhere in it turns a
+// retryable overload into a failed turn.
+func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -594,12 +592,11 @@ func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
 		t.Fatal("an overloaded endpoint produced no error")
 	}
 
-	var vendorErr *anthropic.Error
-	if !errors.As(streamErr, &vendorErr) {
-		t.Errorf("the vendor's own error no longer unwraps out of %T", streamErr)
-	}
 	var retryable core.RetryableError
 	if !errors.As(streamErr, &retryable) {
-		t.Error("an overloaded endpoint was not marked retryable")
+		t.Errorf("an overloaded endpoint was not marked retryable: %T", streamErr)
+	}
+	if !strings.Contains(streamErr.Error(), "overloaded") {
+		t.Errorf("the provider's own message was lost: %v", streamErr)
 	}
 }

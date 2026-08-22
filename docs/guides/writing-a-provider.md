@@ -29,7 +29,7 @@ If it is, adding it to San is one entry in `vendorEntries` in
 ```
 
 Plus a row in `vendorDisplays` for the provider's name and sort order, and a constant
-in `internal/llm/types.go` if the provider name is new. That is the whole of it:
+in `internal/llm/provider.go` if the provider name is new. That is the whole of it:
 the credential comes from San's secret store through the vendor's own
 `KeyEnv`, the host from its `BaseURL`, and the models, windows, prices and
 reasoning ladder from its catalog row.

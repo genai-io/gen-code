@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"maps"
 	"net/http"
@@ -88,7 +89,7 @@ func identityHeaders(vendorID string) map[string]string {
 		return map[string]string{
 			"Openai-Intent":        "conversation-panel",
 			"X-GitHub-Api-Version": "2025-04-01",
-			"X-Request-Id":         NewRequestID(),
+			"X-Request-Id":         requestID(),
 			"User-Agent":           "GitHubCopilotChat/0.26.7",
 		}
 	case codexVendor:
@@ -96,7 +97,7 @@ func identityHeaders(vendorID string) map[string]string {
 			"OpenAI-Beta": "responses=experimental",
 			"originator":  codexOriginator,
 			"User-Agent":  codexOriginator,
-			"session_id":  NewRequestID(),
+			"session_id":  requestID(),
 		}
 		// The account the subscription belongs to. The backend rejects a
 		// request that does not name it.
@@ -111,6 +112,17 @@ func identityHeaders(vendorID string) map[string]string {
 // codexOriginator identifies the caller to the ChatGPT backend, which serves
 // the Codex lineup only to the Codex CLI.
 const codexOriginator = "codex_cli_rs"
+
+// requestID returns a random UUIDv4 for the per-request and per-session
+// identifiers these two backends expect in a header — Copilot's X-Request-Id,
+// the ChatGPT backend's session_id.
+func requestID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
 
 // Interactive sign-in, as the registry above expects it.
 

@@ -120,13 +120,13 @@ func (s *ProviderSelector) ensureModelProvidersExist() {
 		}
 		seen[m.ProviderName] = true
 
-		displayName := llm.ProviderDisplayName(llm.Name(m.ProviderName))
+		displayName := llm.ProviderDisplayName(llm.ProviderID(m.ProviderName))
 		if displayName == "" {
 			displayName = m.ProviderName
 		}
 
 		s.connectedProviders = append(s.connectedProviders, providerProviderItem{
-			Provider:    llm.Name(m.ProviderName),
+			Provider:    llm.ProviderID(m.ProviderName),
 			DisplayName: displayName,
 			Connected:   true,
 		})
@@ -157,13 +157,13 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 				// result replaces the whole list, so returning nothing on a
 				// transient blip would drop an otherwise-connected provider's
 				// models from the picker.
-				if p, err := llm.GetProvider(ctx, llm.Name(providerName), authMethod); err == nil {
+				if p, err := llm.GetProvider(ctx, llm.ProviderID(providerName), authMethod); err == nil {
 					if mdls, err := p.ListModels(ctx); err == nil {
 						ch <- providerResult{providerName, authMethod, mdls}
 						return
 					}
 				}
-				if cached, ok := store.GetCachedModels(llm.Name(providerName), authMethod); ok {
+				if cached, ok := store.GetCachedModels(llm.ProviderID(providerName), authMethod); ok {
 					ch <- providerResult{providerName, authMethod, cached}
 				}
 			}(name, conn.AuthMethod)
@@ -173,7 +173,7 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 
 		var models []providerModelItem
 		for r := range ch {
-			prov := llm.Name(r.providerName)
+			prov := llm.ProviderID(r.providerName)
 			_ = store.CacheModels(prov, r.authMethod, r.models)
 
 			for _, mdl := range r.models {
@@ -214,7 +214,7 @@ func (s *ProviderSelector) loadModelsCached(allCached map[string][]llm.ModelInfo
 	}
 }
 
-func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.Name, authMethod llm.AuthMethod, models []llm.ModelInfo) {
+func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.ProviderID, authMethod llm.AuthMethod, models []llm.ModelInfo) {
 	if provider == "" {
 		return
 	}

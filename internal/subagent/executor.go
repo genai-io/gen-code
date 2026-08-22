@@ -28,7 +28,7 @@ import (
 // run on a different vendor than its parent. The app wires an *llm.ProviderPool;
 // unresolved explicit "vendor/model" overrides fall back to the parent provider.
 type ProviderResolver interface {
-	Resolve(ctx context.Context, provider llm.Name) (llm.Provider, error)
+	Resolve(ctx context.Context, provider llm.ProviderID) (llm.Provider, error)
 }
 
 // Executor runs agent LLM loops
@@ -37,7 +37,7 @@ type Executor struct {
 	registry                   *Registry
 	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
 	modelStore                 *llm.Store       // optional cached provider catalog for validating same-provider overrides
-	parentProviderName         llm.Name         // canonical provider key for the parent connection
+	parentProviderName         llm.ProviderID   // canonical provider key for the parent connection
 	parentAuthMethod           llm.AuthMethod   // auth-specific catalog key for the parent connection
 	cwd                        string
 	parentModelID              string // Parent conversation's model ID (used when inheriting)
@@ -131,7 +131,7 @@ func (e *Executor) SetResolver(r ProviderResolver) {
 // SetModelStore supplies the cached catalog and parent connection identity used
 // to reject unsupported same-provider overrides without fetching models on the
 // agent startup path.
-func (e *Executor) SetModelStore(store *llm.Store, provider llm.Name, authMethod llm.AuthMethod) {
+func (e *Executor) SetModelStore(store *llm.Store, provider llm.ProviderID, authMethod llm.AuthMethod) {
 	e.modelStore = store
 	e.parentProviderName = provider
 	e.parentAuthMethod = authMethod

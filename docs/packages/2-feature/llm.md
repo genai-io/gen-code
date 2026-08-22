@@ -41,10 +41,10 @@ func (c *Conn) CurrentModel() *CurrentModelInfo
 func (c *Conn) SetCurrentModel(info *CurrentModelInfo)
 func (c *Conn) NewClient(model string, maxTokens int) *Client
 func (c *Conn) Store() *Store
-func (c *Conn) ListProviders() map[Name][]Info
+func (c *Conn) ListProviders() map[ProviderID][]AuthMethodStatus
 
 // Package-level access
-func Initialize(opts Options)
+func Initialize()
 func Default() *Conn
 func SetDefaultConn(c *Conn)  // test-only
 func ResetDefaultConn()       // test-only
@@ -53,30 +53,53 @@ func ResetDefaultConn()       // test-only
 
 ## Internals
 
-- `Conn` (`service.go`) — the package-level singleton: one mutex guarding the
-  current Provider/Model + Store.
-- `Provider` registry (`registry.go`) — discovery, dynamic model list
-  fetching (per memory: prefer `/models` over hardcoded catalogs).
-- `Client` (consolidated `Infer` path) — adapts a `Provider` + model into
-  `core.LLM`, tracks per-call token counts, streams `core.Chunk`, applies
-  retry/cost logic via `logging.go` and `money.go`.
-- `Store` (`store.go`) — persists user's provider connections under
-  `~/.san/providers.json`; tracks current model and caches provider-scoped
-  model metadata. `ModelInfo.Reasoning` carries live supported/default effort
-  values when a provider advertises them; application resolution prefers that
-  metadata and falls back to `ThinkingEffortProvider` for catalogs (such as the
-  standard OpenAI `/v1/models` response) that omit reasoning capabilities.
-- `vendor*.go` — every vendor, served through
-  [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go). One adapter, not one
-  package per vendor: the wire protocols, their streaming shapes and their
-  reasoning dialects belong to the SDK's drivers, and what stays here is the
-  seam — `Provider` on one side, `ai.Client` on the other — plus the table
-  saying which San provider is which catalog vendor. `vendor.go` names the
-  file each subject lives in.
+One file per subject:
+
+```
+provider.go    the contract: Provider, the types crossing it, the optional extensions
+effort.go      which reasoning rung applies to a model, and cycling between them
+registry.go    every provider/auth pair San can open, and its connection status
+auth.go        interactive (OAuth) sign-in, as the registry sees it
+conn.go        the package-level *Conn, provider resolution, the cross-vendor pool
+client.go      Client: a Provider plus a model, as core.LLM
+store.go       providers.json — what the user connected and chose
+modelcache.go  the cached listings, and the context window resolved from them
+cost.go        Money, the multi-currency total, and per-vendor pricing
+errors.go      a provider failure, tagged for the agent loop
+logging.go     CompletionOptions, as the log package reads it
+fake.go        FakeLLM: a Provider that answers from a queue, for the suites above
+vendor*.go     every vendor, over genai-io/sdk-go
+```
+
+Worth knowing beyond the names:
+
+- **One identity string.** `providerKey(provider, auth)` builds the
+  `"vendor:auth_method"` form that the registry keys entries by, the store keys
+  cached listings by, and a `Provider` reports as its own `Name()`. One
+  function, so the three cannot drift.
+- **`errors.go` translates rather than classifies.** The SDK decides a
+  failure's kind from the provider's typed error, which is the only place that
+  decision is reliable; San maps that kind onto `core.RetryableError` and
+  `core.ContextExceededError`, the two things the agent loop reads. San keeps
+  no second copy of the SDK's tables.
+- **`modelcache.go` owns the window.** The status bar's percentage and the
+  agent's auto-compaction trigger are the same number, so both resolve it
+  through `EffectiveInputLimit` — env override, then the user's `/tokenlimit`,
+  then this provider's cache, then the largest figure cached anywhere for the
+  ID. Issue #338 was the two disagreeing.
+- **`ModelInfo.Reasoning`** carries live supported/default effort values when a
+  provider advertises them; `effort.go` prefers that metadata and falls back to
+  `ThinkingEffortProvider` for catalogs (such as the standard OpenAI
+  `/v1/models` response) that omit reasoning capabilities.
+- **`vendor*.go` is one adapter, not one package per vendor.** The wire
+  protocols, their streaming shapes and their reasoning dialects belong to the
+  SDK's drivers; what stays here is the seam — `Provider` on one side,
+  `ai.Client` on the other — plus the table saying which San provider is which
+  catalog vendor. `vendor.go` names the file each subject lives in.
 
 ## Lifecycle
 
-- Construction: `Initialize(Options{})` loads `~/.san/providers.json`,
+- Construction: `Initialize()` loads `~/.san/providers.json`,
   picks the last-used provider (or the first connectable one), and stores
   it.
 - Switching: `/models` slash command calls `SetCurrentModel` + reload.
@@ -111,12 +134,15 @@ any of its hundreds of models and answers per model instead, which is what
 ## Tests
 
 ```
-internal/llm/llm_test.go        — Client.Infer plumbing.
-internal/llm/store_test.go      — provider config persistence.
-internal/llm/fake_llm.go        — test double consumed by other packages.
-internal/llm/vendor_test.go     — the vendor seam, against stub endpoints.
+internal/llm/client_test.go   — Client.Infer plumbing and its failure paths.
+internal/llm/errors_test.go   — what the agent loop is told about a failure.
+internal/llm/provider_test.go — the optional-extension defaults.
+internal/llm/store_test.go    — provider config persistence.
+internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
+internal/llm/fake_test.go     — the test double other packages build on.
+internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
 internal/llm/vendor_live_test.go — one real turn per configured vendor,
-                                  opt-in via SAN_SDK_LIVE.
+                                opt-in via SAN_SDK_LIVE.
 ```
 
 ## See Also

@@ -58,7 +58,7 @@ func (m *mockLimitFetcherProvider) FetchModelLimits(_ context.Context, _ string)
 
 // --- LLM tests ---
 
-func TestLLMSend(t *testing.T) {
+func TestCompleteCollectsTheStream(t *testing.T) {
 	mp := &mockLLMProvider{
 		responses: []CompletionResponse{
 			{Content: "hello", StopReason: "end_turn", Usage: Usage{InputTokens: 10, OutputTokens: 5}},
@@ -67,9 +67,9 @@ func TestLLMSend(t *testing.T) {
 	l := &Client{provider: mp, model: "test-model", maxTokens: 4096}
 
 	msgs := []core.Message{{Role: core.RoleUser, Content: "hi"}}
-	resp, err := l.send(context.Background(), msgs, nil, "system prompt")
+	resp, err := Complete(context.Background(), mp, l.completionOpts(msgs, nil, "system prompt"))
 	if err != nil {
-		t.Fatalf("send() error: %v", err)
+		t.Fatalf("Complete() error: %v", err)
 	}
 	if resp.Content != "hello" {
 		t.Errorf("expected 'hello', got '%s'", resp.Content)
@@ -331,158 +331,74 @@ func TestAddUsageIncludesCacheTokens(t *testing.T) {
 	}
 }
 
-// --- FakeLLM tests ---
+// --- streaming failure paths ---
 
-func TestFakeLLMSend(t *testing.T) {
-	fake := &FakeLLM{
-		Responses: []CompletionResponse{
-			{Content: "response 1", StopReason: "end_turn"},
-			{Content: "response 2", StopReason: "end_turn"},
-		},
+type streamErrorProvider struct {
+	err error
+}
+
+func (p streamErrorProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk {
+	ch := make(chan StreamChunk, 1)
+	ch <- StreamChunk{Type: ChunkTypeError, Error: p.err}
+	close(ch)
+	return ch
+}
+
+func (streamErrorProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
+func (streamErrorProvider) Name() string                                    { return "stream-error" }
+
+type retryThenSuccessProvider struct {
+	calls int
+}
+
+func (p *retryThenSuccessProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk {
+	p.calls++
+	ch := make(chan StreamChunk, 1)
+	if p.calls == 1 {
+		ch <- StreamChunk{Type: ChunkTypeError, Error: errors.New("opaque terminal stream error")}
+	} else {
+		ch <- StreamChunk{Type: ChunkTypeDone, Response: &CompletionResponse{Content: "recovered"}}
 	}
+	close(ch)
+	return ch
+}
 
-	resp1, err := fake.Send(context.Background(), nil, nil, "")
+func (*retryThenSuccessProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
+func (*retryThenSuccessProvider) Name() string                                    { return "retry-stream" }
+
+func TestInferWrapsOpaqueStreamErrorAsRetryable(t *testing.T) {
+	original := errors.New("opaque terminal stream error")
+	client := NewClient(streamErrorProvider{err: original}, "test-model", 1)
+
+	chunks, err := client.Infer(context.Background(), core.InferRequest{})
 	if err != nil {
-		t.Fatalf("Send() error: %v", err)
+		t.Fatalf("Infer() error = %v", err)
 	}
-	if resp1.Content != "response 1" {
-		t.Errorf("expected 'response 1', got '%s'", resp1.Content)
+	chunk, ok := <-chunks
+	if !ok {
+		t.Fatal("Infer() returned no error chunk")
 	}
+	var retryable core.RetryableError
+	if !errors.As(chunk.Err, &retryable) {
+		t.Fatalf("chunk error %v is not retryable", chunk.Err)
+	}
+	if !errors.Is(chunk.Err, original) {
+		t.Fatal("chunk error does not preserve the provider error")
+	}
+}
 
-	resp2, err := fake.Send(context.Background(), nil, nil, "")
+func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
+	provider := &retryThenSuccessProvider{}
+	client := NewClient(provider, "test-model", 1)
+
+	resp, err := client.Complete(context.Background(), "", nil, 1)
 	if err != nil {
-		t.Fatalf("Send() error: %v", err)
+		t.Fatalf("Complete() error = %v", err)
 	}
-	if resp2.Content != "response 2" {
-		t.Errorf("expected 'response 2', got '%s'", resp2.Content)
+	if resp.Content != "recovered" {
+		t.Fatalf("Complete() content = %q, want recovered", resp.Content)
 	}
-
-	// Exhausted — should return default
-	resp3, _ := fake.Send(context.Background(), nil, nil, "")
-	if resp3.Content != "no more responses" {
-		t.Errorf("expected 'no more responses', got '%s'", resp3.Content)
-	}
-}
-
-func TestFakeLLMStream(t *testing.T) {
-	fake := &FakeLLM{
-		Responses: []CompletionResponse{
-			{Content: "streamed", StopReason: "end_turn", Usage: Usage{InputTokens: 5, OutputTokens: 3}},
-		},
-	}
-
-	ch := fake.Stream(context.Background(), nil, nil, "")
-	var resp *CompletionResponse
-	for chunk := range ch {
-		if chunk.Type == ChunkTypeDone {
-			resp = chunk.Response
-		}
-	}
-	if resp == nil {
-		t.Fatal("expected response")
-	}
-	if resp.Content != "streamed" {
-		t.Errorf("expected 'streamed', got '%s'", resp.Content)
-	}
-	if resp.Usage.InputTokens != 5 {
-		t.Errorf("expected 5 input tokens, got %d", resp.Usage.InputTokens)
-	}
-}
-
-func TestFakeLLMWithToolCalls(t *testing.T) {
-	fake := &FakeLLM{
-		Responses: []CompletionResponse{
-			{
-				Content:    "",
-				StopReason: "tool_use",
-				ToolCalls: []core.ToolCall{
-					{ID: "tc1", Name: "Read", Input: `{"file_path": "/tmp/test"}`},
-				},
-			},
-			{Content: "done", StopReason: "end_turn"},
-		},
-	}
-
-	// First call returns tool calls
-	resp1, _ := fake.Send(context.Background(), nil, nil, "")
-	if len(resp1.ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(resp1.ToolCalls))
-	}
-	if resp1.ToolCalls[0].Name != "Read" {
-		t.Errorf("expected tool 'Read', got '%s'", resp1.ToolCalls[0].Name)
-	}
-
-	// Second call returns final response
-	resp2, _ := fake.Send(context.Background(), nil, nil, "")
-	if resp2.Content != "done" {
-		t.Errorf("expected 'done', got '%s'", resp2.Content)
-	}
-}
-
-func TestFakeLLMComplete(t *testing.T) {
-	fake := &FakeLLM{
-		Responses: []CompletionResponse{
-			{Content: "summary", StopReason: "end_turn"},
-		},
-	}
-
-	resp, err := fake.Complete(context.Background(), "compact", nil, 2048)
-	if err != nil {
-		t.Fatalf("Complete() error: %v", err)
-	}
-	if resp.Content != "summary" {
-		t.Errorf("expected 'summary', got '%s'", resp.Content)
-	}
-}
-
-func TestFakeLLMRecordsCalls(t *testing.T) {
-	fake := &FakeLLM{
-		Responses: []CompletionResponse{
-			{Content: "ok", StopReason: "end_turn"},
-		},
-	}
-
-	msgs := []core.Message{{Role: core.RoleUser, Content: "hello"}}
-	tools := []ToolSchema{{Name: "Read", Description: "read files"}}
-	fake.Send(context.Background(), msgs, tools, "sys prompt")
-
-	if len(fake.Calls) != 1 {
-		t.Fatalf("expected 1 recorded call, got %d", len(fake.Calls))
-	}
-	call := fake.Calls[0]
-	if call.SystemPrompt != "sys prompt" {
-		t.Errorf("expected system prompt 'sys prompt', got '%s'", call.SystemPrompt)
-	}
-	if len(call.Messages) != 1 {
-		t.Errorf("expected 1 message, got %d", len(call.Messages))
-	}
-	if len(call.Tools) != 1 {
-		t.Errorf("expected 1 tool, got %d", len(call.Tools))
-	}
-}
-
-func TestFakeLLMDefaults(t *testing.T) {
-	fake := &FakeLLM{}
-	if fake.Name() != "fake" {
-		t.Errorf("expected 'fake', got '%s'", fake.Name())
-	}
-	if fake.ModelID() != "fake-model" {
-		t.Errorf("expected 'fake-model', got '%s'", fake.ModelID())
-	}
-	if fake.ResolveMaxTokens(context.Background()) != defaultMaxTokens {
-		t.Errorf("expected %d, got %d", defaultMaxTokens, fake.ResolveMaxTokens(context.Background()))
-	}
-}
-
-func TestFakeLLMCustomNames(t *testing.T) {
-	fake := &FakeLLM{
-		Model:        "gpt-4",
-		ProviderName: "openai",
-	}
-	if fake.Name() != "openai" {
-		t.Errorf("expected 'openai', got '%s'", fake.Name())
-	}
-	if fake.ModelID() != "gpt-4" {
-		t.Errorf("expected 'gpt-4', got '%s'", fake.ModelID())
+	if provider.calls != 2 {
+		t.Fatalf("Stream() calls = %d, want 2", provider.calls)
 	}
 }

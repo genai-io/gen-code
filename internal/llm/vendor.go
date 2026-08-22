@@ -11,7 +11,6 @@
 //	vendor.go              the seam: one Provider backed by one configured endpoint
 //	vendor_table.go        which San provider is which catalog vendor, and how to reach it
 //	vendor_convert.go      San's conversation types and the SDK's, in both directions
-//	vendor_errors.go       the SDK's typed failures, tagged for the agent loop
 //	vendor_signin.go       the vendors that authenticate a person, not a service
 //	vendor_credentials.go  those credentials, kept in San's own secret store
 //	vendor_models.go       the two endpoints that answer about their models their own way
@@ -86,14 +85,14 @@ func (p *vendorProvider) Stream(ctx context.Context, opts CompletionOptions) <-c
 
 		client, err := p.client(opts.Model, p.headersFor(opts.Messages))
 		if err != nil {
-			send(StreamChunk{Type: ChunkTypeError, Error: classifyVendorError(err)})
+			send(StreamChunk{Type: ChunkTypeError, Error: Classify(err)})
 			return
 		}
 
 		messages := toMessages(opts.Messages, client.Model())
 		for event, err := range client.Stream(ctx, messages, requestOptions(opts)...) {
 			if err != nil {
-				send(StreamChunk{Type: ChunkTypeError, Error: classifyVendorError(err)})
+				send(StreamChunk{Type: ChunkTypeError, Error: Classify(err)})
 				return
 			}
 			switch event.Type {
@@ -212,9 +211,6 @@ func (p *vendorProvider) model(modelID string) ai.Model {
 	}
 	return m
 }
-
-// ListModels resolves each entry the same way, so a model's window in the
-// picker is the one inference will use.
 
 // ---------------------------------------------------------------------------
 // Models
