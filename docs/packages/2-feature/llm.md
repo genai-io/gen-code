@@ -131,6 +131,12 @@ Model Studio is the exception that proves the shape: it publishes no window for
 any of its hundreds of models and answers per model instead, which is what
 `llm.ModelLimitsFetcher` exists for.
 
+`describeModel` turns the rest of a catalog row into the line `/models` shows
+beside a model — its lifecycle stage, its published rate, whether it sees,
+thinks, or cannot take tools. It deliberately restates nothing that is already
+a field on `ModelInfo`: the window is the user's to override, and a sentence
+baked into the cached listing would go on quoting the old one.
+
 ## Tests
 
 ```

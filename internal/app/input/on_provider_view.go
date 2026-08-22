@@ -233,16 +233,24 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 		displayName = m.ID
 	}
 
-	warning := ""
-	if m.InputTokenLimit == 0 && m.OutputTokenLimit == 0 {
-		warning = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(" ⚠")
+	// The window sits in its own column, because it is the figure models are
+	// most often compared on and a ragged one cannot be scanned down. A model
+	// San could not size shows the warning instead: with no window the context
+	// percentage cannot render and auto-compaction cannot fire.
+	window, windowStyle := kit.FormatTokenCount(m.InputTokenLimit), kit.DimStyle()
+	if m.InputTokenLimit == 0 {
+		window = "⚠"
+		windowStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 	}
+	// Right-aligned, so the figures line up on their units and the
+	// descriptions after them all start in the same column.
+	window = strings.Repeat(" ", max(0, modelWindowColumnWidth-lipgloss.Width(window))) + window
 
-	line := fmt.Sprintf("%s %s%s", indicatorStyle.Render(indicator), displayName, warning)
+	line := kit.FormatAlignedRow(indicatorStyle.Render(indicator), displayName, modelNameColumnWidth, windowStyle.Render(window))
 
-	// When the catalog describes the model, trail the name with a dimmed
-	// description. Truncate it to whatever room is left on the row (after the
-	// selection prefix and a two-column gap) so a long blurb never wraps.
+	// Then whatever the catalog says about the model, dimmed. Truncate it to
+	// the room left on the row (after the selection prefix and a two-column
+	// gap) so a long blurb never wraps.
 	if desc := strings.TrimSpace(m.Description); desc != "" {
 		const prefixAndGap = 6 // up to 4 cols of selection prefix + a 2-col gap
 		budget := s.panel().ContentWidth() - lipgloss.Width(line) - prefixAndGap
@@ -253,6 +261,16 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 
 	return kit.RenderSelectableRow(line, isSelected)
 }
+
+const (
+	// modelNameColumnWidth aligns the window column after the model name. It
+	// fits the long end of what vendors actually name a model
+	// ("MiniMax-M2.7-highspeed", 22 cols) with a gap; anything longer just
+	// pushes the rest of the row right.
+	modelNameColumnWidth = 26
+	// modelWindowColumnWidth fits the widest window a catalog states ("204.8k").
+	modelWindowColumnWidth = 6
+)
 
 // ── Providers tab rows ──────────────────────────────────────────────────────
 

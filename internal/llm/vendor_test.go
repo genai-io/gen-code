@@ -600,3 +600,98 @@ func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 		t.Errorf("the provider's own message was lost: %v", streamErr)
 	}
 }
+
+// A blank description column is what the /models picker showed for every model
+// for as long as the field existed: nothing ever filled it. These assert what
+// it says now, and just as importantly what it does not — the window, the
+// output cap and the reasoning ladder are fields on ModelInfo, and restating
+// any of them here would be a second copy free to disagree with the first.
+func TestDescribeModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model ai.Model
+		want  string
+	}{
+		{
+			name:  "a plain text-only model has nothing to say",
+			model: ai.Model{ID: "plain"},
+			want:  "",
+		},
+		{
+			name: "capabilities and the published rate",
+			model: ai.Model{
+				ID:        "opus",
+				Input:     []ai.Modality{ai.ModalityText, ai.ModalityImage},
+				Reasoning: []ai.ReasoningLevel{{Effort: ai.EffortHigh}},
+				Pricing:   ai.Pricing{Currency: ai.USD, Input: 5, Output: 25},
+			},
+			want: "$5/$25 per Mtok · vision · thinking",
+		},
+		{
+			name: "a fractional rate reads as money",
+			model: ai.Model{
+				ID:      "luna",
+				Pricing: ai.Pricing{Currency: ai.USD, Input: 0.2, Output: 1.2},
+			},
+			want: "$0.20/$1.20 per Mtok",
+		},
+		{
+			name: "a vendor that prices in CNY says so",
+			model: ai.Model{
+				ID:      "glm",
+				Pricing: ai.Pricing{Currency: ai.CNY, Input: 2.1, Output: 8.4},
+			},
+			want: "¥2.10/¥8.40 per Mtok",
+		},
+		{
+			name:  "a preview model is flagged first",
+			model: ai.Model{ID: "prev", Stage: ai.StagePreview, Input: []ai.Modality{ai.ModalityImage}},
+			want:  "preview · vision",
+		},
+		{
+			name:  "a deprecation names its replacement",
+			model: ai.Model{ID: "old", Stage: ai.StageDeprecated, Replacement: "claude-opus-5"},
+			want:  "deprecated, use claude-opus-5",
+		},
+		{
+			name:  "a model San cannot drive says so",
+			model: ai.Model{ID: "small", Unsupported: ai.Unsupported{Tools: true}},
+			want:  "no tools",
+		},
+		{
+			name:  "an unpriced model reports no rate rather than zero",
+			model: ai.Model{ID: "local", Input: []ai.Modality{ai.ModalityImage}},
+			want:  "vision",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := describeModel(tc.model); got != tc.want {
+				t.Errorf("describeModel() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The descriptions have to differ between the models a user is choosing
+// between, or the column is decoration. Within one vendor the capabilities are
+// usually identical, so the rate is what tells the models apart.
+func TestDescriptionsTellAVendorsModelsApart(t *testing.T) {
+	vendor, ok := catalog.Find("anthropic")
+	if !ok {
+		t.Fatal("the catalog has no anthropic vendor")
+	}
+
+	seen := map[string]int{}
+	for _, m := range ai.Available(vendor.ModelList()) {
+		description := describeModel(m)
+		if description == "" {
+			t.Errorf("%s has no description", m.ID)
+		}
+		seen[description]++
+	}
+	if len(seen) < 2 {
+		t.Errorf("every Anthropic model shares one description: %v", seen)
+	}
+}

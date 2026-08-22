@@ -1,6 +1,10 @@
 package llm
 
 import (
+	"math"
+	"strconv"
+	"strings"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
@@ -242,6 +246,7 @@ func toModelInfo(m ai.Model) ModelInfo {
 		ID:               m.ID,
 		Name:             m.Name,
 		DisplayName:      m.Name,
+		Description:      describeModel(m),
 		InputTokenLimit:  m.ContextWindow,
 		OutputTokenLimit: m.MaxOutput,
 	}
@@ -261,4 +266,90 @@ func toModelInfo(m ai.Model) ModelInfo {
 		info.Reasoning = NewReasoningCapability(labels, fallback)
 	}
 	return info
+}
+
+// describeModel says what a picker row cannot show as a number: where a model
+// sits in its vendor's lifecycle, what it costs, and what it can and cannot do.
+//
+// What it leaves out is deliberate. The context window and the output cap are
+// fields on ModelInfo, and the window is the user's to override
+// (/tokenlimit) — a sentence baked into the cached listing would go on quoting
+// the old one. Everything here is instead a fact the catalog holds and
+// ModelInfo has nowhere to put.
+//
+// A plain, current, text-only model with no published card gets no
+// description, and that reads correctly: there is nothing about it to warn
+// about or recommend.
+func describeModel(m ai.Model) string {
+	var facts []string
+
+	switch m.Stage {
+	case ai.StagePreview:
+		facts = append(facts, "preview")
+	case ai.StageDeprecated:
+		// The replacement is the actionable half — a deprecation the user
+		// cannot act on is just a scolding.
+		if m.Replacement != "" {
+			facts = append(facts, "deprecated, use "+m.Replacement)
+		} else {
+			facts = append(facts, "deprecated")
+		}
+	}
+
+	if rate := describeRate(m.Pricing); rate != "" {
+		facts = append(facts, rate)
+	}
+	if m.Accepts(ai.ModalityImage) {
+		facts = append(facts, "vision")
+	}
+	if len(m.Efforts()) > 0 {
+		facts = append(facts, "thinking")
+	}
+	// San is a tool-calling agent, so a model that takes no tools cannot do
+	// the job at all. Worth saying before it is chosen, not after the first
+	// turn fails.
+	if m.Unsupported.Tools {
+		facts = append(facts, "no tools")
+	}
+
+	return strings.Join(facts, " · ")
+}
+
+// describeRate renders a model's published input/output rate, e.g.
+// "$5/$25 per Mtok". It is the list card, which is the only figure the catalog
+// has: a vendor that discounts by time of day or by region says so in its own
+// note, and San prices real turns from the same card through EstimateCost. A
+// model with no published rate gets nothing rather than a zero, because free
+// and unknown are not the same thing.
+func describeRate(p ai.Pricing) string {
+	if p.Input <= 0 && p.Output <= 0 {
+		return ""
+	}
+	symbol := currencySymbol(p.Currency)
+	return symbol + formatRate(p.Input) + "/" + symbol + formatRate(p.Output) + " per Mtok"
+}
+
+func currencySymbol(currency string) string {
+	switch currency {
+	case ai.CNY:
+		return "¥"
+	case ai.USD, "":
+		return "$"
+	default:
+		return currency + " "
+	}
+}
+
+// formatRate prints a rate the way money reads: a whole number bare ("5"), and
+// anything else to at least two places ("0.20", not "0.2") without rounding
+// away a third ("0.075").
+func formatRate(rate float64) string {
+	if rate == math.Trunc(rate) {
+		return strconv.FormatFloat(rate, 'f', 0, 64)
+	}
+	exact := strconv.FormatFloat(rate, 'f', -1, 64)
+	if decimals := len(exact) - strings.IndexByte(exact, '.') - 1; decimals < 2 {
+		return strconv.FormatFloat(rate, 'f', 2, 64)
+	}
+	return exact
 }
