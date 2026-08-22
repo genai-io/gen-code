@@ -13,6 +13,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.27.1
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/creack/pty v1.1.24
+	github.com/genai-io/sdk-go v0.1.1
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-runewidth v0.0.23
