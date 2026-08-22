@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
@@ -558,5 +560,47 @@ func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
 				t.Errorf("%s: model %q states no context window", e.vendorID, m.ID)
 			}
 		}
+	}
+}
+
+// llmerr classifies a failure a second time, from the vendor SDK's own error
+// type, and that is the only reason San still depends on anthropic-sdk-go and
+// openai-go directly. It works because the SDK wraps rather than replaces what
+// its driver was given — assert it, so that if the SDK ever stops, the
+// second net is known to have gone rather than quietly reading as "unknown".
+func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	vendor, ok := catalog.Find("anthropic")
+	if !ok {
+		t.Fatal("the catalog has no anthropic vendor")
+	}
+	p := newProvider("anthropic:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	var streamErr error
+	for chunk := range p.Stream(context.Background(), llm.CompletionOptions{
+		Model:    "claude-opus-5",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	}) {
+		if chunk.Type == llm.ChunkTypeError {
+			streamErr = chunk.Error
+		}
+	}
+	if streamErr == nil {
+		t.Fatal("an overloaded endpoint produced no error")
+	}
+
+	var vendorErr *anthropic.Error
+	if !errors.As(streamErr, &vendorErr) {
+		t.Errorf("the vendor's own error no longer unwraps out of %T", streamErr)
+	}
+	var retryable core.RetryableError
+	if !errors.As(streamErr, &retryable) {
+		t.Error("an overloaded endpoint was not marked retryable")
 	}
 }
