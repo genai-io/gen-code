@@ -14,3 +14,26 @@ updates:
       prefix: "ci"
       include: "scope"
     open-pull-requests-limit: 5
+
+  # Go modules. Grouped so a week's worth of patch bumps arrives as one PR
+  # rather than a dozen: the point is that a security fix lands quickly, not
+  # that every module gets its own review.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:37"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    open-pull-requests-limit: 5
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
