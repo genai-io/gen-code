@@ -21,21 +21,39 @@ If it is, adding it to San is one entry in `vendorEntries` in
 `internal/llm/vendor_table.go`:
 
 ```go
+// internal/llm/vendor_table.go — same package, so no llm. prefix.
 {
-	meta:     llm.Meta{Provider: llm.DeepSeek, AuthMethod: llm.AuthAPIKey,
+	meta: Meta{Provider: DeepSeek, AuthMethod: AuthAPIKey,
 		EnvVars: []string{"DEEPSEEK_API_KEY"}, DisplayName: "Direct API"},
 	vendorID: "deepseek",
 },
 ```
 
-Plus a row in `vendorDisplays` for the provider's name and sort order, and a constant
-in `internal/llm/provider.go` if the provider name is new. That is the whole of it:
-the credential comes from San's secret store through the vendor's own
-`KeyEnv`, the host from its `BaseURL`, and the models, windows, prices and
-reasoning ladder from its catalog row.
+Plus a row in `vendorDisplays` for the provider's name and sort order, and a
+`ProviderID` constant in `internal/llm/provider.go` if the provider name is new.
+That is the whole of it: the credential comes from San's secret store through
+the vendor's own `KeyEnv`, the host from its `BaseURL`, and the models, windows,
+prices and reasoning ladder from its catalog row. Registration, including the
+cost estimator, is wired from the same entry.
 
 An entry needing more than a key and a host sets `configure`, which is where
 the Vertex deployment, the Coding Plan path and the interactive sign-ins live.
+
+### What you do not write
+
+Three things a provider used to be responsible for, which now belong elsewhere:
+
+- **Error classification.** The SDK decides a failure's kind from the vendor's
+  own typed error; `internal/llm/errors.go` translates that kind onto
+  `core.RetryableError` and `core.ContextExceededError`. Do not add message
+  matching — the SDK's table already excludes the throttles that are worded
+  like a context overflow.
+- **History repair.** `ai.Client` runs `RepairHistory` on every request, so an
+  interrupted turn's dangling tool call is handled for you.
+- **Presentation.** `ModelInfo` carries facts — `Stage`, `Replacement`,
+  `AcceptsImages`, `RejectsTools`, `Reasoning` — and the `/models` picker writes
+  the labels and aligns the columns. Never put a rendered string in it: it is
+  persisted, so the wording would outlive the release that chose it.
 
 ## Is it not in the catalog?
 
@@ -57,6 +75,11 @@ Two things are worth getting right, because both fail silently:
   conversation on the second turn. `OpenAIChatCompat.ReasoningContent` is what
   says it does.
 
+The row's other fields feed the picker directly: `Stage` and `Replacement` show
+a model as preview or deprecated, `Input` decides whether it reports vision, and
+`Unsupported.Tools` warns that San cannot drive it at all. A model that states
+none of them simply shows its name and window, which is the honest answer.
+
 ## Does it speak a protocol nobody implements?
 
 Then it is a new driver package in the SDK, not in San. The driver interface is
@@ -74,8 +97,10 @@ the storage to San.
 ## Tests
 
 `internal/llm/vendor_test.go` drives the seam against stub endpoints — what
-reached the wire, and what came back. `vendor_live_test.go` runs one real turn
-per configured vendor and is opt-in:
+reached the wire, what came back, and what `toModelInfo` made of a catalog row.
+Two guardrails there apply to every entry you add: every registered vendor must
+resolve, and every catalogued model must state a context window.
+`vendor_live_test.go` runs one real turn per configured vendor and is opt-in:
 
 ```sh
 SAN_SDK_LIVE=1 go test ./internal/llm/ -run TestLive -v
