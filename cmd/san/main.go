@@ -15,9 +15,6 @@ import (
 	"github.com/genai-io/san/internal/app"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
-
-	// Providers register themselves; one import reaches every vendor.
-	_ "github.com/genai-io/san/internal/llm/sdk"
 )
 
 var version = "1.22.4"

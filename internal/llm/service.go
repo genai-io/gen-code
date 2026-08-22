@@ -1,6 +1,8 @@
-// Package llm holds the connection to the active LLM provider plus the
-// registry of available providers/models. Default() returns the package-level
-// *Conn — the mutable provider/model/store handle, guarded by a single mutex.
+// Package llm holds the connection to the active LLM provider, the registry of
+// available providers/models, and the adapter that reaches every vendor
+// through github.com/genai-io/sdk-go — see vendor.go. Default() returns the
+// package-level *Conn — the mutable provider/model/store handle, guarded by a
+// single mutex.
 package llm
 
 import (

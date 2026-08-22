@@ -9,8 +9,9 @@ Provider registry, model store, and active-connection handle for every LLM
 backend (Anthropic, OpenAI, GitHub Copilot, Google, Moonshot, Alibaba, MiniMax,
 Z.ai/GLM, DeepSeek, Ollama, SenseNova, Volcengine Ark, Xiaomi MiMo, Agnes-AI,
 plus a user-defined OpenAI-compatible endpoint). Reaching them is one adapter,
-`internal/llm/sdk`, over [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go);
-adding a vendor is a row in its table, not a package.
+the `vendor_*` files, over
+[`genai-io/sdk-go`](https://github.com/genai-io/sdk-go); adding a vendor is a
+row in `vendor_table.go`, not a package.
 
 ## Purpose
 
@@ -65,12 +66,13 @@ func ResetDefaultConn()       // test-only
   values when a provider advertises them; application resolution prefers that
   metadata and falls back to `ThinkingEffortProvider` for catalogs (such as the
   standard OpenAI `/v1/models` response) that omit reasoning capabilities.
-- `sdk/` — every vendor, served through
-  [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go). It is one adapter,
-  not one package per vendor: the wire protocols, their streaming shapes and
-  their reasoning dialects belong to the SDK's drivers, and what stays here is
-  the seam — `llm.Provider` on one side, `ai.Client` on the other, plus the
-  table saying which San provider is which catalog vendor.
+- `vendor*.go` — every vendor, served through
+  [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go). One adapter, not one
+  package per vendor: the wire protocols, their streaming shapes and their
+  reasoning dialects belong to the SDK's drivers, and what stays here is the
+  seam — `Provider` on one side, `ai.Client` on the other — plus the table
+  saying which San provider is which catalog vendor. `vendor.go` names the
+  file each subject lives in.
 
 ## Lifecycle
 
@@ -112,8 +114,8 @@ any of its hundreds of models and answers per model instead, which is what
 internal/llm/llm_test.go        — Client.Infer plumbing.
 internal/llm/store_test.go      — provider config persistence.
 internal/llm/fake_llm.go        — test double consumed by other packages.
-internal/llm/sdk/sdk_test.go    — the seam, against stub endpoints.
-internal/llm/sdk/live_test.go   — one real turn per configured vendor,
+internal/llm/vendor_test.go     — the vendor seam, against stub endpoints.
+internal/llm/vendor_live_test.go — one real turn per configured vendor,
                                   opt-in via SAN_SDK_LIVE.
 ```
 

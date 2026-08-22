@@ -10,10 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
-
-	// The custom endpoint has to be a registered provider for a connect to
-	// reach it, and registration is what importing this does.
-	_ "github.com/genai-io/san/internal/llm/sdk"
 )
 
 // customModelsServer serves an OpenAI-compatible GET /models endpoint.

@@ -35,8 +35,7 @@ Agent, persistence, and orchestration:
 | Path | Layer | Responsibility |
 | --- | --- | --- |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and session-facing setup. |
-| `internal/llm` | `feature` | LLM service, provider registry, provider setup, cost tracking, logging. |
-| `internal/llm/sdk` | `feature` | Every vendor served through `genai-io/sdk-go`: the catalog table, the conversation translation, and interactive sign-in kept in San's own secret store. |
+| `internal/llm` | `feature` | LLM service, provider registry, provider setup, cost tracking, logging, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
 | `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. |
 | `internal/session` | `feature` | Session metadata, transcript persistence, resume, projection, message conversion. |
 | `internal/session/transcript` | `feature` | Transcript records, filesystem store, projection, renderable views. |

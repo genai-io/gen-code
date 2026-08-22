@@ -1,21 +1,21 @@
-// Package sdk serves San's LLM providers through github.com/genai-io/sdk-go.
+// Reaching a vendor, through github.com/genai-io/sdk-go.
 //
-// It is one adapter rather than fifteen provider packages. Every vendor San
-// talks to is a row in the SDK's catalog, and the wire work — four protocols,
-// their streaming shapes, their reasoning dialects — belongs to the SDK's
-// drivers. What is left here is the seam: San's llm.Provider on one side, the
-// SDK's ai.Client on the other, and the translation between them.
+// It is one adapter rather than one package per vendor. Every vendor San talks
+// to is a row in the SDK's catalog, and the wire work — four protocols, their
+// streaming shapes, their reasoning dialects — belongs to the SDK's drivers.
+// What is here is the seam: San's Provider on one side, the SDK's ai.Client on
+// the other, and the translation between them.
 //
-// # Where things live
+// The vendor_ files divide as follows, one subject each:
 //
-//	provider.go   the seam: one llm.Provider backed by one configured endpoint
-//	convert.go    San's conversation types and the SDK's, in both directions
-//	errors.go     the SDK's typed failures, tagged for San's agent loop
-//	vendors.go    which San provider is which catalog vendor, and how to reach it
-//	auth.go       interactive sign-in, kept in San's own credential store
-//	codex.go      the one endpoint that publishes its models its own way
-//	dashscope.go  the one endpoint that publishes a window per model
-package sdk
+//	vendor.go              the seam: one Provider backed by one configured endpoint
+//	vendor_table.go        which San provider is which catalog vendor, and how to reach it
+//	vendor_convert.go      San's conversation types and the SDK's, in both directions
+//	vendor_errors.go       the SDK's typed failures, tagged for the agent loop
+//	vendor_signin.go       the vendors that authenticate a person, not a service
+//	vendor_credentials.go  those credentials, kept in San's own secret store
+//	vendor_models.go       the two endpoints that answer about their models their own way
+package llm
 
 import (
 	"context"
@@ -29,11 +29,10 @@ import (
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
 )
 
-// Provider is one configured vendor endpoint, presented as an llm.Provider.
-type Provider struct {
+// vendorProvider is one configured vendor endpoint, presented as a Provider.
+type vendorProvider struct {
 	// name is San's provider identity, "vendor:auth_method" — the form every
 	// existing provider reports and the store keys connections by.
 	name   string
@@ -49,9 +48,9 @@ type Provider struct {
 	clients map[string]*ai.Client // one client per model and header set
 }
 
-// newProvider builds the adapter for one vendor endpoint.
-func newProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Config) *Provider {
-	return &Provider{
+// newVendorProvider builds the adapter for one vendor endpoint.
+func newVendorProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Config) *vendorProvider {
+	return &vendorProvider{
 		name:        name,
 		vendor:      vendor,
 		endpoint:    vendor.Provider(cfg),
@@ -61,7 +60,7 @@ func newProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Config) *Pr
 }
 
 // Name returns San's provider identity, e.g. "anthropic:api_key".
-func (p *Provider) Name() string { return p.name }
+func (p *vendorProvider) Name() string { return p.name }
 
 // ---------------------------------------------------------------------------
 // Inference
@@ -70,13 +69,13 @@ func (p *Provider) Name() string { return p.name }
 // Stream runs one turn and forwards it as San's chunks. Text and thinking
 // arrive as they are generated; tool calls ride complete in the final
 // response, which is the shape San's agent loop consumes.
-func (p *Provider) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk)
+func (p *vendorProvider) Stream(ctx context.Context, opts CompletionOptions) <-chan StreamChunk {
+	ch := make(chan StreamChunk)
 
 	go func() {
 		defer close(ch)
 
-		send := func(chunk llm.StreamChunk) bool {
+		send := func(chunk StreamChunk) bool {
 			select {
 			case ch <- chunk:
 				return true
@@ -87,30 +86,30 @@ func (p *Provider) Stream(ctx context.Context, opts llm.CompletionOptions) <-cha
 
 		client, err := p.client(opts.Model, p.headersFor(opts.Messages))
 		if err != nil {
-			send(llm.StreamChunk{Type: llm.ChunkTypeError, Error: classify(err)})
+			send(StreamChunk{Type: ChunkTypeError, Error: classifyVendorError(err)})
 			return
 		}
 
 		messages := toMessages(opts.Messages, client.Model())
 		for event, err := range client.Stream(ctx, messages, requestOptions(opts)...) {
 			if err != nil {
-				send(llm.StreamChunk{Type: llm.ChunkTypeError, Error: classify(err)})
+				send(StreamChunk{Type: ChunkTypeError, Error: classifyVendorError(err)})
 				return
 			}
 			switch event.Type {
 			case ai.EventBlockDelta:
 				switch event.Block.Type {
 				case ai.BlockText:
-					if event.Block.Text != "" && !send(llm.StreamChunk{Type: llm.ChunkTypeText, Text: event.Block.Text}) {
+					if event.Block.Text != "" && !send(StreamChunk{Type: ChunkTypeText, Text: event.Block.Text}) {
 						return
 					}
 				case ai.BlockThinking:
-					if event.Block.Text != "" && !send(llm.StreamChunk{Type: llm.ChunkTypeThinking, Text: event.Block.Text}) {
+					if event.Block.Text != "" && !send(StreamChunk{Type: ChunkTypeThinking, Text: event.Block.Text}) {
 						return
 					}
 				}
 			case ai.EventDone:
-				send(llm.StreamChunk{Type: llm.ChunkTypeDone, Response: toResponse(event.Response)})
+				send(StreamChunk{Type: ChunkTypeDone, Response: toResponse(event.Response)})
 				return
 			}
 		}
@@ -124,7 +123,7 @@ func (p *Provider) Stream(ctx context.Context, opts llm.CompletionOptions) <-cha
 // An option is only passed when San actually set it: passing one is what marks
 // a setting explicit, so sending a zero would override the model's own default
 // rather than inherit it.
-func requestOptions(opts llm.CompletionOptions) []ai.Option {
+func requestOptions(opts CompletionOptions) []ai.Option {
 	out := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
 	if tools := toTools(opts.Tools); len(tools) > 0 {
 		out = append(out, ai.WithTools(tools...))
@@ -142,7 +141,7 @@ func requestOptions(opts llm.CompletionOptions) []ai.Option {
 }
 
 // headersFor returns the headers this turn needs beyond the fixed ones.
-func (p *Provider) headersFor(msgs []core.Message) map[string]string {
+func (p *vendorProvider) headersFor(msgs []core.Message) map[string]string {
 	if p.turnHeaders == nil {
 		return nil
 	}
@@ -154,7 +153,7 @@ func (p *Provider) headersFor(msgs []core.Message) map[string]string {
 // A client is a request template, not a connection — the transport underneath
 // is shared — so keying the cache by the headers too costs an entry per
 // distinct header set rather than a new connection pool.
-func (p *Provider) client(modelID string, headers map[string]string) (*ai.Client, error) {
+func (p *vendorProvider) client(modelID string, headers map[string]string) (*ai.Client, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -204,7 +203,7 @@ func clientKey(modelID string, headers map[string]string) string {
 // Resolving through the vendor rather than through the endpoint's list matters
 // for an ID that is not in either: a model newer than the catalog still
 // inherits its vendor's dialect instead of reaching the endpoint stripped of it.
-func (p *Provider) model(modelID string) ai.Model {
+func (p *vendorProvider) model(modelID string) ai.Model {
 	m := p.vendor.Model(modelID)
 	for _, live := range p.endpoint.Models() {
 		if strings.EqualFold(live.ID, modelID) {
@@ -234,13 +233,13 @@ func (p *Provider) model(modelID string) ai.Model {
 // its table, or from the ID itself. Reading the listing raw reports no window
 // for those, which switches off the context percentage and auto-compaction
 // without saying why.
-func (p *Provider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+func (p *vendorProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	if err := p.refresh(ctx); err != nil && len(p.vendor.Models) == 0 {
 		return nil, err
 	}
 
 	listed := ai.Available(p.endpoint.Models())
-	out := make([]llm.ModelInfo, 0, len(listed))
+	out := make([]ModelInfo, 0, len(listed))
 	for _, m := range listed {
 		out = append(out, toModelInfo(sdkprovider.MergeListing(p.vendor.Model(m.ID), m)))
 	}
@@ -250,7 +249,7 @@ func (p *Provider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 // refresh fetches the endpoint's live listing once. A failure is reported but
 // not remembered, so the next call tries again rather than sticking with a
 // catalog that a passing outage froze.
-func (p *Provider) refresh(ctx context.Context) error {
+func (p *vendorProvider) refresh(ctx context.Context) error {
 	p.mu.Lock()
 	done := p.listed
 	p.mu.Unlock()
@@ -273,7 +272,7 @@ func (p *Provider) refresh(ctx context.Context) error {
 // ---------------------------------------------------------------------------
 
 // ThinkingEfforts returns the model's reasoning rungs, least to most.
-func (p *Provider) ThinkingEfforts(model string) []string {
+func (p *vendorProvider) ThinkingEfforts(model string) []string {
 	efforts := p.model(model).Efforts()
 	if len(efforts) == 0 {
 		return nil
@@ -286,7 +285,7 @@ func (p *Provider) ThinkingEfforts(model string) []string {
 }
 
 // DefaultThinkingEffort returns the rung used when none is chosen.
-func (p *Provider) DefaultThinkingEffort(model string) string {
+func (p *vendorProvider) DefaultThinkingEffort(model string) string {
 	if level, ok := p.model(model).DefaultLevel(); ok {
 		return string(level.Effort)
 	}
@@ -294,7 +293,7 @@ func (p *Provider) DefaultThinkingEffort(model string) string {
 }
 
 // SupportsImages reports whether the model accepts image input.
-func (p *Provider) SupportsImages(model string) bool {
+func (p *vendorProvider) SupportsImages(model string) bool {
 	return p.model(model).Accepts(ai.ModalityImage)
 }
 
@@ -306,7 +305,7 @@ func (p *Provider) SupportsImages(model string) bool {
 // as tools → system → messages, so the cached prefix is those two and nothing
 // else. Every other endpoint here caches automatically over a prefix it picks
 // itself, which is an unknown span.
-func (p *Provider) CachesToolsAndSystemPrompt() bool {
+func (p *vendorProvider) CachesToolsAndSystemPrompt() bool {
 	switch p.vendor.API {
 	case ai.APIAnthropicMessages, ai.APIAnthropicVertex:
 		return true
@@ -316,9 +315,9 @@ func (p *Provider) CachesToolsAndSystemPrompt() bool {
 }
 
 var (
-	_ llm.Provider                  = (*Provider)(nil)
-	_ llm.ThinkingEffortProvider    = (*Provider)(nil)
-	_ llm.ImageSupportProvider      = (*Provider)(nil)
-	_ llm.PromptPrefixCacheProvider = (*Provider)(nil)
-	_ llm.ModelLimitsFetcher        = (*Provider)(nil)
+	_ Provider                  = (*vendorProvider)(nil)
+	_ ThinkingEffortProvider    = (*vendorProvider)(nil)
+	_ ImageSupportProvider      = (*vendorProvider)(nil)
+	_ PromptPrefixCacheProvider = (*vendorProvider)(nil)
+	_ ModelLimitsFetcher        = (*vendorProvider)(nil)
 )

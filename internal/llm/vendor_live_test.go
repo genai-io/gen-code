@@ -1,4 +1,4 @@
-package sdk
+package llm
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
 )
 
 // TestLiveTurn runs one real turn against every vendor whose key is in the
@@ -20,20 +19,20 @@ func TestLiveTurn(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider llm.Name
-		auth     llm.AuthMethod
+		provider Name
+		auth     AuthMethod
 		model    string
 		key      string
 	}{
-		{llm.DeepSeek, llm.AuthAPIKey, "deepseek-v4-flash", "DEEPSEEK_API_KEY"},
-		{llm.Moonshot, llm.AuthAPIKey, "kimi-k3", "MOONSHOT_API_KEY"},
-		{llm.MinMax, llm.AuthAPIKey, "MiniMax-M2.7", "MINIMAX_API_KEY"},
-		{llm.OpenAI, llm.AuthAPIKey, "gpt-5.6-luna", "OPENAI_API_KEY"},
-		{llm.BigModel, llm.AuthAPIKey, "glm-5", "BIGMODEL_API_KEY"},
-		{llm.Alibaba, llm.AuthAPIKey, "qwen3.8-max", "DASHSCOPE_API_KEY"},
+		{DeepSeek, AuthAPIKey, "deepseek-v4-flash", "DEEPSEEK_API_KEY"},
+		{Moonshot, AuthAPIKey, "kimi-k3", "MOONSHOT_API_KEY"},
+		{MinMax, AuthAPIKey, "MiniMax-M2.7", "MINIMAX_API_KEY"},
+		{OpenAI, AuthAPIKey, "gpt-5.6-luna", "OPENAI_API_KEY"},
+		{BigModel, AuthAPIKey, "glm-5", "BIGMODEL_API_KEY"},
+		{Alibaba, AuthAPIKey, "qwen3.8-max", "DASHSCOPE_API_KEY"},
 	}
 
-	Register()
+	registerVendors()
 	for _, tc := range cases {
 		if os.Getenv(tc.key) == "" {
 			continue
@@ -42,7 +41,7 @@ func TestLiveTurn(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 
-			p, err := llm.GetProvider(ctx, tc.provider, tc.auth)
+			p, err := GetProvider(ctx, tc.provider, tc.auth)
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
@@ -55,19 +54,19 @@ func TestLiveTurn(t *testing.T) {
 			}
 
 			var text string
-			var resp *llm.CompletionResponse
-			for chunk := range p.Stream(ctx, llm.CompletionOptions{
+			var resp *CompletionResponse
+			for chunk := range p.Stream(ctx, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
 				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {
-				case llm.ChunkTypeText:
+				case ChunkTypeText:
 					text += chunk.Text
-				case llm.ChunkTypeDone:
+				case ChunkTypeDone:
 					resp = chunk.Response
-				case llm.ChunkTypeError:
+				case ChunkTypeError:
 					// A vendor that has run out of quota is an account
 					// problem, not a translation one.
 					if ai.IsKind(chunk.Error, ai.KindRateLimit) {
@@ -100,16 +99,16 @@ func TestLiveToolRoundTrip(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider llm.Name
+		provider Name
 		model    string
 		key      string
 	}{
-		{llm.DeepSeek, "deepseek-v4-flash", "DEEPSEEK_API_KEY"},
-		{llm.MinMax, "MiniMax-M3", "MINIMAX_API_KEY"},
-		{llm.OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY"},
+		{DeepSeek, "deepseek-v4-flash", "DEEPSEEK_API_KEY"},
+		{MinMax, "MiniMax-M3", "MINIMAX_API_KEY"},
+		{OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY"},
 	}
 
-	weather := []llm.ToolSchema{{
+	weather := []ToolSchema{{
 		Name:        "get_weather",
 		Description: "Report the current weather in a city.",
 		Parameters: map[string]any{
@@ -120,7 +119,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 		},
 	}}
 
-	Register()
+	registerVendors()
 	for _, tc := range cases {
 		if os.Getenv(tc.key) == "" {
 			continue
@@ -129,15 +128,15 @@ func TestLiveToolRoundTrip(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			p, err := llm.GetProvider(ctx, tc.provider, llm.AuthAPIKey)
+			p, err := GetProvider(ctx, tc.provider, AuthAPIKey)
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
 
-			turn := func(msgs []core.Message) *llm.CompletionResponse {
+			turn := func(msgs []core.Message) *CompletionResponse {
 				t.Helper()
-				var resp *llm.CompletionResponse
-				for chunk := range p.Stream(ctx, llm.CompletionOptions{
+				var resp *CompletionResponse
+				for chunk := range p.Stream(ctx, CompletionOptions{
 					Model:        tc.model,
 					SystemPrompt: "Use the tools you are given. Answer in one short sentence.",
 					Messages:     msgs,
@@ -145,9 +144,9 @@ func TestLiveToolRoundTrip(t *testing.T) {
 					MaxTokens:    256,
 				}) {
 					switch chunk.Type {
-					case llm.ChunkTypeDone:
+					case ChunkTypeDone:
 						resp = chunk.Response
-					case llm.ChunkTypeError:
+					case ChunkTypeError:
 						t.Fatalf("stream: %v", chunk.Error)
 					}
 				}
@@ -203,15 +202,15 @@ func TestLiveSubscription(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider llm.Name
+		provider Name
 		vendorID string
 		model    string
 	}{
-		{llm.OpenAI, codexVendor, "gpt-5.6-luna"},
-		{llm.Copilot, copilotVendor, "gpt-4.1"},
+		{OpenAI, codexVendor, "gpt-5.6-luna"},
+		{Copilot, copilotVendor, "gpt-4.1"},
 	}
 
-	Register()
+	registerVendors()
 	for _, tc := range cases {
 		t.Run(string(tc.provider), func(t *testing.T) {
 			if !(authenticator{vendorID: tc.vendorID}).HasCredentials() {
@@ -220,7 +219,7 @@ func TestLiveSubscription(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			p, err := llm.GetProvider(ctx, tc.provider, llm.AuthSubscription)
+			p, err := GetProvider(ctx, tc.provider, AuthSubscription)
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
@@ -231,16 +230,16 @@ func TestLiveSubscription(t *testing.T) {
 			t.Logf("%d models: %q…", len(models), models[0].ID)
 
 			var text string
-			for chunk := range p.Stream(ctx, llm.CompletionOptions{
+			for chunk := range p.Stream(ctx, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
 				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {
-				case llm.ChunkTypeText:
+				case ChunkTypeText:
 					text += chunk.Text
-				case llm.ChunkTypeError:
+				case ChunkTypeError:
 					if ai.IsKind(chunk.Error, ai.KindRateLimit) {
 						t.Skipf("subscription declined on quota: %v", chunk.Error)
 					}

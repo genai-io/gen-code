@@ -1,4 +1,4 @@
-package sdk
+package llm
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 // classify tags a failure with what the agent loop needs to know about it.
 // An error of no recognized kind is returned unchanged, which leaves llmerr's
 // stream-boundary handling to make the conservative call.
-func classify(err error) error {
+func classifyVendorError(err error) error {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return err
 	}

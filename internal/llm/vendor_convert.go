@@ -1,10 +1,9 @@
-package sdk
+package llm
 
 import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
 )
 
 // Translating between San's conversation types and the SDK's.
@@ -155,7 +154,7 @@ func toImage(img core.Image) ai.Image {
 // toTools converts San's tool schemas. Run stays nil: San executes tools
 // itself and hands the results back as history, so the SDK is never asked to
 // run one.
-func toTools(schemas []llm.ToolSchema) []ai.Tool {
+func toTools(schemas []ToolSchema) []ai.Tool {
 	if len(schemas) == 0 {
 		return nil
 	}
@@ -171,11 +170,11 @@ func toTools(schemas []llm.ToolSchema) []ai.Tool {
 }
 
 // toResponse projects a finished SDK response onto San's response fields.
-func toResponse(resp *ai.Response) *llm.CompletionResponse {
+func toResponse(resp *ai.Response) *CompletionResponse {
 	if resp == nil {
 		return nil
 	}
-	out := &llm.CompletionResponse{
+	out := &CompletionResponse{
 		Content:    resp.Text(),
 		Thinking:   resp.Thinking(),
 		StopReason: toStopReason(resp.StopReason),
@@ -208,8 +207,8 @@ func toResponse(resp *ai.Response) *llm.CompletionResponse {
 // toUsage maps the SDK's token accounting onto San's. The SDK names the two
 // cache figures for what happened to the prefix; San names them for the
 // Anthropic wire fields they came from, and they mean the same thing.
-func toUsage(u ai.Usage) llm.Usage {
-	return llm.Usage{
+func toUsage(u ai.Usage) Usage {
+	return Usage{
 		InputTokens:              u.Input,
 		OutputTokens:             u.Output,
 		CacheCreationInputTokens: u.CacheWrite,
@@ -238,8 +237,8 @@ func toStopReason(reason ai.StopReason) core.StopReason {
 // toModelInfo projects an SDK model onto the record San's picker and store
 // read. A model with no window reports zero, which San already treats as
 // "unknown" rather than substituting a guess.
-func toModelInfo(m ai.Model) llm.ModelInfo {
-	info := llm.ModelInfo{
+func toModelInfo(m ai.Model) ModelInfo {
+	info := ModelInfo{
 		ID:               m.ID,
 		Name:             m.Name,
 		DisplayName:      m.Name,
@@ -259,7 +258,7 @@ func toModelInfo(m ai.Model) llm.ModelInfo {
 		if level, ok := m.DefaultLevel(); ok {
 			fallback = string(level.Effort)
 		}
-		info.Reasoning = llm.NewReasoningCapability(labels, fallback)
+		info.Reasoning = NewReasoningCapability(labels, fallback)
 	}
 	return info
 }

@@ -1,4 +1,4 @@
-package sdk
+package llm
 
 import (
 	"context"
@@ -19,7 +19,6 @@ import (
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
 )
 
 // The tests drive the adapter the way San does — a CompletionOptions in,
@@ -66,28 +65,28 @@ func serve(t *testing.T, events ...[2]string) *endpoint {
 
 // claude builds an adapter pointed at the stub, speaking Anthropic Messages —
 // the protocol that carries every content kind San uses.
-func claude(t *testing.T, e *endpoint) *Provider {
+func claude(t *testing.T, e *endpoint) *vendorProvider {
 	t.Helper()
 	vendor, ok := catalog.Find("anthropic")
 	if !ok {
 		t.Fatal("the catalog has no anthropic vendor")
 	}
-	return newProvider("anthropic:api_key", vendor,
+	return newVendorProvider("anthropic:api_key", vendor,
 		sdkprovider.Config{APIKey: "test-key", BaseURL: e.server.URL})
 }
 
 // collect drains a turn into the chunks San's agent loop would see.
-func collect(t *testing.T, p *Provider, opts llm.CompletionOptions) (text, thinking string, resp *llm.CompletionResponse, err error) {
+func collect(t *testing.T, p *vendorProvider, opts CompletionOptions) (text, thinking string, resp *CompletionResponse, err error) {
 	t.Helper()
 	for chunk := range p.Stream(context.Background(), opts) {
 		switch chunk.Type {
-		case llm.ChunkTypeText:
+		case ChunkTypeText:
 			text += chunk.Text
-		case llm.ChunkTypeThinking:
+		case ChunkTypeThinking:
 			thinking += chunk.Text
-		case llm.ChunkTypeDone:
+		case ChunkTypeDone:
 			resp = chunk.Response
-		case llm.ChunkTypeError:
+		case ChunkTypeError:
 			err = chunk.Error
 		}
 	}
@@ -118,11 +117,11 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 		[2]string{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}`},
 	)
 
-	text, thinking, resp, err := collect(t, claude(t, e), llm.CompletionOptions{
+	text, thinking, resp, err := collect(t, claude(t, e), CompletionOptions{
 		Model:        "claude-opus-5",
 		SystemPrompt: "be brief",
 		Messages:     []core.Message{{Role: core.RoleUser, Content: "read main.go"}},
-		Tools:        []llm.ToolSchema{{Name: "Read", Description: "Read a file", Parameters: map[string]any{"type": "object"}}},
+		Tools:        []ToolSchema{{Name: "Read", Description: "Read a file", Parameters: map[string]any{"type": "object"}}},
 		MaxTokens:    2048,
 	})
 	if err != nil {
@@ -151,7 +150,7 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 		resp.ToolCalls[0].Input != `{"path":"main.go"}` {
 		t.Errorf("ToolCalls = %+v", resp.ToolCalls)
 	}
-	want := llm.Usage{InputTokens: 11, OutputTokens: 9, CacheCreationInputTokens: 3, CacheReadInputTokens: 5}
+	want := Usage{InputTokens: 11, OutputTokens: 9, CacheCreationInputTokens: 3, CacheReadInputTokens: 5}
 	if resp.Usage != want {
 		t.Errorf("Usage = %+v, want %+v", resp.Usage, want)
 	}
@@ -185,7 +184,7 @@ func TestAssistantTurnReplaysInOrder(t *testing.T) {
 		},
 		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "package main"}},
 	}
-	if _, _, _, err := collect(t, claude(t, e), llm.CompletionOptions{
+	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: history,
 	}); err != nil {
 		t.Fatalf("stream: %v", err)
@@ -229,7 +228,7 @@ func TestUnansweredToolCallIsRepaired(t *testing.T) {
 		{Role: core.RoleUser, Content: "read main.go"},
 		{Role: core.RoleAssistant, Content: "reading it", ToolCalls: []core.ToolCall{{ID: "call_1", Name: "Read", Input: "{}"}}},
 	}
-	if _, _, _, err := collect(t, claude(t, e), llm.CompletionOptions{
+	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: history,
 	}); err != nil {
 		t.Fatalf("stream: %v", err)
@@ -245,7 +244,7 @@ func TestRateLimitIsRetryableWithTheProvidersHint(t *testing.T) {
 	e.status = http.StatusTooManyRequests
 	e.error = `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`
 
-	_, _, _, err := collect(t, claude(t, e), llm.CompletionOptions{
+	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
 	})
 	var retryable core.RetryableError
@@ -262,7 +261,7 @@ func TestOverflowedPromptAsksForCompaction(t *testing.T) {
 	e.status = http.StatusBadRequest
 	e.error = `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 300000 tokens > 200000 maximum"}}`
 
-	_, _, _, err := collect(t, claude(t, e), llm.CompletionOptions{
+	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
 	})
 	var exceeded core.ContextExceededError
@@ -285,7 +284,7 @@ func TestModelInfoCarriesLimitsAndReasoning(t *testing.T) {
 		t.Fatalf("ListModels: %v", err)
 	}
 
-	var opus llm.ModelInfo
+	var opus ModelInfo
 	for _, m := range models {
 		if m.ID == "claude-opus-5" {
 			opus = m
@@ -321,7 +320,7 @@ func TestThinkingEffortReachesTheWire(t *testing.T) {
 	}
 	top := efforts[len(efforts)-1]
 
-	if _, _, _, err := collect(t, p, llm.CompletionOptions{
+	if _, _, _, err := collect(t, p, CompletionOptions{
 		Model:          "claude-opus-5",
 		Messages:       []core.Message{{Role: core.RoleUser, Content: "hi"}},
 		ThinkingEffort: top,
@@ -360,7 +359,7 @@ func TestCopilotOptsIntoVisionOnlyWhenSendingImages(t *testing.T) {
 }
 
 func TestEveryRegisteredVendorResolves(t *testing.T) {
-	for _, e := range entries {
+	for _, e := range vendorEntries {
 		if e.vendorID == "" {
 			continue // the user-defined endpoint has no catalog row
 		}
@@ -372,7 +371,7 @@ func TestEveryRegisteredVendorResolves(t *testing.T) {
 		if _, registered := driverFor(vendor.API); !registered {
 			t.Errorf("%s: no driver linked in for %q", providerName(e.meta), vendor.API)
 		}
-		if _, shown := displays[e.meta.Provider]; !shown {
+		if _, shown := vendorDisplays[e.meta.Provider]; !shown {
 			t.Errorf("%s: no display row", providerName(e.meta))
 		}
 	}
@@ -466,13 +465,13 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no bigmodel vendor")
 	}
-	p := newProvider("bigmodel:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("bigmodel:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
 
 	models, err := p.ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
-	byID := map[string]llm.ModelInfo{}
+	byID := map[string]ModelInfo{}
 	for _, m := range models {
 		byID[m.ID] = m
 	}
@@ -514,7 +513,7 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no alibaba vendor")
 	}
-	p := newProvider("alibaba:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("alibaba:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
 
 	in, out, err := p.FetchModelLimits(context.Background(), "qwen3.8-max")
 	if err != nil {
@@ -529,7 +528,7 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 
 	// Every other vendor says so rather than spending a round trip to find out.
 	deepseek, _ := catalog.Find("deepseek")
-	other := newProvider("deepseek:api_key", deepseek, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	other := newVendorProvider("deepseek:api_key", deepseek, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
 	if _, _, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err == nil {
 		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
 	}
@@ -544,7 +543,7 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 // belongs in neither catalog — leave it to the endpoint's own listing, where
 // its absence is at least explained by the endpoint saying nothing.
 func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
-	for _, e := range entries {
+	for _, e := range vendorEntries {
 		if e.vendorID == "" || e.vendorID == alibabaVendor {
 			// The user-defined endpoint ships no models, and Model Studio
 			// answers per model — see TestModelStudioAnswersOneModelAtATime.
@@ -580,14 +579,14 @@ func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no anthropic vendor")
 	}
-	p := newProvider("anthropic:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("anthropic:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
 
 	var streamErr error
-	for chunk := range p.Stream(context.Background(), llm.CompletionOptions{
+	for chunk := range p.Stream(context.Background(), CompletionOptions{
 		Model:    "claude-opus-5",
 		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
 	}) {
-		if chunk.Type == llm.ChunkTypeError {
+		if chunk.Type == ChunkTypeError {
 			streamErr = chunk.Error
 		}
 	}
