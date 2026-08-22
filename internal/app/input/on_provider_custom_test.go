@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/custom"
 )
 
 // customModelsServer serves an OpenAI-compatible GET /models endpoint.
@@ -33,7 +32,7 @@ func customModelsServer(t *testing.T, ids ...string) *httptest.Server {
 
 func TestOpenCustomFormPrefillsSavedConfig(t *testing.T) {
 	store := newProviderTestStore(t)
-	if err := store.SetCustomProvider(llm.CustomProviderConfig{ID: custom.DefaultID, BaseURL: "https://api.example.com/v1"}); err != nil {
+	if err := store.SetCustomProvider(llm.CustomProviderConfig{ID: string(llm.CustomProvider), BaseURL: "https://api.example.com/v1"}); err != nil {
 		t.Fatalf("SetCustomProvider() error = %v", err)
 	}
 
@@ -50,14 +49,14 @@ func TestOpenCustomFormPrefillsSavedConfig(t *testing.T) {
 	if got := m.customFormInputs[customFormFieldAPIKey].Value(); got != "" {
 		t.Fatalf("apiKey field should start empty, got %q", got)
 	}
-	if !m.isCustomProvider(custom.DefaultID) {
+	if !m.isCustomProvider(llm.CustomProvider) {
 		t.Fatal("isCustomProvider should recognize the fixed ID")
 	}
 }
 
 func TestValidateCustomForm(t *testing.T) {
 	isolateSecretStore(t)
-	t.Setenv(custom.APIKeyEnvVar, "")
+	t.Setenv(llm.CustomAPIKeyEnvVar, "")
 
 	tests := []struct {
 		name    string
@@ -88,7 +87,7 @@ func TestValidateCustomForm(t *testing.T) {
 
 func TestValidateCustomFormKeepsStoredAPIKey(t *testing.T) {
 	isolateSecretStore(t)
-	t.Setenv(custom.APIKeyEnvVar, "stored-key")
+	t.Setenv(llm.CustomAPIKeyEnvVar, "stored-key")
 
 	m := NewProviderSelector()
 	m.store, _ = llm.NewStore()
@@ -109,8 +108,8 @@ func TestValidateCustomFormKeepsStoredAPIKey(t *testing.T) {
 
 func TestSubmitCustomFormSavesAndConnects(t *testing.T) {
 	isolateSecretStore(t)
-	t.Setenv(custom.APIKeyEnvVar, "")
-	t.Cleanup(func() { _ = os.Unsetenv(custom.APIKeyEnvVar) })
+	t.Setenv(llm.CustomAPIKeyEnvVar, "")
+	t.Cleanup(func() { _ = os.Unsetenv(llm.CustomAPIKeyEnvVar) })
 
 	srv := customModelsServer(t, "model-1")
 	store, err := llm.NewStore()
@@ -146,21 +145,21 @@ func TestSubmitCustomFormSavesAndConnects(t *testing.T) {
 	if cfg == nil || cfg.BaseURL != srv.URL {
 		t.Fatalf("custom provider config not saved: %+v", cfg)
 	}
-	if !m.store.IsConnected(llm.Name(custom.DefaultID), llm.AuthAPIKey) {
+	if !m.store.IsConnected(llm.CustomProvider, llm.AuthAPIKey) {
 		t.Fatal("provider should be connected after submit")
 	}
-	if models, ok := m.store.GetCachedModels(llm.Name(custom.DefaultID), llm.AuthAPIKey); !ok || len(models) != 1 || models[0].ID != "model-1" {
+	if models, ok := m.store.GetCachedModels(llm.CustomProvider, llm.AuthAPIKey); !ok || len(models) != 1 || models[0].ID != "model-1" {
 		t.Fatalf("models should be cached after connect: %+v", models)
 	}
-	if got := os.Getenv(custom.APIKeyEnvVar); got != "sk-test" {
+	if got := os.Getenv(llm.CustomAPIKeyEnvVar); got != "sk-test" {
 		t.Fatalf("api key env = %q, want sk-test", got)
 	}
 }
 
 func TestSubmitCustomFormConnectFailureKeepsConfig(t *testing.T) {
 	isolateSecretStore(t)
-	t.Setenv(custom.APIKeyEnvVar, "")
-	t.Cleanup(func() { _ = os.Unsetenv(custom.APIKeyEnvVar) })
+	t.Setenv(llm.CustomAPIKeyEnvVar, "")
+	t.Cleanup(func() { _ = os.Unsetenv(llm.CustomAPIKeyEnvVar) })
 
 	// Point at a closed port so the connect fails.
 	store, err := llm.NewStore()
@@ -197,7 +196,7 @@ func TestSubmitCustomFormConnectFailureKeepsConfig(t *testing.T) {
 	if cfg := m.store.CustomProvider(); cfg == nil || cfg.BaseURL != "http://127.0.0.1:1" {
 		t.Fatalf("config should be saved despite connect failure: %+v", cfg)
 	}
-	if m.store.IsConnected(llm.Name(custom.DefaultID), llm.AuthAPIKey) {
+	if m.store.IsConnected(llm.CustomProvider, llm.AuthAPIKey) {
 		t.Fatal("failed connect must not mark the provider connected")
 	}
 }
@@ -210,14 +209,14 @@ func TestSelectProviderOpensCustomForm(t *testing.T) {
 	m.activeTab = providerTabProviders
 	m.store = store
 	m.allProviders = []providerProviderItem{{
-		Provider:    llm.Name(custom.DefaultID),
+		Provider:    llm.CustomProvider,
 		DisplayName: "Custom",
 		AuthMethods: []providerAuthMethodItem{{
-			Provider:    llm.Name(custom.DefaultID),
+			Provider:    llm.CustomProvider,
 			AuthMethod:  llm.AuthAPIKey,
 			DisplayName: "Direct API",
 			Status:      llm.StatusNotConfigured,
-			EnvVars:     []string{custom.APIKeyEnvVar},
+			EnvVars:     []string{llm.CustomAPIKeyEnvVar},
 		}},
 	}}
 	m.rebuildVisibleItems()

@@ -1,0 +1,605 @@
+package llm
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/catalog"
+	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+
+	"github.com/genai-io/san/internal/core"
+)
+
+// The tests drive the adapter the way San does — a CompletionOptions in,
+// StreamChunks out — against a stub endpoint. What they assert on is the two
+// things a translation layer can get wrong: the body that reached the wire,
+// and the value that came back.
+
+// endpoint is a stub server that records the last request it was given and
+// replays a scripted server-sent-event stream.
+type endpoint struct {
+	server  *httptest.Server
+	body    map[string]any
+	headers http.Header
+	status  int
+	error   string
+}
+
+func serve(t *testing.T, events ...[2]string) *endpoint {
+	t.Helper()
+	e := &endpoint{}
+	e.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		e.headers = r.Header.Clone()
+		e.body = map[string]any{}
+		_ = json.Unmarshal(raw, &e.body)
+
+		if e.status != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			if e.status == http.StatusTooManyRequests {
+				w.Header().Set("Retry-After", "7")
+			}
+			w.WriteHeader(e.status)
+			fmt.Fprint(w, e.error)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, event := range events {
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event[0], event[1])
+		}
+	}))
+	t.Cleanup(e.server.Close)
+	return e
+}
+
+// claude builds an adapter pointed at the stub, speaking Anthropic Messages —
+// the protocol that carries every content kind San uses.
+func claude(t *testing.T, e *endpoint) *vendorProvider {
+	t.Helper()
+	vendor, ok := catalog.Find("anthropic")
+	if !ok {
+		t.Fatal("the catalog has no anthropic vendor")
+	}
+	return newVendorProvider("anthropic:api_key", vendor,
+		sdkprovider.Config{APIKey: "test-key", BaseURL: e.server.URL})
+}
+
+// collect drains a turn into the chunks San's agent loop would see.
+func collect(t *testing.T, p *vendorProvider, opts CompletionOptions) (text, thinking string, resp *CompletionResponse, err error) {
+	t.Helper()
+	for chunk := range p.Stream(context.Background(), opts) {
+		switch chunk.Type {
+		case ChunkTypeText:
+			text += chunk.Text
+		case ChunkTypeThinking:
+			thinking += chunk.Text
+		case ChunkTypeDone:
+			resp = chunk.Response
+		case ChunkTypeError:
+			err = chunk.Error
+		}
+	}
+	return text, thinking, resp, err
+}
+
+func TestStreamCarriesEveryContentKind(t *testing.T) {
+	e := serve(t,
+		[2]string{"message_start", `{"type":"message_start","message":{"id":"m1","model":"claude-opus-5",` +
+			`"usage":{"input_tokens":11,"cache_creation_input_tokens":3,"cache_read_input_tokens":5}}}`},
+		[2]string{"content_block_start", `{"type":"content_block_start","index":0,` +
+			`"content_block":{"type":"thinking","thinking":""}}`},
+		[2]string{"content_block_delta", `{"type":"content_block_delta","index":0,` +
+			`"delta":{"type":"thinking_delta","thinking":"weighing it"}}`},
+		[2]string{"content_block_delta", `{"type":"content_block_delta","index":0,` +
+			`"delta":{"type":"signature_delta","signature":"sig-1"}}`},
+		[2]string{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+		[2]string{"content_block_start", `{"type":"content_block_start","index":1,` +
+			`"content_block":{"type":"text","text":""}}`},
+		[2]string{"content_block_delta", `{"type":"content_block_delta","index":1,` +
+			`"delta":{"type":"text_delta","text":"reading it now"}}`},
+		[2]string{"content_block_stop", `{"type":"content_block_stop","index":1}`},
+		[2]string{"content_block_start", `{"type":"content_block_start","index":2,` +
+			`"content_block":{"type":"tool_use","id":"call_1","name":"Read","input":{}}}`},
+		[2]string{"content_block_delta", `{"type":"content_block_delta","index":2,` +
+			`"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"main.go\"}"}}`},
+		[2]string{"content_block_stop", `{"type":"content_block_stop","index":2}`},
+		[2]string{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}`},
+	)
+
+	text, thinking, resp, err := collect(t, claude(t, e), CompletionOptions{
+		Model:        "claude-opus-5",
+		SystemPrompt: "be brief",
+		Messages:     []core.Message{{Role: core.RoleUser, Content: "read main.go"}},
+		Tools:        []ToolSchema{{Name: "Read", Description: "Read a file", Parameters: map[string]any{"type": "object"}}},
+		MaxTokens:    2048,
+	})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+
+	if text != "reading it now" {
+		t.Errorf("streamed text = %q", text)
+	}
+	if thinking != "weighing it" {
+		t.Errorf("streamed thinking = %q", thinking)
+	}
+	if resp == nil {
+		t.Fatal("no final response")
+	}
+	if resp.Content != "reading it now" || resp.Thinking != "weighing it" {
+		t.Errorf("response = %+v", resp)
+	}
+	if resp.ThinkingSignature != "sig-1" {
+		t.Errorf("ThinkingSignature = %q, want the token that replays the block", resp.ThinkingSignature)
+	}
+	if resp.StopReason != core.StopToolUse {
+		t.Errorf("StopReason = %q", resp.StopReason)
+	}
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "Read" ||
+		resp.ToolCalls[0].Input != `{"path":"main.go"}` {
+		t.Errorf("ToolCalls = %+v", resp.ToolCalls)
+	}
+	want := Usage{InputTokens: 11, OutputTokens: 9, CacheCreationInputTokens: 3, CacheReadInputTokens: 5}
+	if resp.Usage != want {
+		t.Errorf("Usage = %+v, want %+v", resp.Usage, want)
+	}
+
+	// The request carried what San asked for.
+	if e.body["system"] == nil {
+		t.Error("the system prompt did not reach the wire")
+	}
+	if tools, _ := e.body["tools"].([]any); len(tools) != 1 {
+		t.Errorf("tools on the wire = %v", e.body["tools"])
+	}
+	if e.body["max_tokens"] != float64(2048) {
+		t.Errorf("max_tokens = %v", e.body["max_tokens"])
+	}
+}
+
+func TestAssistantTurnReplaysInOrder(t *testing.T) {
+	e := serve(t,
+		[2]string{"message_start", `{"type":"message_start","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":4}}}`},
+		[2]string{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`},
+	)
+
+	history := []core.Message{
+		{Role: core.RoleUser, Content: "read main.go"},
+		{
+			Role:              core.RoleAssistant,
+			Content:           "reading it",
+			Thinking:          "weighing it",
+			ThinkingSignature: "sig-1",
+			ToolCalls:         []core.ToolCall{{ID: "call_1", Name: "Read", Input: `{"path":"main.go"}`}},
+		},
+		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "package main"}},
+	}
+	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
+		Model: "claude-opus-5", Messages: history,
+	}); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+
+	messages, _ := e.body["messages"].([]any)
+	if len(messages) != 3 {
+		t.Fatalf("messages on the wire = %d, want the whole history", len(messages))
+	}
+	assistant, _ := messages[1].(map[string]any)
+	blocks, _ := assistant["content"].([]any)
+	var kinds []string
+	for _, block := range blocks {
+		b, _ := block.(map[string]any)
+		kinds = append(kinds, fmt.Sprint(b["type"]))
+	}
+	// Anthropic rejects a turn whose thinking does not lead, and a tool call
+	// with no answer.
+	if strings.Join(kinds, ",") != "thinking,text,tool_use" {
+		t.Errorf("assistant blocks = %v, want thinking first and the call last", kinds)
+	}
+	result, _ := messages[2].(map[string]any)
+	resultBlocks, _ := result["content"].([]any)
+	if len(resultBlocks) != 1 {
+		t.Fatalf("tool result blocks = %v", resultBlocks)
+	}
+	if got, _ := resultBlocks[0].(map[string]any); fmt.Sprint(got["tool_use_id"]) != "call_1" {
+		t.Errorf("tool result = %v, want it paired with call_1", got)
+	}
+}
+
+func TestUnansweredToolCallIsRepaired(t *testing.T) {
+	e := serve(t,
+		[2]string{"message_start", `{"type":"message_start","message":{"id":"m3","model":"claude-opus-5","usage":{"input_tokens":4}}}`},
+		[2]string{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`},
+	)
+
+	// A turn interrupted between the call and its result: every protocol
+	// rejects the history as it stands.
+	history := []core.Message{
+		{Role: core.RoleUser, Content: "read main.go"},
+		{Role: core.RoleAssistant, Content: "reading it", ToolCalls: []core.ToolCall{{ID: "call_1", Name: "Read", Input: "{}"}}},
+	}
+	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
+		Model: "claude-opus-5", Messages: history,
+	}); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+
+	if strings.Contains(fmt.Sprint(e.body["messages"]), "tool_use") {
+		t.Errorf("an unanswered call reached the wire: %v", e.body["messages"])
+	}
+}
+
+func TestRateLimitIsRetryableWithTheProvidersHint(t *testing.T) {
+	e := serve(t)
+	e.status = http.StatusTooManyRequests
+	e.error = `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`
+
+	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
+		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	})
+	var retryable core.RetryableError
+	if !errors.As(err, &retryable) {
+		t.Fatalf("a 429 was not marked retryable: %v", err)
+	}
+	if got := retryable.RetryAfter(); got != 7*time.Second {
+		t.Errorf("RetryAfter = %v, want the provider's own hint", got)
+	}
+}
+
+func TestOverflowedPromptAsksForCompaction(t *testing.T) {
+	e := serve(t)
+	e.status = http.StatusBadRequest
+	e.error = `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 300000 tokens > 200000 maximum"}}`
+
+	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
+		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	})
+	var exceeded core.ContextExceededError
+	if !errors.As(err, &exceeded) {
+		t.Fatalf("an overflowed prompt was not marked for compaction: %v", err)
+	}
+	var retryable core.RetryableError
+	if errors.As(err, &retryable) {
+		t.Error("an overflowed prompt was marked retryable; replaying it cannot help")
+	}
+}
+
+func TestModelInfoCarriesLimitsAndReasoning(t *testing.T) {
+	e := serve(t)
+	// The listing endpoint is not what this stub serves, so the catalog is
+	// what answers — which is the fallback San relies on for a vendor whose
+	// models it already knows.
+	models, err := claude(t, e).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+
+	var opus ModelInfo
+	for _, m := range models {
+		if m.ID == "claude-opus-5" {
+			opus = m
+		}
+		if m.ID == "claude-opus-4-1-20250805" {
+			t.Error("a retired model reached the picker")
+		}
+	}
+	if opus.ID == "" {
+		t.Fatalf("claude-opus-5 is missing from %d models", len(models))
+	}
+	if opus.InputTokenLimit == 0 || opus.OutputTokenLimit == 0 {
+		t.Errorf("model limits = %d/%d, want the catalog's figures", opus.InputTokenLimit, opus.OutputTokenLimit)
+	}
+	if opus.Reasoning == nil || len(opus.Reasoning.SupportedEfforts) == 0 {
+		t.Fatalf("Reasoning = %+v, want the model's ladder", opus.Reasoning)
+	}
+	if opus.Reasoning.DefaultEffort == "" {
+		t.Error("the ladder states no default rung")
+	}
+}
+
+func TestThinkingEffortReachesTheWire(t *testing.T) {
+	e := serve(t,
+		[2]string{"message_start", `{"type":"message_start","message":{"id":"m4","model":"claude-opus-5","usage":{"input_tokens":4}}}`},
+		[2]string{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`},
+	)
+
+	p := claude(t, e)
+	efforts := p.ThinkingEfforts("claude-opus-5")
+	if len(efforts) == 0 {
+		t.Fatal("claude-opus-5 advertises no reasoning rungs")
+	}
+	top := efforts[len(efforts)-1]
+
+	if _, _, _, err := collect(t, p, CompletionOptions{
+		Model:          "claude-opus-5",
+		Messages:       []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		ThinkingEffort: top,
+	}); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if !strings.Contains(fmt.Sprint(e.body), top) {
+		t.Errorf("effort %q did not reach the wire: %v", top, e.body)
+	}
+}
+
+func TestCopilotOptsIntoVisionOnlyWhenSendingImages(t *testing.T) {
+	headers := turnHeadersFor(copilotVendor)
+	if headers == nil {
+		t.Fatal("Copilot states no turn-dependent headers")
+	}
+
+	opening := headers([]core.Message{{Role: core.RoleUser, Content: "hi"}})
+	if opening["X-Initiator"] != "user" {
+		t.Errorf("X-Initiator on the opening turn = %q", opening["X-Initiator"])
+	}
+	if _, ok := opening["Copilot-Vision-Request"]; ok {
+		t.Error("a text-only turn asked for vision")
+	}
+
+	followUp := headers([]core.Message{
+		{Role: core.RoleUser, Content: "look", Images: []core.Image{{MediaType: "image/png", Data: "x"}}},
+		{Role: core.RoleAssistant, Content: "looking"},
+	})
+	if followUp["X-Initiator"] != "agent" {
+		t.Errorf("X-Initiator once the loop is driving = %q", followUp["X-Initiator"])
+	}
+	if followUp["Copilot-Vision-Request"] != "true" {
+		t.Error("a turn carrying an image did not opt into vision")
+	}
+}
+
+func TestEveryRegisteredVendorResolves(t *testing.T) {
+	for _, e := range vendorEntries {
+		if e.vendorID == "" {
+			continue // the user-defined endpoint has no catalog row
+		}
+		vendor, ok := catalog.Find(e.vendorID)
+		if !ok {
+			t.Errorf("%s: no catalog vendor %q", providerName(e.meta), e.vendorID)
+			continue
+		}
+		if _, registered := driverFor(vendor.API); !registered {
+			t.Errorf("%s: no driver linked in for %q", providerName(e.meta), vendor.API)
+		}
+		if _, shown := vendorDisplays[e.meta.Provider]; !shown {
+			t.Errorf("%s: no display row", providerName(e.meta))
+		}
+	}
+}
+
+// driverFor reports whether a protocol has a driver in this binary.
+func driverFor(api ai.API) (ai.API, bool) {
+	for _, registered := range ai.RegisteredAPIs() {
+		if registered == api {
+			return api, true
+		}
+	}
+	return "", false
+}
+
+func TestThinkingIsReplayedOnlyWhereItCanBe(t *testing.T) {
+	claudeModel, err := catalog.Model("anthropic/claude-opus-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deepseekModel, err := catalog.Model("deepseek/deepseek-v4-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensenovaModel, err := catalog.Model("sensenova/deepseek-v4-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexModel, err := catalog.Model("openai/gpt-5.6-luna")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signed := core.Message{Role: core.RoleAssistant, Content: "done", Thinking: "weighing it", ThinkingSignature: "sig-1"}
+	unsigned := core.Message{Role: core.RoleAssistant, Content: "done", Thinking: "weighing it"}
+
+	cases := []struct {
+		name      string
+		msg       core.Message
+		model     ai.Model
+		want      bool
+		signature string
+	}{
+		{"anthropic keeps its own signed thinking", signed, claudeModel, true, "sig-1"},
+		// A session that switched models: the thinking came from somewhere
+		// with no signature, and Anthropic rejects one without.
+		{"anthropic drops unsigned thinking", unsigned, claudeModel, false, ""},
+		// The signature belongs to another protocol and must not travel with it.
+		{"chat completions strips a foreign signature", signed, deepseekModel, true, ""},
+		{"an endpoint that cannot take it back drops it", signed, sensenovaModel, false, ""},
+		// Responses replays reasoning as opaque items instead.
+		{"responses drops the readable summary", signed, codexModel, false, ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			block, ok := replayableThinking(tc.msg, tc.model)
+			if ok != tc.want {
+				t.Fatalf("replayed = %v, want %v", ok, tc.want)
+			}
+			if ok && block.Signature != tc.signature {
+				t.Errorf("signature = %q, want %q", block.Signature, tc.signature)
+			}
+		})
+	}
+
+	// The whole conversion agrees with the rule.
+	messages := toMessages([]core.Message{unsigned}, claudeModel)
+	if len(messages) != 1 || messages[0].Content.Has(ai.BlockThinking) {
+		t.Errorf("unsigned thinking reached an Anthropic request: %+v", messages)
+	}
+}
+
+// listing serves an OpenAI-compatible model list and nothing else.
+func listing(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
+	// What most OpenAI-compatible endpoints publish: an ID, and nothing that
+	// would let a caller size the context window.
+	server := listing(t, `{"object":"list","data":[{"id":"glm-4.7","object":"model"},{"id":"glm-9-imaginary","object":"model"}]}`)
+
+	vendor, ok := catalog.Find("bigmodel")
+	if !ok {
+		t.Fatal("the catalog has no bigmodel vendor")
+	}
+	p := newVendorProvider("bigmodel:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	byID := map[string]ModelInfo{}
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+
+	// One the vendor lists: its window comes from the catalog row.
+	listed, present := byID["glm-4.7"]
+	if !present {
+		t.Fatalf("glm-4.7 is missing from %+v", models)
+	}
+	if listed.InputTokenLimit == 0 {
+		t.Error("a listed model reached the picker with no window; the context " +
+			"percentage and auto-compaction both go quiet when that happens")
+	}
+	if listed.Reasoning == nil {
+		t.Error("a listed model reached the picker with no reasoning ladder")
+	}
+
+	// One it does not: the vendor still sizes it from the ID.
+	unlisted, present := byID["glm-9-imaginary"]
+	if !present {
+		t.Fatalf("an unlisted model was dropped from the listing: %+v", models)
+	}
+	if unlisted.InputTokenLimit != 0 {
+		t.Errorf("glm-9-imaginary window = %d; the vendor cannot size an ID it "+
+			"does not recognise, and a guess is worse than nothing", unlisted.InputTokenLimit)
+	}
+}
+
+func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"qwen3.8-max","extra_info":{"default_envs":{"max_input_tokens":129024,"max_output_tokens":8192}}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	vendor, ok := catalog.Find("alibaba")
+	if !ok {
+		t.Fatal("the catalog has no alibaba vendor")
+	}
+	p := newVendorProvider("alibaba:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	in, out, err := p.FetchModelLimits(context.Background(), "qwen3.8-max")
+	if err != nil {
+		t.Fatalf("FetchModelLimits: %v", err)
+	}
+	if in != 129024 || out != 8192 {
+		t.Errorf("limits = %d/%d, want the figures the endpoint reported", in, out)
+	}
+	if !strings.HasSuffix(path, "/models/qwen3.8-max") {
+		t.Errorf("asked %q, want the per-model detail path", path)
+	}
+
+	// Every other vendor says so rather than spending a round trip to find out.
+	deepseek, _ := catalog.Find("deepseek")
+	other := newVendorProvider("deepseek:api_key", deepseek, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	if _, _, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err == nil {
+		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
+	}
+}
+
+// A guardrail, carried over from the per-vendor catalogs this replaces: every
+// model San offers in a picker must state a context window.
+//
+// A zero window is not a cosmetic gap. It is what "cannot size this
+// conversation" means: the context percentage cannot render and auto-compaction
+// cannot fire, both silently. A model whose window genuinely is not known
+// belongs in neither catalog — leave it to the endpoint's own listing, where
+// its absence is at least explained by the endpoint saying nothing.
+func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
+	for _, e := range vendorEntries {
+		if e.vendorID == "" || e.vendorID == alibabaVendor {
+			// The user-defined endpoint ships no models, and Model Studio
+			// answers per model — see TestModelStudioAnswersOneModelAtATime.
+			continue
+		}
+		vendor, ok := catalog.Find(e.vendorID)
+		if !ok {
+			t.Errorf("%s: no catalog vendor %q", providerName(e.meta), e.vendorID)
+			continue
+		}
+		for _, m := range ai.Available(vendor.ModelList()) {
+			if m.ContextWindow == 0 {
+				t.Errorf("%s: model %q states no context window", e.vendorID, m.ID)
+			}
+		}
+	}
+}
+
+// llmerr classifies a failure a second time, from the vendor SDK's own error
+// type, and that is the only reason San still depends on anthropic-sdk-go and
+// openai-go directly. It works because the SDK wraps rather than replaces what
+// its driver was given — assert it, so that if the SDK ever stops, the
+// second net is known to have gone rather than quietly reading as "unknown".
+func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	vendor, ok := catalog.Find("anthropic")
+	if !ok {
+		t.Fatal("the catalog has no anthropic vendor")
+	}
+	p := newVendorProvider("anthropic:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	var streamErr error
+	for chunk := range p.Stream(context.Background(), CompletionOptions{
+		Model:    "claude-opus-5",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	}) {
+		if chunk.Type == ChunkTypeError {
+			streamErr = chunk.Error
+		}
+	}
+	if streamErr == nil {
+		t.Fatal("an overloaded endpoint produced no error")
+	}
+
+	var vendorErr *anthropic.Error
+	if !errors.As(streamErr, &vendorErr) {
+		t.Errorf("the vendor's own error no longer unwraps out of %T", streamErr)
+	}
+	var retryable core.RetryableError
+	if !errors.As(streamErr, &retryable) {
+		t.Error("an overloaded endpoint was not marked retryable")
+	}
+}

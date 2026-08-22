@@ -1,219 +1,87 @@
-# Writing a Provider
+# Adding a Provider
 
-Providers connect San to an LLM vendor. Most providers live under
-`internal/llm/<provider>/` and register themselves at startup so `/models`
-can discover them.
+A provider is a row in a table. There is no package to write, no client, no
+streaming loop and no conversion code — those belong to
+[`genai-io/sdk-go`](https://github.com/genai-io/sdk-go), which speaks four wire
+protocols and covers every vendor San reaches through
+the `vendor_*` files in
+[`internal/llm`](../packages/2-feature/llm.md).
 
-This guide uses `internal/llm/deepseek/` as the reference because it shows
-the common OpenAI-compatible path while still documenting the provider
-catalog, credentials, registration, streaming, and tests.
+Most vendors need no code at all, because most of them ship an endpoint
+speaking somebody else's protocol: OpenAI Chat Completions covers the majority,
+and MiniMax, Xiaomi MiMo and Volcengine Ark speak Anthropic Messages.
 
-For the package-level design, see [`packages/llm.md`](../packages/2-feature/llm.md).
+## Is the vendor already in the SDK's catalog?
 
-## Before You Start
-
-First decide whether the new provider is OpenAI-compatible:
-
-| Provider shape | Recommended path |
-|---|---|
-| Chat completions compatible with OpenAI-style streaming | Reuse `internal/llm/openaicompat/`. |
-| Custom request, response, streaming, or auth shape | Implement the `llm.Provider` interface directly. |
-
-If the provider exposes `/v1/chat/completions`-style streaming and can be
-used through `openai-go` with a custom base URL, start from DeepSeek.
-
-## Files to Add
-
-A typical provider package has these files:
-
-```
-internal/llm/<provider>/
-|- apikey.go
-|- catalog.go
-|- client.go
-`- client_test.go
+```sh
+go doc github.com/genai-io/sdk-go/pkg/ai/catalog Models
 ```
 
-### `apikey.go`
-
-Define the provider metadata and factory. The metadata controls what `/models`
-shows and which environment variables must be present before the provider is
-available.
-
-DeepSeek uses:
+If it is, adding it to San is one entry in `vendorEntries` in
+`internal/llm/vendor_table.go`:
 
 ```go
-var APIKeyMeta = llm.Meta{
-    Provider:    llm.DeepSeek,
-    AuthMethod:  llm.AuthAPIKey,
-    EnvVars:     []string{"DEEPSEEK_API_KEY"},
-    DisplayName: "Direct API",
-}
+{
+	meta:     llm.Meta{Provider: llm.DeepSeek, AuthMethod: llm.AuthAPIKey,
+		EnvVars: []string{"DEEPSEEK_API_KEY"}, DisplayName: "Direct API"},
+	vendorID: "deepseek",
+},
 ```
 
-The factory resolves secrets, constructs the SDK client, and returns a
-provider implementation:
+Plus a row in `vendorDisplays` for the provider's name and sort order, and a constant
+in `internal/llm/types.go` if the provider name is new. That is the whole of it:
+the credential comes from San's secret store through the vendor's own
+`KeyEnv`, the host from its `BaseURL`, and the models, windows, prices and
+reasoning ladder from its catalog row.
 
-```go
-func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-    baseURL := secret.Resolve("DEEPSEEK_BASE_URL")
-    if baseURL == "" {
-        baseURL = "https://api.deepseek.com"
-    }
+An entry needing more than a key and a host sets `configure`, which is where
+the Vertex deployment, the Coding Plan path and the interactive sign-ins live.
 
-    client := openai.NewClient(
-        option.WithAPIKey(secret.Resolve("DEEPSEEK_API_KEY")),
-        option.WithBaseURL(baseURL),
-        option.WithMaxRetries(0),
-    )
-    return NewClient(client, "deepseek:api_key"), nil
-}
+## Is it not in the catalog?
+
+Add it there first — it is a row in `pkg/ai/catalog/vendors.go`, stating the
+base URL, the environment variable the vendor documents, its reasoning dialect
+and its models. See the SDK's own
+[contributing guide](https://github.com/genai-io/sdk-go/blob/main/CONTRIBUTING.md).
+
+Two things are worth getting right, because both fail silently:
+
+- **The context window.** A model that reaches a picker without one switches
+  off the context percentage and auto-compaction, and says nothing. State it in
+  the row; where the vendor encodes it in the model ID instead, read it there
+  with `Vendor.Infer`. Never substitute a guess — San treats 0 as "unknown"
+  and recovers, but a wrong number is acted on.
+- **Whether the endpoint takes its own reasoning back.** An
+  OpenAI-compatible endpoint that emits `reasoning_content` and does not accept
+  it in history cannot have a thinking turn replayed at all, which ends the
+  conversation on the second turn. `OpenAIChatCompat.ReasoningContent` is what
+  says it does.
+
+## Does it speak a protocol nobody implements?
+
+Then it is a new driver package in the SDK, not in San. The driver interface is
+one required method and two optional ones; the SDK's contributing guide walks
+through it.
+
+## Interactive sign-in
+
+A vendor that authenticates a person rather than a service — GitHub Copilot, a
+ChatGPT subscription — runs its grant through `pkg/ai/auth` and keeps the
+credential in San's own secret store, so a login survives an upgrade. See
+`vendor_signin.go` and `vendor_credentials.go`: the flow belongs to the SDK,
+the storage to San.
+
+## Tests
+
+`internal/llm/vendor_test.go` drives the seam against stub endpoints — what
+reached the wire, and what came back. `vendor_live_test.go` runs one real turn
+per configured vendor and is opt-in:
+
+```sh
+SAN_SDK_LIVE=1 go test ./internal/llm/ -run TestLive -v
 ```
-
-Register the provider in `init()`:
-
-```go
-func init() {
-    llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek", Order: 40})
-    llm.Register(APIKeyMeta, NewAPIKeyClient)
-    llm.RegisterCostEstimator(llm.DeepSeek, EstimateCost)
-}
-```
-
-### `catalog.go`
-
-List known models and any pricing or token-limit metadata the provider needs.
-At minimum, define static model metadata and lookup helpers:
-
-```go
-func StaticModels() []llm.ModelInfo
-func CatalogModel(modelID string) (llm.ModelInfo, bool)
-```
-
-If the provider supports cost tracking, add an estimator and register it from
-`apikey.go`:
-
-```go
-func EstimateCost(modelID string, usage llm.Usage) (llm.Money, bool)
-```
-
-When choosing a catalog shape, also check
-[`internal/llm/CATALOGS.md`](../../internal/llm/CATALOGS.md).
-
-### `client.go`
-
-Implement the runtime provider. For an OpenAI-compatible service, wrap an
-`openai.Client` and use `openaicompat.StreamChatCompletions`:
-
-```go
-type Client struct {
-    client openai.Client
-    name   string
-}
-
-func (c *Client) Name() string { return c.name }
-
-func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-    return openaicompat.StreamChatCompletions(ctx, openaicompat.ChatStreamConfig{
-        Client:       c.client,
-        ProviderName: c.name,
-        Options:      opts,
-    })
-}
-```
-
-Add provider-specific behavior only where needed. DeepSeek, for example,
-customizes assistant-message conversion and adds `reasoning_effort` for
-thinking models.
-
-If the provider can list models, implement:
-
-```go
-func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error)
-```
-
-If the provider has image or thinking support, implement the optional
-interfaces and assert them at the bottom of the file:
-
-```go
-var _ llm.Provider = (*Client)(nil)
-var _ llm.ThinkingEffortProvider = (*Client)(nil)
-var _ llm.ImageSupportProvider = (*Client)(nil)
-```
-
-Only assert optional interfaces that the provider actually supports.
-
-### `client_test.go`
-
-Keep tests local and deterministic. Prefer fake HTTP transports over live API
-calls. DeepSeek tests cover:
-
-- propagating model-list errors;
-- stream request shape;
-- text-only image support;
-- cost estimation;
-- thinking-effort request fields;
-- provider interface support.
-
-At minimum, test request construction and metadata behavior without requiring
-real credentials.
-
-## Register the Provider Name
-
-Provider names are defined in `internal/llm/types.go`. Add a new constant if
-the provider is new, then import the package for side-effect registration from
-`cmd/san/main.go`:
-
-```go
-_ "github.com/genai-io/san/internal/llm/<provider>"
-```
-
-This makes the provider available to `/models` through the global registry.
-
-## Wire Credentials and Docs
-
-Add the required environment variable to the credentials table in `README.md`.
-For an API-key provider, use a row like:
-
-```markdown
-| **ProviderName** | `PROVIDER_API_KEY` |
-```
-
-If the provider supports a configurable base URL, document that near the
-provider package or in the relevant reference page when it changes user
-behavior.
-
-## Validation
-
-Before opening a PR:
-
-```bash
-go test ./internal/llm/<provider>/...
-go test ./internal/llm/...
-make ci
-```
-
-If local tools are unavailable, still run what you can and describe the
-environment limitation in the PR body.
-
-## Common Pitfalls
-
-- **Skipping registration.** If the package is not imported from
-  `cmd/san/main.go`, `/models` will not discover it.
-- **Live API tests.** Unit tests should not require a real provider key.
-- **Missing token limits.** Static catalog entries should include useful
-  `InputTokenLimit` and `OutputTokenLimit` values when known.
-- **Over-customizing conversions.** Reuse `openaicompat/` unless the provider
-  really needs a custom wire format.
-- **Forgetting docs.** Update the README credentials table and link any
-  provider-specific reference page the same PR introduces.
 
 ## See Also
 
-- [`packages/llm.md`](../packages/2-feature/llm.md) - LLM package contract.
-- [`reference/token-limits.md`](../reference/token-limits.md) - token-limit
-  sources and caching.
-- [`reference/cost-tracking.md`](../reference/cost-tracking.md) - cost
-  estimation behavior.
-- [`internal/llm/CATALOGS.md`](../../internal/llm/CATALOGS.md) - catalog
-  patterns.
+- [`packages/llm.md`](../packages/2-feature/llm.md) — the package design.
+- [SDK reference](https://pkg.go.dev/github.com/genai-io/sdk-go/pkg/ai).

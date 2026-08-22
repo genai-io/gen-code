@@ -15,23 +15,6 @@ import (
 	"github.com/genai-io/san/internal/app"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
-
-	// Import providers for registration
-	_ "github.com/genai-io/san/internal/llm/agnesai"
-	_ "github.com/genai-io/san/internal/llm/alibaba"
-	_ "github.com/genai-io/san/internal/llm/anthropic"
-	_ "github.com/genai-io/san/internal/llm/bigmodel"
-	_ "github.com/genai-io/san/internal/llm/copilot"
-	_ "github.com/genai-io/san/internal/llm/custom"
-	_ "github.com/genai-io/san/internal/llm/deepseek"
-	_ "github.com/genai-io/san/internal/llm/google"
-	_ "github.com/genai-io/san/internal/llm/mimo"
-	_ "github.com/genai-io/san/internal/llm/minmax"
-	_ "github.com/genai-io/san/internal/llm/moonshot"
-	_ "github.com/genai-io/san/internal/llm/ollama"
-	_ "github.com/genai-io/san/internal/llm/openai"
-	_ "github.com/genai-io/san/internal/llm/sensenova"
-	_ "github.com/genai-io/san/internal/llm/volcengine"
 )
 
 var version = "1.22.4"
