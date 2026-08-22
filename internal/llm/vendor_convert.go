@@ -244,7 +244,6 @@ func toModelInfo(m ai.Model) ModelInfo {
 		DisplayName:      m.Name,
 		InputTokenLimit:  m.ContextWindow,
 		OutputTokenLimit: m.MaxOutput,
-		Pricing:          toModelPricing(m.Pricing),
 		Stage:            toModelStage(m.Stage),
 		Replacement:      m.Replacement,
 		AcceptsImages:    m.Accepts(ai.ModalityImage),
@@ -266,20 +265,6 @@ func toModelInfo(m ai.Model) ModelInfo {
 		info.Reasoning = NewReasoningCapability(labels, fallback)
 	}
 	return info
-}
-
-// toModelPricing carries the vendor's published rate across. A model with no
-// card reports nil rather than zeros, because free and unstated are different
-// answers and the picker renders them differently.
-func toModelPricing(p ai.Pricing) *ModelPricing {
-	if p.Input <= 0 && p.Output <= 0 {
-		return nil
-	}
-	currency := Currency(p.Currency)
-	if currency == "" {
-		currency = CurrencyUSD
-	}
-	return &ModelPricing{Currency: currency, Input: p.Input, Output: p.Output}
 }
 
 // toModelStage maps the catalog's lifecycle onto San's. A retired model never

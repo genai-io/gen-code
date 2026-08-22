@@ -130,7 +130,7 @@ Model Studio is the exception that proves the shape: it publishes no window for
 any of its hundreds of models and answers per model instead, which is what
 `llm.ModelLimitsFetcher` exists for.
 
-`ModelInfo` carries the rest of a catalog row as facts — `Pricing`, `Stage`,
+`ModelInfo` carries the rest of a catalog row as facts — `Stage`,
 `Replacement`, `AcceptsImages`, `RejectsTools` — never as a rendering of them.
 The `/models` picker aligns the figures into columns and writes the labels
 itself (`modelLabels`), because prose stored in the cache would fix the wording

@@ -166,7 +166,6 @@ type ModelInfo struct {
 	InputTokenLimit  int                  `json:"inputTokenLimit,omitempty"`
 	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
 	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
-	Pricing          *ModelPricing        `json:"pricing,omitempty"`
 
 	// Stage, and the model to move to when it is deprecated.
 	Stage       ModelStage `json:"stage,omitempty"`

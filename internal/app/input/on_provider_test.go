@@ -1037,16 +1037,14 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 	}
 }
 
-// A model row is a grid: name, window, rate, then the labels. The window and
-// the rate are what models get compared on, so each takes an aligned column of
-// its own — and a model San could not size shows a warning in the window's
-// place, because without one the context percentage cannot render and
-// auto-compaction cannot fire.
+// A model row is a grid: name, window, then the labels. The window is what
+// models get compared on, so it takes an aligned column of its own — and a
+// model San could not size shows a warning in its place, because without one
+// the context percentage cannot render and auto-compaction cannot fire.
 func TestModelRowShowsTheGrid(t *testing.T) {
 	models := []providerModelItem{
 		{
 			ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000,
-			Pricing:       &llm.ModelPricing{Currency: llm.CurrencyUSD, Input: 5, Output: 25},
 			AcceptsImages: true, Thinks: true, IsCurrent: true,
 		},
 		{ID: "qwen3-max", DisplayName: "qwen3-max"},
@@ -1057,7 +1055,7 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 	if !strings.Contains(current, "[*]") {
 		t.Errorf("the current model is not marked: %q", current)
 	}
-	for _, want := range []string{"Claude Opus 5", "1.0M", "$5/$25", "vision · thinking"} {
+	for _, want := range []string{"Claude Opus 5", "1.0M", "vision · thinking"} {
 		if !strings.Contains(current, want) {
 			t.Errorf("row is missing %q: %q", want, current)
 		}
@@ -1076,20 +1074,16 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 // start in the same place however wide its own name and figures are.
 func TestModelRowsShareOneGrid(t *testing.T) {
 	models := []providerModelItem{
-		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true,
-			Pricing: &llm.ModelPricing{Currency: llm.CurrencyUSD, Input: 5, Output: 25}},
-		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, AcceptsImages: true,
-			Pricing: &llm.ModelPricing{Currency: llm.CurrencyCNY, Input: 4.2, Output: 16.8}},
-		{ID: "unpriced", DisplayName: "Narrow", InputTokenLimit: 204_800, AcceptsImages: true},
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true},
+		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, AcceptsImages: true},
+		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 16_000, AcceptsImages: true},
 	}
 	s, items := selectorWithModels(t, 100, models)
 
-	// Measured in columns, not bytes: "¥" is two bytes and one cell, and it is
-	// the column boundary that has to match.
 	var columns []int
 	for _, item := range items {
 		row := xansi.Strip(s.renderModelRow(item, false))
-		columns = append(columns, lipgloss.Width(row[:strings.Index(row, "vision")]))
+		columns = append(columns, strings.Index(row, "vision"))
 	}
 	for i := range columns {
 		if columns[i] != columns[0] {

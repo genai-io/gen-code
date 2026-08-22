@@ -74,7 +74,6 @@ type providerModelItem struct {
 	IsCurrent        bool
 	InputTokenLimit  int
 	OutputTokenLimit int
-	Pricing          *llm.ModelPricing
 	Stage            llm.ModelStage
 	Replacement      string
 	AcceptsImages    bool
@@ -92,7 +91,6 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
-		Pricing:          mdl.Pricing,
 		Stage:            mdl.Stage,
 		Replacement:      mdl.Replacement,
 		AcceptsImages:    mdl.AcceptsImages,

@@ -316,7 +316,6 @@ func (s *ProviderSelector) rebuildModelsTab() {
 // everything below it.
 type modelColumnWidths struct {
 	name int
-	rate int // 0 when nothing listed states a rate, which drops the column
 }
 
 const (
@@ -329,9 +328,9 @@ const (
 	// modelWindowColumnWidth fits the widest window any catalog states
 	// ("204.8k") and never varies, so windows line up on their units.
 	modelWindowColumnWidth = 6
-	// modelRowFixedWidth is everything on a row that is not the name or the
-	// rate: the selection prefix, the "[ ]" indicator, and the gaps around the
-	// window column.
+	// modelRowFixedWidth is everything on a row that is not the name: the
+	// selection prefix, the "[ ]" indicator, and the gaps around the window
+	// column.
 	modelRowFixedWidth = 4 + 3 + 2 + 2 + modelWindowColumnWidth
 )
 
@@ -344,15 +343,10 @@ func measureModelColumns(items []providerListItem, contentWidth int) modelColumn
 			continue
 		}
 		widths.name = max(widths.name, lipgloss.Width(modelDisplayName(*item.Model)))
-		widths.rate = max(widths.rate, lipgloss.Width(kit.FormatModelRate(item.Model.Pricing)))
 	}
 	widths.name = min(widths.name, modelNameColumnMax)
 
-	spent := modelRowFixedWidth + widths.rate
-	if widths.rate > 0 {
-		spent += 2 // the gap before the rate column
-	}
-	if room := contentWidth - spent; room < widths.name {
+	if room := contentWidth - modelRowFixedWidth; room < widths.name {
 		widths.name = max(room, modelNameColumnMin)
 	}
 	return widths

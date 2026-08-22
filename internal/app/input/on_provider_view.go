@@ -225,10 +225,9 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 		indicatorStyle = kit.SelectorStatusConnected()
 	}
 
-	// A grid, not a sentence. Name, window and rate are what models get
-	// compared on, so each takes a column of its own and the figures line up on
-	// their units; only the description, which has no shape to align, trails as
-	// free text.
+	// A grid, not a sentence. The name and the window each take a column of
+	// their own, so the windows line up on their units; only the labels, which
+	// have no shape to align, trail as free text.
 	cols := s.modelColumns
 	name := padRight(modelDisplayName(*m), cols.name)
 
@@ -242,12 +241,6 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	line := fmt.Sprintf("%s  %s  %s",
 		indicatorStyle.Render(indicator), name,
 		windowStyle.Render(padLeft(window, modelWindowColumnWidth)))
-
-	// The rate column is dropped entirely when nothing listed has a published
-	// card, rather than left as a band of blank space.
-	if cols.rate > 0 {
-		line += "  " + kit.DimStyle().Render(padLeft(kit.FormatModelRate(m.Pricing), cols.rate))
-	}
 
 	// Then what the catalog says about the model, in whatever room is left on
 	// the row, so a long list of labels never wraps.
