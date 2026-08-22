@@ -325,11 +325,11 @@ func customVendor() (catalog.Vendor, error) {
 		return catalog.Vendor{}, fmt.Errorf("custom provider not configured: set a base URL under /models > Providers > Custom")
 	}
 	return catalog.Vendor{
-		ID:          string(customProvider),
+		ID:          string(llm.CustomProvider),
 		DisplayName: "Custom",
 		API:         ai.APIOpenAIChat,
 		BaseURL:     cfg.BaseURL,
-		KeyEnv:      []string{customAPIKeyEnvVar},
+		KeyEnv:      []string{llm.CustomAPIKeyEnvVar},
 		Input:       []ai.Modality{ai.ModalityText, ai.ModalityImage},
 		Compat:      ai.OpenAIChatCompat{},
 	}, nil

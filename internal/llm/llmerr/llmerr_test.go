@@ -12,7 +12,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
-	"google.golang.org/genai"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -94,16 +93,6 @@ func TestWrapClassification(t *testing.T) {
 		{
 			name:          "openai 422 is fatal",
 			err:           &openai.Error{StatusCode: 422, Request: dummyReq(), Response: httpResp(422, nil)},
-			wantRetryable: false,
-		},
-		{
-			name:          "genai 503 is retryable (no Retry-After header available)",
-			err:           genai.APIError{Code: 503, Message: "unavailable"},
-			wantRetryable: true,
-		},
-		{
-			name:          "genai 404 is fatal",
-			err:           genai.APIError{Code: 404, Message: "model not found"},
 			wantRetryable: false,
 		},
 		{

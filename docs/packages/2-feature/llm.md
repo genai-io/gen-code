@@ -5,10 +5,12 @@ layer: feature
 
 # llm
 
-Provider registry, model store, and active-connection handle for every LLM backend
-(Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax, Z.ai/GLM, DeepSeek,
-Ollama, SenseNova, Volcengine Ark, Agnes-AI, plus the generic openai-compat shim). Provider implementations live in
-`internal/llm/<name>/` subpackages.
+Provider registry, model store, and active-connection handle for every LLM
+backend (Anthropic, OpenAI, GitHub Copilot, Google, Moonshot, Alibaba, MiniMax,
+Z.ai/GLM, DeepSeek, Ollama, SenseNova, Volcengine Ark, Xiaomi MiMo, Agnes-AI,
+plus a user-defined OpenAI-compatible endpoint). Reaching them is one adapter,
+`internal/llm/sdk`, over [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go);
+adding a vendor is a row in its table, not a package.
 
 ## Purpose
 
@@ -63,20 +65,12 @@ func ResetDefaultConn()       // test-only
   values when a provider advertises them; application resolution prefers that
   metadata and falls back to `ThinkingEffortProvider` for catalogs (such as the
   standard OpenAI `/v1/models` response) that omit reasoning capabilities.
-- `stream/` — provider-side helpers for SSE parsing.
-- Thinking is configured two different ways on the Anthropic protocol, and
-  which one a model wants is catalog data, not something to infer from the
-  model ID. Claude 4.6 and later take `thinking: {"type": "adaptive"}` with the
-  level in `output_config.effort`; everything older — and every
-  Anthropic-compatible third-party endpoint (MiniMax, Xiaomi MiMo, Volcengine
-  Ark), which implements only the older shape — takes
-  `thinking: {"type": "enabled", "budget_tokens": N}`. From Opus 4.7 on, a
-  budget is rejected with a 400 rather than merely deprecated, so the two are
-  not interchangeable. `anthropic/catalog.go` records the style per model and
-  defaults an unknown model to the budget shape, which is what keeps the
-  third-party endpoints working.
-- Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
-  `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `sensenova/`, `volcengine/`, `agnesai/`, `openaicompat/`.
+- `sdk/` — every vendor, served through
+  [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go). It is one adapter,
+  not one package per vendor: the wire protocols, their streaming shapes and
+  their reasoning dialects belong to the SDK's drivers, and what stays here is
+  the seam — `llm.Provider` on one side, `ai.Client` on the other, plus the
+  table saying which San provider is which catalog vendor.
 
 ## Lifecycle
 
@@ -89,22 +83,28 @@ func ResetDefaultConn()       // test-only
 
 ## Model catalogs
 
-Provider subpackages carry a small static catalog used as a fallback where the
-endpoint's `/models` response omits context windows — most OpenAI-compatible
-vendors return the bare `id`/`object`/`owned_by` shape and publish limits only
-in their docs. The live listing stays authoritative; the catalog fills gaps.
+The catalog is the SDK's — `ai/catalog`, one row per vendor, carrying endpoints,
+windows, prices, reasoning ladders and per-endpoint quirks as data. It is a
+fallback, not an authority: most OpenAI-compatible vendors return the bare
+`id`/`object`/`owned_by` shape and publish limits only in their docs, so the
+live listing wins on every field it states and the catalog fills the rest.
 
-Two rules keep the fallback honest:
+Three rules keep the fallback honest:
 
 - An unrecognised model reports **0**, not a blanket default. San treats 0 as
   "window unknown" and skips proactive compaction, which is recoverable; a
   guessed window is acted on silently and is wrong in both directions —
   guessing low burns context on every compaction, guessing high never fires.
-- Each catalog records the date its figures were last checked against the
+- A vendor that encodes the window in the model ID reads it from there rather
+  than reporting nothing, which is what `catalog.Vendor.Infer` is for. A model
+  that reaches a picker with no window is a defect, and a test asserts it.
+- Each vendor records the date its figures were last checked against the
   vendor's documentation, because a stale window or price reads exactly like a
-  fresh one.
+  fresh one; `catalog.Stale` reports the ones that have aged out.
 
-Catalogs were last verified against vendor documentation on **2026-08-20**.
+Model Studio is the exception that proves the shape: it publishes no window for
+any of its hundreds of models and answers per model instead, which is what
+`llm.ModelLimitsFetcher` exists for.
 
 ## Tests
 
@@ -112,6 +112,9 @@ Catalogs were last verified against vendor documentation on **2026-08-20**.
 internal/llm/llm_test.go        — Client.Infer plumbing.
 internal/llm/store_test.go      — provider config persistence.
 internal/llm/fake_llm.go        — test double consumed by other packages.
+internal/llm/sdk/sdk_test.go    — the seam, against stub endpoints.
+internal/llm/sdk/live_test.go   — one real turn per configured vendor,
+                                  opt-in via SAN_SDK_LIVE.
 ```
 
 ## See Also

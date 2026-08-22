@@ -16,23 +16,8 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 
-	// Import providers for registration
-	_ "github.com/genai-io/san/internal/llm/agnesai"
-	_ "github.com/genai-io/san/internal/llm/alibaba"
-	_ "github.com/genai-io/san/internal/llm/anthropic"
-	_ "github.com/genai-io/san/internal/llm/bigmodel"
-	_ "github.com/genai-io/san/internal/llm/copilot"
-	_ "github.com/genai-io/san/internal/llm/custom"
-	_ "github.com/genai-io/san/internal/llm/deepseek"
-	_ "github.com/genai-io/san/internal/llm/google"
-	_ "github.com/genai-io/san/internal/llm/mimo"
-	_ "github.com/genai-io/san/internal/llm/minmax"
-	_ "github.com/genai-io/san/internal/llm/moonshot"
-	_ "github.com/genai-io/san/internal/llm/ollama"
-	_ "github.com/genai-io/san/internal/llm/openai"
-	"github.com/genai-io/san/internal/llm/sdk"
-	_ "github.com/genai-io/san/internal/llm/sensenova"
-	_ "github.com/genai-io/san/internal/llm/volcengine"
+	// Providers register themselves; one import reaches every vendor.
+	_ "github.com/genai-io/san/internal/llm/sdk"
 )
 
 var version = "1.22.4"
@@ -57,13 +42,6 @@ var cliOpts struct {
 func init() {
 	// Load .env file if it exists (silent fail if not found)
 	_ = godotenv.Load()
-	// Serve every provider through the shared SDK when asked. It is a call
-	// rather than an import because the per-vendor packages above register
-	// themselves from init, and which of the two wins must not depend on the
-	// order Go happens to initialize them in.
-	if sdk.Enabled() {
-		sdk.Register()
-	}
 	// Initialize logging (enabled via SAN_DEBUG=1)
 	_ = log.Init()
 

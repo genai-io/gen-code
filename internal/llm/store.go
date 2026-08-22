@@ -44,9 +44,24 @@ type tokenLimitOverride struct {
 	OutputTokenLimit int `json:"outputTokenLimit"`
 }
 
+// The user-defined OpenAI-compatible provider.
+//
+// There is one of it, and its ID is fixed: a user-chosen name would add rename
+// bookkeeping without distinguishing anything. The two names below are what
+// identify it — in the store, in the secret store, and in the Providers tab —
+// and they live here beside the config they key rather than in whichever
+// package happens to open the connection.
+const (
+	// CustomProvider is the provider name the user-defined endpoint is
+	// registered and stored under.
+	CustomProvider Name = "custom"
+	// CustomAPIKeyEnvVar is where its credential is kept.
+	CustomAPIKeyEnvVar = "SAN_CUSTOM_API_KEY"
+)
+
 // CustomProviderConfig stores the user-defined OpenAI-compatible provider added
 // via the /models Providers tab. The API key is not kept here — it lives in the
-// secret store under the provider's env var.
+// secret store under CustomAPIKeyEnvVar.
 type CustomProviderConfig struct {
 	ID      string `json:"id"`
 	BaseURL string `json:"baseURL"`

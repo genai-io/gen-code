@@ -532,3 +532,31 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
 	}
 }
+
+// A guardrail, carried over from the per-vendor catalogs this replaces: every
+// model San offers in a picker must state a context window.
+//
+// A zero window is not a cosmetic gap. It is what "cannot size this
+// conversation" means: the context percentage cannot render and auto-compaction
+// cannot fire, both silently. A model whose window genuinely is not known
+// belongs in neither catalog — leave it to the endpoint's own listing, where
+// its absence is at least explained by the endpoint saying nothing.
+func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
+	for _, e := range entries {
+		if e.vendorID == "" || e.vendorID == alibabaVendor {
+			// The user-defined endpoint ships no models, and Model Studio
+			// answers per model — see TestModelStudioAnswersOneModelAtATime.
+			continue
+		}
+		vendor, ok := catalog.Find(e.vendorID)
+		if !ok {
+			t.Errorf("%s: no catalog vendor %q", providerName(e.meta), e.vendorID)
+			continue
+		}
+		for _, m := range ai.Available(vendor.ModelList()) {
+			if m.ContextWindow == 0 {
+				t.Errorf("%s: model %q states no context window", e.vendorID, m.ID)
+			}
+		}
+	}
+}

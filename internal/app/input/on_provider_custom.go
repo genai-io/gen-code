@@ -1,7 +1,7 @@
 // Provider selector: the custom (third-party, OpenAI-compatible) provider form.
 // Built-in providers only need an API key, so Enter opens the single inline
 // input; the custom provider also needs a baseURL, so it gets a two-field form
-// instead. The provider ID is fixed (custom.DefaultID) — there is only one
+// instead. The provider ID is fixed (llm.CustomProvider) — there is only one
 // custom provider, so a user-chosen ID would add rename bookkeeping without
 // distinguishing anything.
 package input
@@ -15,7 +15,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/custom"
 	"github.com/genai-io/san/internal/secret"
 )
 
@@ -28,7 +27,7 @@ const (
 
 // isCustomProvider reports whether name is the custom provider's fixed name.
 func (s *ProviderSelector) isCustomProvider(name llm.Name) bool {
-	return name == llm.Name(custom.DefaultID)
+	return name == llm.CustomProvider
 }
 
 // openCustomForm initializes the inline form, prefilled from the saved config.
@@ -50,7 +49,7 @@ func (s *ProviderSelector) openCustomForm() {
 	urlInput.Focus()
 
 	keyInput := textinput.New()
-	keyInput.Placeholder = custom.APIKeyEnvVar
+	keyInput.Placeholder = llm.CustomAPIKeyEnvVar
 	keyInput.CharLimit = 256
 	keyInput.SetWidth(40)
 	keyInput.EchoMode = textinput.EchoPassword
@@ -105,7 +104,7 @@ func (s *ProviderSelector) validateCustomForm() (baseURL, apiKey string, err err
 	}
 
 	apiKey = strings.TrimSpace(s.customFormInputs[customFormFieldAPIKey].Value())
-	if apiKey == "" && secret.Resolve(custom.APIKeyEnvVar) == "" {
+	if apiKey == "" && secret.Resolve(llm.CustomAPIKeyEnvVar) == "" {
 		return "", "", fmt.Errorf("API key is required")
 	}
 	return baseURL, apiKey, nil
@@ -123,12 +122,12 @@ func (s *ProviderSelector) submitCustomForm() tea.Cmd {
 
 	if apiKey != "" {
 		if store := secret.Default(); store != nil {
-			_ = store.Set(custom.APIKeyEnvVar, apiKey)
+			_ = store.Set(llm.CustomAPIKeyEnvVar, apiKey)
 		}
-		os.Setenv(custom.APIKeyEnvVar, apiKey)
+		os.Setenv(llm.CustomAPIKeyEnvVar, apiKey)
 	}
 
-	if err := s.store.SetCustomProvider(llm.CustomProviderConfig{ID: custom.DefaultID, BaseURL: baseURL}); err != nil {
+	if err := s.store.SetCustomProvider(llm.CustomProviderConfig{ID: string(llm.CustomProvider), BaseURL: baseURL}); err != nil {
 		s.customFormErr = err.Error()
 		return nil
 	}
@@ -140,7 +139,7 @@ func (s *ProviderSelector) submitCustomForm() tea.Cmd {
 	s.rebuildVisibleItems()
 	for i := range s.allProviders {
 		p := &s.allProviders[i]
-		if p.Provider != llm.Name(custom.DefaultID) || len(p.AuthMethods) != 1 {
+		if p.Provider != llm.CustomProvider || len(p.AuthMethods) != 1 {
 			continue
 		}
 		for vi, item := range s.visibleItems {

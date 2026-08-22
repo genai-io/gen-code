@@ -16,4 +16,3 @@ Look up a specific fact. For explanations see
 | [`loop`](loop.md) | The `/loop` scheduling command. |
 | [`file-naming`](file-naming.md) | Repo file-naming rules. |
 | [`claude-permission-compat`](claude-permission-compat.md) | Claude-Code-compatible permission rule syntax. |
-| [`minmax-provider`](minmax-provider.md) | MiniMax provider integration design. |

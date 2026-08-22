@@ -33,7 +33,7 @@ explanations here.
   permission rule syntax.
 - `reference/token-limits.md`, `reference/cost-tracking.md`,
   `reference/cli-startup.md`, `reference/loop.md`,
-  `reference/file-naming.md`, `reference/minmax-provider.md`.
+  `reference/file-naming.md`.
 
 - `guides/index.md` — task how-tos: getting started, the inspector, explore
   mode, and writing skills / subagents / plugins / providers.

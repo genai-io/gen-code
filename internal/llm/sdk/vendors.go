@@ -3,8 +3,6 @@ package sdk
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
@@ -42,26 +40,22 @@ type entry struct {
 
 // displays are the provider-level UI rows, one per San provider.
 var displays = map[llm.Name]llm.ProviderDisplay{
-	llm.Anthropic:  {Name: "Anthropic", Order: 10},
-	llm.OpenAI:     {Name: "OpenAI", Order: 20},
-	llm.Copilot:    {Name: "GitHub Copilot", Order: 25},
-	llm.Google:     {Name: "Google", Order: 30},
-	llm.DeepSeek:   {Name: "DeepSeek", Order: 40},
-	llm.SenseNova:  {Name: "SenseNova", Order: 50},
-	llm.MinMax:     {Name: "MiniMax", Order: 60},
-	llm.Moonshot:   {Name: "Moonshot", Order: 70},
-	llm.Alibaba:    {Name: "Alibaba", Order: 80},
-	llm.BigModel:   {Name: "Z.ai (GLM series)", Order: 90},
-	llm.Ollama:     {Name: "Ollama (Local)", Order: 100},
-	llm.Mimo:       {Name: "Xiaomi MiMo", Order: 110},
-	llm.Volcengine: {Name: "Volcengine Ark", Order: 120},
-	llm.AgnesAI:    {Name: "Agnes-AI", Order: 130},
-	customProvider: {Name: "Custom", Order: 140},
+	llm.Anthropic:      {Name: "Anthropic", Order: 10},
+	llm.OpenAI:         {Name: "OpenAI", Order: 20},
+	llm.Copilot:        {Name: "GitHub Copilot", Order: 25},
+	llm.Google:         {Name: "Google", Order: 30},
+	llm.DeepSeek:       {Name: "DeepSeek", Order: 40},
+	llm.SenseNova:      {Name: "SenseNova", Order: 50},
+	llm.MinMax:         {Name: "MiniMax", Order: 60},
+	llm.Moonshot:       {Name: "Moonshot", Order: 70},
+	llm.Alibaba:        {Name: "Alibaba", Order: 80},
+	llm.BigModel:       {Name: "Z.ai (GLM series)", Order: 90},
+	llm.Ollama:         {Name: "Ollama (Local)", Order: 100},
+	llm.Mimo:           {Name: "Xiaomi MiMo", Order: 110},
+	llm.Volcengine:     {Name: "Volcengine Ark", Order: 120},
+	llm.AgnesAI:        {Name: "Agnes-AI", Order: 130},
+	llm.CustomProvider: {Name: "Custom", Order: 140},
 }
-
-// customProvider is the user-defined OpenAI-compatible endpoint, whose host is
-// configured in the app rather than published in any catalog.
-const customProvider llm.Name = "custom"
 
 var entries = []entry{
 	{
@@ -129,47 +123,29 @@ var entries = []entry{
 		vendorID: "mimo",
 	},
 	{
-		meta:     llm.Meta{Provider: llm.Volcengine, AuthMethod: llm.AuthAPIKey, EnvVars: []string{"VOLCENGINE_API_KEY"}, DisplayName: "Bearer Token API"},
-		vendorID: "volcengine",
+		meta:      llm.Meta{Provider: llm.Volcengine, AuthMethod: llm.AuthAPIKey, EnvVars: []string{"VOLCENGINE_API_KEY"}, DisplayName: "Bearer Token API"},
+		vendorID:  "volcengine",
+		configure: configureVolcengine,
 	},
 	{
 		meta:     llm.Meta{Provider: llm.AgnesAI, AuthMethod: llm.AuthAPIKey, EnvVars: []string{"AGNESAI_API_KEY"}, DisplayName: "Direct API"},
 		vendorID: "agnesai",
 	},
 	{
-		meta:      llm.Meta{Provider: customProvider, AuthMethod: llm.AuthAPIKey, EnvVars: []string{customAPIKeyEnvVar}, DisplayName: "Direct API"},
+		meta:      llm.Meta{Provider: llm.CustomProvider, AuthMethod: llm.AuthAPIKey, EnvVars: []string{llm.CustomAPIKeyEnvVar}, DisplayName: "Direct API"},
 		configure: configureCustom,
 	},
 }
 
-// customAPIKeyEnvVar is where the user-defined endpoint's key is kept. It
-// matches the existing custom provider's key so a configured endpoint keeps
-// working across the switch.
-const customAPIKeyEnvVar = "SAN_CUSTOM_API_KEY"
-
-// EnvVar switches San's providers over to this package.
+// init registers every vendor in the table, so a blank import is what makes
+// San's providers reachable:
 //
-// It is a switch rather than a build tag because the two implementations have
-// to be comparable at run time: the same session, the same credentials, one
-// environment variable apart. It goes away with the per-vendor packages.
-const EnvVar = "SAN_LLM_SDK"
-
-// Enabled reports whether providers should be served through the SDK.
-func Enabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvVar))) {
-	case "", "0", "false", "off", "no":
-		return false
-	default:
-		return true
-	}
-}
+//	_ "github.com/genai-io/san/internal/llm/sdk"
+func init() { Register() }
 
 // Register makes every vendor in the table reachable through San's provider
-// registry, replacing whatever is registered for the same provider/auth pair.
-//
-// It is called rather than run from init so the replacement is ordered: the
-// per-vendor packages register themselves from their own init, and which of
-// the two wins must not depend on import order.
+// registry. Exported for a test that needs the registry populated and would
+// rather say so than blank-import a package for its side effect alone.
 func Register() {
 	for name, display := range displays {
 		llm.RegisterProviderDisplay(name, display)
@@ -258,6 +234,26 @@ func configureBigModelCoding(_ catalog.Vendor, cfg *sdkprovider.Config) error {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	}
+	return nil
+}
+
+// VolcengineModelEnvVar names the Ark model this account is provisioned for.
+//
+// Ark serves models through per-account endpoints, so there is no catalog to
+// list and its own listing answers for the account rather than for the
+// product. Naming the one model is how an Ark user says what they have.
+const VolcengineModelEnvVar = "VOLCENGINE_MODEL"
+
+// configureVolcengine seeds the endpoint with the model this account names, so
+// the picker has something to show even when Ark's listing says nothing.
+func configureVolcengine(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
+	modelID := secret.Resolve(VolcengineModelEnvVar)
+	if modelID == "" {
+		return nil
+	}
+	// Through the vendor, so the window is read out of the model ID the way it
+	// is for every other Ark model.
+	cfg.Models = []ai.Model{vendor.Model(modelID)}
 	return nil
 }
 

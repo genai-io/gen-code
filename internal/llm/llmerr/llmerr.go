@@ -16,7 +16,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
-	"google.golang.org/genai"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -181,14 +180,6 @@ func classify(err error) (class, time.Duration) {
 	if errors.As(err, &oaiErr) {
 		return fromStatus(oaiErr.StatusCode, oaiErr.Response)
 	}
-	var gErr genai.APIError
-	if errors.As(err, &gErr) {
-		// genai.APIError exposes no response headers, so there is no
-		// Retry-After to honor — fall back to plain backoff.
-		c, _ := fromStatus(gErr.Code, nil)
-		return c, 0
-	}
-
 	// Transport-level failures with no HTTP status: connection dropped,
 	// refused, reset, or a timeout. All worth a retry.
 	if isNetworkError(err) {
