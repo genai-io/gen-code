@@ -14,6 +14,7 @@
 //	vendors.go    which San provider is which catalog vendor, and how to reach it
 //	auth.go       interactive sign-in, kept in San's own credential store
 //	codex.go      the one endpoint that publishes its models its own way
+//	dashscope.go  the one endpoint that publishes a window per model
 package sdk
 
 import (
@@ -213,6 +214,9 @@ func (p *Provider) model(modelID string) ai.Model {
 	return m
 }
 
+// ListModels resolves each entry the same way, so a model's window in the
+// picker is the one inference will use.
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -223,15 +227,22 @@ func (p *Provider) model(modelID string) ai.Model {
 // answers from it when the fetch fails, and one without — an aggregator, a
 // local Ollama, a user's own endpoint — reports the failure, because there is
 // nothing else to show and a silent empty list reads as a working connection.
+//
+// Every entry is resolved through the vendor rather than taken from the
+// listing as it arrived. Most endpoints publish an ID and nothing else, and a
+// vendor knows how to size a model its own listing says nothing about — from
+// its table, or from the ID itself. Reading the listing raw reports no window
+// for those, which switches off the context percentage and auto-compaction
+// without saying why.
 func (p *Provider) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	if err := p.refresh(ctx); err != nil && len(p.vendor.Models) == 0 {
 		return nil, err
 	}
 
-	models := ai.Available(p.endpoint.Models())
-	out := make([]llm.ModelInfo, len(models))
-	for i, m := range models {
-		out[i] = toModelInfo(m)
+	listed := ai.Available(p.endpoint.Models())
+	out := make([]llm.ModelInfo, 0, len(listed))
+	for _, m := range listed {
+		out = append(out, toModelInfo(sdkprovider.MergeListing(p.vendor.Model(m.ID), m)))
 	}
 	return out, nil
 }
@@ -309,4 +320,5 @@ var (
 	_ llm.ThinkingEffortProvider    = (*Provider)(nil)
 	_ llm.ImageSupportProvider      = (*Provider)(nil)
 	_ llm.PromptPrefixCacheProvider = (*Provider)(nil)
+	_ llm.ModelLimitsFetcher        = (*Provider)(nil)
 )

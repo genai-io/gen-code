@@ -443,3 +443,92 @@ func TestThinkingIsReplayedOnlyWhereItCanBe(t *testing.T) {
 		t.Errorf("unsigned thinking reached an Anthropic request: %+v", messages)
 	}
 }
+
+// listing serves an OpenAI-compatible model list and nothing else.
+func listing(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
+	// What most OpenAI-compatible endpoints publish: an ID, and nothing that
+	// would let a caller size the context window.
+	server := listing(t, `{"object":"list","data":[{"id":"glm-4.7","object":"model"},{"id":"glm-9-imaginary","object":"model"}]}`)
+
+	vendor, ok := catalog.Find("bigmodel")
+	if !ok {
+		t.Fatal("the catalog has no bigmodel vendor")
+	}
+	p := newProvider("bigmodel:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	byID := map[string]llm.ModelInfo{}
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+
+	// One the vendor lists: its window comes from the catalog row.
+	listed, present := byID["glm-4.7"]
+	if !present {
+		t.Fatalf("glm-4.7 is missing from %+v", models)
+	}
+	if listed.InputTokenLimit == 0 {
+		t.Error("a listed model reached the picker with no window; the context " +
+			"percentage and auto-compaction both go quiet when that happens")
+	}
+	if listed.Reasoning == nil {
+		t.Error("a listed model reached the picker with no reasoning ladder")
+	}
+
+	// One it does not: the vendor still sizes it from the ID.
+	unlisted, present := byID["glm-9-imaginary"]
+	if !present {
+		t.Fatalf("an unlisted model was dropped from the listing: %+v", models)
+	}
+	if unlisted.InputTokenLimit != 0 {
+		t.Errorf("glm-9-imaginary window = %d; the vendor cannot size an ID it "+
+			"does not recognise, and a guess is worse than nothing", unlisted.InputTokenLimit)
+	}
+}
+
+func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"qwen3.8-max","extra_info":{"default_envs":{"max_input_tokens":129024,"max_output_tokens":8192}}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	vendor, ok := catalog.Find("alibaba")
+	if !ok {
+		t.Fatal("the catalog has no alibaba vendor")
+	}
+	p := newProvider("alibaba:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	in, out, err := p.FetchModelLimits(context.Background(), "qwen3.8-max")
+	if err != nil {
+		t.Fatalf("FetchModelLimits: %v", err)
+	}
+	if in != 129024 || out != 8192 {
+		t.Errorf("limits = %d/%d, want the figures the endpoint reported", in, out)
+	}
+	if !strings.HasSuffix(path, "/models/qwen3.8-max") {
+		t.Errorf("asked %q, want the per-model detail path", path)
+	}
+
+	// Every other vendor says so rather than spending a round trip to find out.
+	deepseek, _ := catalog.Find("deepseek")
+	other := newProvider("deepseek:api_key", deepseek, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	if _, _, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err == nil {
+		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
+	}
+}
