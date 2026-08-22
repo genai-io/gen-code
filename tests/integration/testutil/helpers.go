@@ -15,9 +15,9 @@ import (
 // Client helpers
 // ---------------------------------------------------------------------------
 
-// NewTestClient fixes a model on a FakeLLM, ready for use in loops or compact
-// calls. llm.FakeLLM is a llm.Provider, so there is nothing to adapt.
-func NewTestClient(fake *llm.FakeLLM) *llm.Client {
+// NewTestClient fixes a model on a FakeProvider, ready for use in loops or
+// compact calls.
+func NewTestClient(fake *FakeProvider) *llm.Client {
 	return llm.NewClient(fake, "fake-model", 8192)
 }
 
@@ -102,30 +102,3 @@ func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolre
 // ---------------------------------------------------------------------------
 // Fake / mock providers
 // ---------------------------------------------------------------------------
-
-// MockProvider is a standalone llm.Provider backed by a response queue. Unlike
-// llm.FakeLLM it records nothing — use it when the code under test (e.g.
-// agent.Executor) builds its own client internally and the test only needs a
-// provider that answers.
-type MockProvider struct {
-	Responses []llm.CompletionResponse
-	callIdx   int
-}
-
-func (m *MockProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk, 1)
-	go func() {
-		defer close(ch)
-		var resp llm.CompletionResponse
-		if m.callIdx < len(m.Responses) {
-			resp = m.Responses[m.callIdx]
-			m.callIdx++
-		} else {
-			resp = llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
-		}
-		ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &resp}
-	}()
-	return ch
-}
-func (m *MockProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
-func (m *MockProvider) Name() string                                          { return "mock" }

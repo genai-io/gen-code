@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
@@ -87,10 +88,7 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 	current := store.GetCurrentModel()
 
 	s.allModels = nil
-	allCached := store.GetAllCachedModels()
-	if len(allCached) == 0 {
-		allCached = store.GetAllCachedModelsIncludeExpired()
-	}
+	allCached := store.CachedModelsByProvider()
 
 	if len(allCached) > 0 {
 		s.loadModelsCached(allCached, current)
@@ -302,6 +300,74 @@ func (s *ProviderSelector) rebuildModelsTab() {
 			})
 		}
 	}
+
+	s.modelColumns = measureModelColumns(s.visibleItems, s.panel().ContentWidth())
+}
+
+// modelColumnWidths sizes the Models tab grid.
+//
+// The widths are measured from what is actually listed rather than fixed, for
+// two reasons. A fixed name column is either too narrow for the longest ID a
+// vendor ships — Ollama and the aggregators serve names past 50 columns — which
+// pushes that row's figures out of line with every other row, or too wide for
+// the rest, which strands the figures far from the names. And the whole row has
+// to fit the panel: a row wider than the overlay wraps, and the list code
+// assumes one line per item, so a wrapped row desynchronizes scrolling for
+// everything below it.
+type modelColumnWidths struct {
+	name int
+	rate int // 0 when nothing listed states a rate, which drops the column
+}
+
+const (
+	// modelNameColumnMax bounds the name column so one very long ID cannot
+	// strand the figures at the right edge. Anything past it is truncated.
+	modelNameColumnMax = 34
+	// modelNameColumnMin keeps the name readable when the panel is too narrow
+	// to give every column what it asked for.
+	modelNameColumnMin = 12
+	// modelWindowColumnWidth fits the widest window any catalog states
+	// ("204.8k") and never varies, so windows line up on their units.
+	modelWindowColumnWidth = 6
+	// modelRowFixedWidth is everything on a row that is not the name or the
+	// rate: the selection prefix, the "[ ]" indicator, and the gaps around the
+	// window column.
+	modelRowFixedWidth = 4 + 3 + 2 + 2 + modelWindowColumnWidth
+)
+
+// measureModelColumns sizes the grid to the rows it will hold, then shrinks the
+// name column until the whole row fits contentWidth.
+func measureModelColumns(items []providerListItem, contentWidth int) modelColumnWidths {
+	var widths modelColumnWidths
+	for _, item := range items {
+		if item.Kind != providerItemModel || item.Model == nil {
+			continue
+		}
+		widths.name = max(widths.name, lipgloss.Width(modelDisplayName(*item.Model)))
+		widths.rate = max(widths.rate, lipgloss.Width(kit.FormatModelRate(item.Model.Pricing)))
+	}
+	widths.name = min(widths.name, modelNameColumnMax)
+
+	spent := modelRowFixedWidth + widths.rate
+	if widths.rate > 0 {
+		spent += 2 // the gap before the rate column
+	}
+	if room := contentWidth - spent; room < widths.name {
+		widths.name = max(room, modelNameColumnMin)
+	}
+	return widths
+}
+
+// modelDisplayName is what a row calls a model: whatever name the provider
+// gave it, falling back to the raw ID.
+func modelDisplayName(m providerModelItem) string {
+	if m.DisplayName != "" {
+		return m.DisplayName
+	}
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.ID
 }
 
 // sortProviderModelsByNameDescending keeps each provider's model picker in a

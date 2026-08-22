@@ -45,6 +45,20 @@ const (
 	CurrencyUSD Currency = "USD"
 )
 
+// ModelPricing is a model's published rate per million tokens: the vendor's
+// list card, not an invoice. A vendor that discounts by time of day or by
+// region says so in its own note, and a turn's actual cost comes from
+// EstimateCost.
+//
+// It is carried as numbers rather than as a rendered string because the picker
+// aligns rates into a column, and because a string baked into the cached model
+// listing would outlive the card it came from.
+type ModelPricing struct {
+	Currency Currency `json:"currency,omitempty"`
+	Input    float64  `json:"input,omitempty"`
+	Output   float64  `json:"output,omitempty"`
+}
+
 // Money is one amount in one currency — what a single provider charges for a
 // single call. Amounts are not summed across currencies; see CostTotal.
 type Money struct {

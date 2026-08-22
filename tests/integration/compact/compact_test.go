@@ -11,8 +11,8 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
-func newFakeClient(responses ...llm.CompletionResponse) (*llm.Client, *llm.FakeLLM) {
-	fake := &llm.FakeLLM{Responses: responses}
+func newFakeClient(responses ...llm.CompletionResponse) (*llm.Client, *testutil.FakeProvider) {
+	fake := &testutil.FakeProvider{Responses: responses}
 	return testutil.NewTestClient(fake), fake
 }
 

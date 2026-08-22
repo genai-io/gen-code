@@ -23,32 +23,30 @@ import (
 // Classify tags a provider failure with what the agent loop needs to know
 // about it. A failure of no recognized kind is returned unchanged, which
 // leaves it fatal — the conservative call for a call that completed.
-func Classify(err error) error { return classify(err, ai.KindUnknown) }
+func Classify(err error) error {
+	return tag(err, ai.Classify("", 0, nil, "", "", err))
+}
 
-// ClassifyStream is Classify for an error that terminated a stream. A
-// streaming transport routinely loses its typed error at the SDK boundary, so
-// an otherwise unrecognized terminal error counts as a transport failure and
-// becomes retryable; one that did classify keeps its own category.
-func ClassifyStream(err error) error { return classify(err, ai.KindNetwork) }
+// classifyStream is Classify for an error that terminated a stream, where a
+// transport routinely loses the typed error. The SDK owns that rule —
+// ai.StreamError is ai.Classify plus "an unrecognized terminal failure is a
+// transport failure" — so San does not keep a second copy of it.
+func classifyStream(err error) error {
+	return tag(err, ai.StreamError("", 0, nil, "", "", err))
+}
 
-// classify tags err from the SDK's reading of it. unknownAs is what an
-// unclassifiable failure counts as. Cancellation and an already-tagged error
-// are returned untouched: the first is the user's own interrupt, and the
-// second was tagged where more was known about it.
-func classify(err error, unknownAs ai.ErrorKind) error {
+// tag translates the SDK's reading of err onto the two interfaces core
+// understands, wrapping the original rather than the *ai.Error so the
+// provider's own message and error chain stay intact.
+//
+// Cancellation and an already-tagged error pass through untouched: the first
+// is the user's own interrupt, and the second was tagged where more was known
+// about it.
+func tag(err error, classified *ai.Error) error {
 	if err == nil || errors.Is(err, context.Canceled) || tagged(err) {
 		return err
 	}
-
-	// Reading the classification rather than returning the *ai.Error it comes
-	// in keeps the provider's own message and error chain intact.
-	classified := ai.Classify("", 0, nil, "", "", err)
-	kind := classified.Kind
-	if kind == ai.KindUnknown {
-		kind = unknownAs
-	}
-
-	switch kind {
+	switch classified.Kind {
 	case ai.KindContextExceeded:
 		return contextExceeded{err}
 	case ai.KindRateLimit:

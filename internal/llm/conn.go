@@ -48,18 +48,6 @@ func Initialize() {
 	}
 }
 
-// SetDefaultConn replaces the package-level *Conn. Intended for tests. A nil
-// argument restores a fresh empty *Conn.
-func SetDefaultConn(c *Conn) {
-	if c == nil {
-		c = &Conn{}
-	}
-	defaultConn = c
-}
-
-// ResetDefaultConn restores a fresh empty *Conn. Intended for tests.
-func ResetDefaultConn() { defaultConn = &Conn{} }
-
 // ---------------------------------------------------------------------------
 // Accessors (mutex-protected)
 // ---------------------------------------------------------------------------
@@ -107,11 +95,6 @@ func (c *Conn) Store() *Store {
 // NewClient builds a one-shot *Client for the active provider.
 func (c *Conn) NewClient(model string, maxTokens int) *Client {
 	return NewClient(c.Provider(), model, maxTokens)
-}
-
-// ListProviders reports every known provider with its connection status.
-func (c *Conn) ListProviders() map[ProviderID][]AuthMethodStatus {
-	return GetProvidersWithStatus(c.Store())
 }
 
 // ---------------------------------------------------------------------------

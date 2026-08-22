@@ -130,7 +130,7 @@ func TestLLMNameAndModelID(t *testing.T) {
 
 func TestResolveMaxTokens_CustomOverride(t *testing.T) {
 	l := &Client{provider: &mockLLMProvider{}, model: "m", maxTokens: 16384}
-	got := l.ResolveMaxTokens(context.Background())
+	got := l.effectiveMaxTokens()
 	if got != 16384 {
 		t.Errorf("expected 16384, got %d", got)
 	}
@@ -145,7 +145,7 @@ func TestResolveMaxTokens_FromProvider(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "claude-sonnet"} // maxTokens = 0
 
-	got := l.ResolveMaxTokens(context.Background())
+	got := l.effectiveMaxTokens()
 	if got != 64000 {
 		t.Errorf("expected 64000, got %d", got)
 	}
@@ -159,7 +159,7 @@ func TestResolveMaxTokens_Fallback(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "unknown-model"} // no match
 
-	got := l.ResolveMaxTokens(context.Background())
+	got := l.effectiveMaxTokens()
 	if got != defaultMaxTokens {
 		t.Errorf("expected default %d, got %d", defaultMaxTokens, got)
 	}
@@ -179,14 +179,14 @@ func TestModelLimitsMemoized(t *testing.T) {
 		if got := l.InputLimit(); got != 200000 {
 			t.Fatalf("InputLimit call %d = %d, want 200000", i, got)
 		}
-		if got := l.ResolveMaxTokens(context.Background()); got != 8000 {
+		if got := l.effectiveMaxTokens(); got != 8000 {
 			t.Fatalf("ResolveMaxTokens call %d = %d, want 8000", i, got)
 		}
 	}
-	// One ListModels for the input limit + one for the output limit = 2 total,
-	// regardless of how many times the limits are queried.
-	if mp.listCalls != 2 {
-		t.Errorf("ListModels called %d times across 5 rounds, want 2 (memoized)", mp.listCalls)
+	// One listing states both limits, so one call answers everything —
+	// regardless of how many times either is queried.
+	if mp.listCalls != 1 {
+		t.Errorf("ListModels called %d times across 5 rounds, want 1 (memoized)", mp.listCalls)
 	}
 }
 
@@ -256,23 +256,24 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "m"}
 
-	got := l.ResolveMaxTokens(context.Background())
+	got := l.effectiveMaxTokens()
 	if got != 128000 {
 		t.Errorf("expected 128000, got %d", got)
 	}
 }
 
-func TestInputLimitFromModelLimitsFetcher(t *testing.T) {
+// A listing that states no window sends the resolver to the endpoint that
+// answers per model — Model Studio publishes limits nowhere else.
+func TestModelLimitsFallBackToTheFetcher(t *testing.T) {
 	mp := &mockLimitFetcherProvider{
-		mockLLMProvider: mockLLMProvider{
-			models: []ModelInfo{{ID: "m"}},
-		},
-		inputLimit: 400000,
+		mockLLMProvider: mockLLMProvider{models: []ModelInfo{{ID: "m"}}},
+		inputLimit:      400000,
+		outputLimit:     8192,
 	}
 
-	got := inputLimitFromProvider(mp, "m")
-	if got != 400000 {
-		t.Errorf("expected 400000, got %d", got)
+	in, out := resolveModelLimits(mp, "m")
+	if in != 400000 || out != 8192 {
+		t.Errorf("resolveModelLimits() = (%d, %d), want (400000, 8192)", in, out)
 	}
 }
 
@@ -299,35 +300,31 @@ func TestCompletionOptsIncludesThinkingEffort(t *testing.T) {
 	}
 }
 
-func TestOutputLimitFromProviderNil(t *testing.T) {
-	got := outputLimitFromProvider(nil, "m")
-	if got != 0 {
-		t.Fatalf("expected nil provider to return 0, got %d", got)
+// Unknown has to stay 0 rather than become a guess: a guessed window is acted
+// on silently and is wrong in both directions.
+func TestModelLimitsReportUnknownAsZero(t *testing.T) {
+	if in, out := resolveModelLimits(nil, "m"); in != 0 || out != 0 {
+		t.Errorf("no provider = (%d, %d), want (0, 0)", in, out)
+	}
+	if in, out := resolveModelLimits(&mockLLMProvider{listErr: errors.New("boom")}, "m"); in != 0 || out != 0 {
+		t.Errorf("failed listing = (%d, %d), want (0, 0)", in, out)
 	}
 }
 
-func TestOutputLimitFromProviderListModelsError(t *testing.T) {
-	got := outputLimitFromProvider(&mockLLMProvider{listErr: errors.New("boom")}, "m")
-	if got != 0 {
-		t.Fatalf("expected ListModels error to return 0, got %d", got)
-	}
-}
+// One listing answers both questions; resolving them separately paid for the
+// same round-trip twice.
+func TestModelLimitsResolveBothFromOneListing(t *testing.T) {
+	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", InputTokenLimit: 200000, OutputTokenLimit: 8192}}}
+	l := &Client{provider: mp, model: "m"}
 
-func TestAddUsageIncludesCacheTokens(t *testing.T) {
-	l := &Client{}
-	l.AddUsage(Usage{
-		InputTokens:              10,
-		OutputTokens:             5,
-		CacheCreationInputTokens: 7,
-		CacheReadInputTokens:     3,
-	})
-
-	got := l.Tokens()
-	if got.InputTokens != 10 || got.OutputTokens != 5 {
-		t.Fatalf("unexpected base usage: %+v", got)
+	if got := l.InputLimit(); got != 200000 {
+		t.Fatalf("InputLimit() = %d, want 200000", got)
 	}
-	if got.CacheCreationInputTokens != 7 || got.CacheReadInputTokens != 3 {
-		t.Fatalf("unexpected cache usage: %+v", got)
+	if got := l.effectiveMaxTokens(); got != 8192 {
+		t.Fatalf("effectiveMaxTokens() = %d, want 8192", got)
+	}
+	if mp.listCalls != 1 {
+		t.Errorf("ListModels called %d times, want 1", mp.listCalls)
 	}
 }
 

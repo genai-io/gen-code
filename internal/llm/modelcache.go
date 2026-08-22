@@ -71,34 +71,34 @@ func (s *Store) GetCachedModels(provider ProviderID, authMethod AuthMethod) ([]M
 	return cache.Models, true
 }
 
-// GetAllCachedModels returns all cached models grouped by provider key
-func (s *Store) GetAllCachedModels() map[string][]ModelInfo {
+// CachedModelsByProvider returns every cached listing, keyed by
+// provider:auth_method.
+//
+// Fresh entries win; the expired ones are handed back only when nothing is
+// fresh, which is what lets the picker draw immediately from a stale cache
+// instead of blocking on a refresh. Both halves are gathered in one locked
+// pass, so the two answers cannot come from two different moments — and an
+// empty listing counts as nothing either way, whatever its age.
+func (s *Store) CachedModelsByProvider() map[string][]ModelInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make(map[string][]ModelInfo)
+	fresh := make(map[string][]ModelInfo)
+	stale := make(map[string][]ModelInfo)
 	for key, cache := range s.data.Models {
-		if time.Since(cache.CachedAt) > modelCacheTTL {
+		if len(cache.Models) == 0 {
 			continue
 		}
-		result[key] = cache.Models
-	}
-	return result
-}
-
-// GetAllCachedModelsIncludeExpired returns all cached models regardless of TTL.
-// Used to show stale data immediately rather than blocking the UI.
-func (s *Store) GetAllCachedModelsIncludeExpired() map[string][]ModelInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string][]ModelInfo)
-	for key, cache := range s.data.Models {
-		if len(cache.Models) > 0 {
-			result[key] = cache.Models
+		if time.Since(cache.CachedAt) > modelCacheTTL {
+			stale[key] = cache.Models
+		} else {
+			fresh[key] = cache.Models
 		}
 	}
-	return result
+	if len(fresh) > 0 {
+		return fresh
+	}
+	return stale
 }
 
 // RemoveCachedModels removes cached models for a provider and auth method.
@@ -148,31 +148,37 @@ func (s *Store) CachedModelDisplayName(id string) string {
 	return raw
 }
 
-// CachedModelLimitsForProvider returns the token limits for a model ID from a
-// single provider/auth cache, ignoring TTL. Returns (0, 0) when that cache has
-// no entry reporting a context window for the ID.
+// cachedModel returns one model's cached record from a single provider/auth
+// listing, ignoring TTL.
 //
-// Unlike CachedModelLimits it reads only the one cache keyed by provider+auth,
-// so it is deterministic: it can never flicker between two providers that
-// advertise different windows for the same ID (e.g. gpt-5.5 at 400k via Direct
-// API and 272k via the ChatGPT subscription). It ignores TTL on purpose — the
-// status bar wants the current model's own window even from a stale cache,
-// since context windows rarely change and a stale-but-correct value beats
-// falling back to a random cross-provider one once the cache expires.
-func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
+// Provider-scoped on purpose: the same model ID can be served by several auth
+// methods with different windows and different capabilities (gpt-5.5 at 400k
+// via the API, 272k via the ChatGPT subscription), so a lookup that scanned
+// every cache could answer differently between two renders. TTL is ignored
+// equally on purpose — a context window rarely changes, and a stale-but-real
+// figure beats falling back to a cross-provider guess once the cache expires.
+func (s *Store) cachedModel(provider ProviderID, authMethod AuthMethod, id string, match func(ModelInfo) bool) (ModelInfo, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cache, ok := s.data.Models[providerKey(provider, authMethod)]
+	// A missing key yields the zero modelCache, whose nil Models ranges zero
+	// times — no separate absence check needed.
+	for _, m := range s.data.Models[providerKey(provider, authMethod)].Models {
+		if m.ID == id && match(m) {
+			return m, true
+		}
+	}
+	return ModelInfo{}, false
+}
+
+// CachedModelLimitsForProvider returns a model's token limits from one
+// provider's listing, or (0, 0) when it states no window.
+func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
+	m, ok := s.cachedModel(provider, authMethod, id, func(m ModelInfo) bool { return m.InputTokenLimit > 0 })
 	if !ok {
 		return 0, 0
 	}
-	for _, m := range cache.Models {
-		if m.ID == id && m.InputTokenLimit > 0 {
-			return m.InputTokenLimit, m.OutputTokenLimit
-		}
-	}
-	return 0, 0
+	return m.InputTokenLimit, m.OutputTokenLimit
 }
 
 // CachedModelLimits returns the token limits for a model ID found in any
@@ -205,27 +211,16 @@ func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
 	return inputLimit, outputLimit
 }
 
-// CachedModelReasoningForProvider returns normalized reasoning metadata for one
-// model from a single provider/auth cache, ignoring TTL. Like token limits, the
-// same model ID can expose different capabilities through different auth paths,
-// so this lookup must remain provider-scoped and deterministic.
+// CachedModelReasoningForProvider returns a model's reasoning ladder from one
+// provider's listing. The capability was normalized by NewReasoningCapability
+// at write time, so it is handed back as-is rather than re-normalized on every
+// (hot-path) lookup; callers treat it as read-only.
 func (s *Store) CachedModelReasoningForProvider(provider ProviderID, authMethod AuthMethod, id string) (*ReasoningCapability, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cache, ok := s.data.Models[providerKey(provider, authMethod)]
+	m, ok := s.cachedModel(provider, authMethod, id, func(m ModelInfo) bool { return m.Reasoning != nil })
 	if !ok {
 		return nil, false
 	}
-	for _, model := range cache.Models {
-		// The cached capability was already normalized by NewReasoningCapability
-		// at write time, so hand it back as-is rather than re-normalizing on every
-		// (hot-path) lookup. Callers treat it as read-only.
-		if model.ID == id && model.Reasoning != nil {
-			return model.Reasoning, true
-		}
-	}
-	return nil, false
+	return m.Reasoning, true
 }
 
 // ---------------------------------------------------------------------------

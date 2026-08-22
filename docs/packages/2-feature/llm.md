@@ -41,13 +41,10 @@ func (c *Conn) CurrentModel() *CurrentModelInfo
 func (c *Conn) SetCurrentModel(info *CurrentModelInfo)
 func (c *Conn) NewClient(model string, maxTokens int) *Client
 func (c *Conn) Store() *Store
-func (c *Conn) ListProviders() map[ProviderID][]AuthMethodStatus
 
 // Package-level access
 func Initialize()
 func Default() *Conn
-func SetDefaultConn(c *Conn)  // test-only
-func ResetDefaultConn()       // test-only
 ```
 
 
@@ -67,9 +64,11 @@ modelcache.go  the cached listings, and the context window resolved from them
 cost.go        Money, the multi-currency total, and per-vendor pricing
 errors.go      a provider failure, tagged for the agent loop
 logging.go     CompletionOptions, as the log package reads it
-fake.go        FakeLLM: a Provider that answers from a queue, for the suites above
 vendor*.go     every vendor, over genai-io/sdk-go
 ```
+
+The test double lives outside the binary, in
+`tests/integration/testutil.FakeProvider`.
 
 Worth knowing beyond the names:
 
@@ -131,11 +130,13 @@ Model Studio is the exception that proves the shape: it publishes no window for
 any of its hundreds of models and answers per model instead, which is what
 `llm.ModelLimitsFetcher` exists for.
 
-`describeModel` turns the rest of a catalog row into the line `/models` shows
-beside a model — its lifecycle stage, its published rate, whether it sees,
-thinks, or cannot take tools. It deliberately restates nothing that is already
-a field on `ModelInfo`: the window is the user's to override, and a sentence
-baked into the cached listing would go on quoting the old one.
+`ModelInfo` carries the rest of a catalog row as facts — `Pricing`, `Stage`,
+`Replacement`, `AcceptsImages`, `RejectsTools` — never as a rendering of them.
+The `/models` picker aligns the figures into columns and writes the labels
+itself (`modelLabels`), because prose stored in the cache would fix the wording
+in a file that outlives the release that wrote it, and because the `·` it
+separates with is East Asian Ambiguous: a string measured anywhere but where it
+is drawn measures wrong.
 
 ## Tests
 
@@ -145,7 +146,6 @@ internal/llm/errors_test.go   — what the agent loop is told about a failure.
 internal/llm/provider_test.go — the optional-extension defaults.
 internal/llm/store_test.go    — provider config persistence.
 internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
-internal/llm/fake_test.go     — the test double other packages build on.
 internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
 internal/llm/vendor_live_test.go — one real turn per configured vendor,
                                 opt-in via SAN_SDK_LIVE.

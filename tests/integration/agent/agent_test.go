@@ -22,7 +22,7 @@ import (
 )
 
 func TestAgent_GeneralExploreMode(t *testing.T) {
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
 				Content: "Explored the codebase", StopReason: "end_turn",
@@ -53,7 +53,7 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 }
 
 func TestAgent_UnknownNameUsesDefaultTemplate(t *testing.T) {
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{Content: "completed with default template", StopReason: "end_turn"},
 		},
@@ -84,7 +84,7 @@ func TestAgent_MaxStepsRespected(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(
-		&testutil.MockProvider{Responses: responses},
+		&testutil.FakeProvider{Responses: responses},
 		t.TempDir(), "fake-model", nil,
 	)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
@@ -115,7 +115,7 @@ func TestAgent_ModelResolution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mp := &testutil.MockProvider{
+			mp := &testutil.FakeProvider{
 				Responses: []llm.CompletionResponse{
 					{Content: "ok", StopReason: "end_turn"},
 				},
@@ -169,7 +169,7 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 	// Also verify at the executor level: run an explore-mode agent with a Write tool
 	// call queued. The tool call should be rejected (not executed), and the agent
 	// should still complete because the LLM gets the error result and ends turn.
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			// First response: LLM tries to write a file
 			{
@@ -240,7 +240,7 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 
 	engine := hook.NewEngine(settings, "test-session-id", tmpDir, "")
 
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
 				Content:    "done",
@@ -280,7 +280,7 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 	task.Initialize(task.Options{})
 	t.Cleanup(task.ResetDefaultTracker)
 
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
 				Content: "background result", StopReason: "end_turn",
@@ -317,7 +317,7 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 		t.Fatalf("WriteFile(README): %v", err)
 	}
 
-	mp := &testutil.MockProvider{
+	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
 				StopReason: "tool_use",

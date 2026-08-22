@@ -32,8 +32,8 @@ func TestClassifyNilIsNil(t *testing.T) {
 	if got := Classify(nil); got != nil {
 		t.Fatalf("Classify(nil) = %v, want nil", got)
 	}
-	if got := ClassifyStream(nil); got != nil {
-		t.Fatalf("ClassifyStream(nil) = %v, want nil", got)
+	if got := classifyStream(nil); got != nil {
+		t.Fatalf("classifyStream(nil) = %v, want nil", got)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestClassify(t *testing.T) {
 				wantRetry bool
 			}{
 				{name: "Classify", got: Classify(tc.err), wantRetry: tc.wantRetry},
-				{name: "ClassifyStream", got: ClassifyStream(tc.err), wantRetry: tc.wantStreamRetry},
+				{name: "classifyStream", got: classifyStream(tc.err), wantRetry: tc.wantStreamRetry},
 			} {
 				t.Run(variant.name, func(t *testing.T) {
 					_, gotRetry := retryInfo(variant.got)
@@ -160,7 +160,7 @@ func TestOrdinaryFailuresAreNotOverflows(t *testing.T) {
 // The second pass must leave the first pass's answer alone, hint included.
 func TestClassifyingTwiceChangesNothing(t *testing.T) {
 	once := Classify(&ai.Error{Driver: "test", Kind: ai.KindRateLimit, Status: 429, RetryAfter: 5 * time.Second})
-	twice := ClassifyStream(once)
+	twice := classifyStream(once)
 
 	if twice != once {
 		t.Fatalf("re-classifying rewrapped the error: %T", twice)

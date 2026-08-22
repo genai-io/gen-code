@@ -141,17 +141,43 @@ type StreamChunk struct {
 	Error    error               // for an error chunk
 }
 
-// ModelInfo is one model as the picker and the store see it: what to call it,
-// how much it takes, and how hard it can be asked to think. A zero token limit
-// means unknown — callers skip the check rather than acting on a guess.
+// ModelStage is where a model sits in its vendor's lifecycle. The zero value
+// is a generally available model; a retired one never reaches here, because the
+// picker lists only what still serves requests.
+type ModelStage string
+
+const (
+	ModelStable     ModelStage = ""
+	ModelPreview    ModelStage = "preview"
+	ModelDeprecated ModelStage = "deprecated"
+)
+
+// ModelInfo is one model as the picker and the store see it.
+//
+// Every field is a fact, never a rendering of one: the picker aligns these into
+// columns and writes the labels itself, and prose stored here would fix the
+// wording — separators included — in a file that outlives the release that
+// wrote it. A zero token limit means unknown; callers skip the check rather
+// than acting on a guess.
 type ModelInfo struct {
 	ID               string               `json:"id"`
 	Name             string               `json:"name"`
 	DisplayName      string               `json:"displayName,omitempty"`
-	Description      string               `json:"description,omitempty"`
 	InputTokenLimit  int                  `json:"inputTokenLimit,omitempty"`
 	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
 	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
+	Pricing          *ModelPricing        `json:"pricing,omitempty"`
+
+	// Stage, and the model to move to when it is deprecated.
+	Stage       ModelStage `json:"stage,omitempty"`
+	Replacement string     `json:"replacement,omitempty"`
+
+	// AcceptsImages reports vision input. RejectsTools reports the opposite of
+	// what its name suggests being false: San is a tool-calling agent, so a
+	// model that takes no tools cannot do the job at all, and the flag is
+	// phrased so that the common case is the zero value.
+	AcceptsImages bool `json:"acceptsImages,omitempty"`
+	RejectsTools  bool `json:"rejectsTools,omitempty"`
 }
 
 // Complete runs a turn to the end and returns it whole, for the callers that

@@ -50,6 +50,15 @@ func providerKey(provider ProviderID, authMethod AuthMethod) string {
 	return string(provider) + ":" + string(authMethod)
 }
 
+// parseProviderKey splits the identity back apart, for the one direction that
+// needs it: a Provider reports its own Name() in this form, while the store
+// keys connections by the bare slug. Converting the whole string to a
+// ProviderID instead misses every lookup silently.
+func parseProviderKey(name string) (ProviderID, AuthMethod) {
+	provider, authMethod, _ := strings.Cut(name, ":")
+	return ProviderID(provider), AuthMethod(authMethod)
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -69,11 +78,29 @@ func RegisterProviderDisplay(provider ProviderID, display ProviderDisplay) {
 	globalRegistry.displays[provider] = display
 }
 
-// Unregister removes a provider/auth-method entry.
+// Unregister removes everything registered for a provider/auth-method pair.
+//
+// All four maps, not just the entry: a test that registers a display or an
+// authenticator and unregisters the entry would otherwise leave the provider
+// visible to ProvidersByOrder and IsProvider for the rest of the run, and the
+// next test to assert on the provider list would see it.
 func Unregister(provider ProviderID, authMethod AuthMethod) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
-	delete(globalRegistry.entries, providerKey(provider, authMethod))
+
+	key := providerKey(provider, authMethod)
+	delete(globalRegistry.entries, key)
+	delete(globalRegistry.authenticators, key)
+
+	// The display and the pricing are per provider, shared by its auth
+	// methods, so they go only once the last one does.
+	for _, entry := range globalRegistry.entries {
+		if entry.meta.Provider == provider {
+			return
+		}
+	}
+	delete(globalRegistry.displays, provider)
+	delete(globalRegistry.costs, provider)
 }
 
 // ---------------------------------------------------------------------------

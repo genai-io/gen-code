@@ -601,97 +601,95 @@ func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	}
 }
 
-// A blank description column is what the /models picker showed for every model
-// for as long as the field existed: nothing ever filled it. These assert what
-// it says now, and just as importantly what it does not — the window, the
-// output cap and the reasoning ladder are fields on ModelInfo, and restating
-// any of them here would be a second copy free to disagree with the first.
-func TestDescribeModel(t *testing.T) {
+// The picker's columns are only as good as the facts behind them, and every
+// one of these was blank before: nothing populated a model's rate, its stage
+// or its modalities. Assert the projection, not the wording — the wording is
+// the picker's (see modelLabels).
+func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
 	tests := []struct {
 		name  string
 		model ai.Model
-		want  string
+		want  ModelInfo
 	}{
 		{
-			name:  "a plain text-only model has nothing to say",
+			name:  "a plain text-only model states nothing extra",
 			model: ai.Model{ID: "plain"},
-			want:  "",
+			want:  ModelInfo{ID: "plain", Name: "plain", DisplayName: "plain"},
 		},
 		{
-			name: "capabilities and the published rate",
+			name: "modalities and the published rate",
 			model: ai.Model{
-				ID:        "opus",
-				Input:     []ai.Modality{ai.ModalityText, ai.ModalityImage},
-				Reasoning: []ai.ReasoningLevel{{Effort: ai.EffortHigh}},
-				Pricing:   ai.Pricing{Currency: ai.USD, Input: 5, Output: 25},
+				ID:      "opus",
+				Input:   []ai.Modality{ai.ModalityText, ai.ModalityImage},
+				Pricing: ai.Pricing{Currency: ai.USD, Input: 5, Output: 25},
 			},
-			want: "$5/$25 per Mtok · vision · thinking",
-		},
-		{
-			name: "a fractional rate reads as money",
-			model: ai.Model{
-				ID:      "luna",
-				Pricing: ai.Pricing{Currency: ai.USD, Input: 0.2, Output: 1.2},
+			want: ModelInfo{
+				ID: "opus", Name: "opus", DisplayName: "opus", AcceptsImages: true,
+				Pricing: &ModelPricing{Currency: CurrencyUSD, Input: 5, Output: 25},
 			},
-			want: "$0.20/$1.20 per Mtok",
 		},
 		{
-			name: "a vendor that prices in CNY says so",
-			model: ai.Model{
-				ID:      "glm",
-				Pricing: ai.Pricing{Currency: ai.CNY, Input: 2.1, Output: 8.4},
-			},
-			want: "¥2.10/¥8.40 per Mtok",
+			name:  "a preview model says so",
+			model: ai.Model{ID: "prev", Stage: ai.StagePreview},
+			want:  ModelInfo{ID: "prev", Name: "prev", DisplayName: "prev", Stage: ModelPreview},
 		},
 		{
-			name:  "a preview model is flagged first",
-			model: ai.Model{ID: "prev", Stage: ai.StagePreview, Input: []ai.Modality{ai.ModalityImage}},
-			want:  "preview · vision",
-		},
-		{
-			name:  "a deprecation names its replacement",
+			name:  "a deprecation carries its replacement",
 			model: ai.Model{ID: "old", Stage: ai.StageDeprecated, Replacement: "claude-opus-5"},
-			want:  "deprecated, use claude-opus-5",
+			want: ModelInfo{
+				ID: "old", Name: "old", DisplayName: "old",
+				Stage: ModelDeprecated, Replacement: "claude-opus-5",
+			},
 		},
 		{
-			name:  "a model San cannot drive says so",
+			name:  "a model San cannot drive is flagged",
 			model: ai.Model{ID: "small", Unsupported: ai.Unsupported{Tools: true}},
-			want:  "no tools",
+			want:  ModelInfo{ID: "small", Name: "small", DisplayName: "small", RejectsTools: true},
 		},
 		{
-			name:  "an unpriced model reports no rate rather than zero",
-			model: ai.Model{ID: "local", Input: []ai.Modality{ai.ModalityImage}},
-			want:  "vision",
+			name:  "an unpriced model reports no card rather than zeros",
+			model: ai.Model{ID: "local", Pricing: ai.Pricing{Currency: ai.USD}},
+			want:  ModelInfo{ID: "local", Name: "local", DisplayName: "local"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := describeModel(tc.model); got != tc.want {
-				t.Errorf("describeModel() = %q, want %q", got, tc.want)
+			got := toModelInfo(tc.model)
+			if got.Pricing == nil || tc.want.Pricing == nil {
+				if (got.Pricing == nil) != (tc.want.Pricing == nil) {
+					t.Fatalf("Pricing = %+v, want %+v", got.Pricing, tc.want.Pricing)
+				}
+			} else if *got.Pricing != *tc.want.Pricing {
+				t.Errorf("Pricing = %+v, want %+v", *got.Pricing, *tc.want.Pricing)
+			}
+			got.Pricing, tc.want.Pricing = nil, nil
+			if got != tc.want {
+				t.Errorf("toModelInfo() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
 }
 
-// The descriptions have to differ between the models a user is choosing
-// between, or the column is decoration. Within one vendor the capabilities are
-// usually identical, so the rate is what tells the models apart.
-func TestDescriptionsTellAVendorsModelsApart(t *testing.T) {
+// The picker's rate column is only worth a column if it tells a vendor's models
+// apart. Within one vendor the capabilities are usually identical, so the rate
+// is what distinguishes them.
+func TestAVendorsModelsStateDifferentRates(t *testing.T) {
 	vendor, ok := catalog.Find("anthropic")
 	if !ok {
 		t.Fatal("the catalog has no anthropic vendor")
 	}
 
-	seen := map[string]int{}
+	seen := map[ModelPricing]int{}
 	for _, m := range ai.Available(vendor.ModelList()) {
-		description := describeModel(m)
-		if description == "" {
-			t.Errorf("%s has no description", m.ID)
+		info := toModelInfo(m)
+		if info.Pricing == nil {
+			t.Errorf("%s states no rate", m.ID)
+			continue
 		}
-		seen[description]++
+		seen[*info.Pricing]++
 	}
 	if len(seen) < 2 {
-		t.Errorf("every Anthropic model shares one description: %v", seen)
+		t.Errorf("every Anthropic model shares one rate: %v", seen)
 	}
 }

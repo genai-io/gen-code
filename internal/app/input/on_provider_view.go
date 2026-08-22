@@ -225,52 +225,79 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 		indicatorStyle = kit.SelectorStatusConnected()
 	}
 
-	displayName := m.DisplayName
-	if displayName == "" {
-		displayName = m.Name
-	}
-	if displayName == "" {
-		displayName = m.ID
-	}
+	// A grid, not a sentence. Name, window and rate are what models get
+	// compared on, so each takes a column of its own and the figures line up on
+	// their units; only the description, which has no shape to align, trails as
+	// free text.
+	cols := s.modelColumns
+	name := padRight(modelDisplayName(*m), cols.name)
 
-	// The window sits in its own column, because it is the figure models are
-	// most often compared on and a ragged one cannot be scanned down. A model
-	// San could not size shows the warning instead: with no window the context
-	// percentage cannot render and auto-compaction cannot fire.
 	window, windowStyle := kit.FormatTokenCount(m.InputTokenLimit), kit.DimStyle()
 	if m.InputTokenLimit == 0 {
-		window = "⚠"
-		windowStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
+		// With no window the context percentage cannot render and
+		// auto-compaction cannot fire, which is worth flagging in its place.
+		window, windowStyle = "⚠", lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 	}
-	// Right-aligned, so the figures line up on their units and the
-	// descriptions after them all start in the same column.
-	window = strings.Repeat(" ", max(0, modelWindowColumnWidth-lipgloss.Width(window))) + window
 
-	line := kit.FormatAlignedRow(indicatorStyle.Render(indicator), displayName, modelNameColumnWidth, windowStyle.Render(window))
+	line := fmt.Sprintf("%s  %s  %s",
+		indicatorStyle.Render(indicator), name,
+		windowStyle.Render(padLeft(window, modelWindowColumnWidth)))
 
-	// Then whatever the catalog says about the model, dimmed. Truncate it to
-	// the room left on the row (after the selection prefix and a two-column
-	// gap) so a long blurb never wraps.
-	if desc := strings.TrimSpace(m.Description); desc != "" {
+	// The rate column is dropped entirely when nothing listed has a published
+	// card, rather than left as a band of blank space.
+	if cols.rate > 0 {
+		line += "  " + kit.DimStyle().Render(padLeft(kit.FormatModelRate(m.Pricing), cols.rate))
+	}
+
+	// Then what the catalog says about the model, in whatever room is left on
+	// the row, so a long list of labels never wraps.
+	if labels := modelLabels(*m); labels != "" {
 		const prefixAndGap = 6 // up to 4 cols of selection prefix + a 2-col gap
 		budget := s.panel().ContentWidth() - lipgloss.Width(line) - prefixAndGap
 		if budget >= 8 {
-			line += "  " + kit.DimStyle().Render(kit.TruncateText(desc, budget))
+			line += "  " + kit.DimStyle().Render(kit.TruncateText(labels, budget))
 		}
 	}
 
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
-const (
-	// modelNameColumnWidth aligns the window column after the model name. It
-	// fits the long end of what vendors actually name a model
-	// ("MiniMax-M2.7-highspeed", 22 cols) with a gap; anything longer just
-	// pushes the rest of the row right.
-	modelNameColumnWidth = 26
-	// modelWindowColumnWidth fits the widest window a catalog states ("204.8k").
-	modelWindowColumnWidth = 6
-)
+// modelLabels says what the figures cannot: where the model sits in its
+// vendor's lifecycle, and what it can and cannot do. A plain, current,
+// text-only model gets nothing, and that reads correctly — there is nothing
+// about it to warn about or recommend.
+//
+// The wording and the separator live here rather than in the cached listing:
+// "·" is East Asian Ambiguous, so its width depends on the terminal, and a
+// string measured anywhere but where it is drawn measures wrong.
+func modelLabels(m providerModelItem) string {
+	var labels []string
+	switch m.Stage {
+	case llm.ModelPreview:
+		labels = append(labels, "preview")
+	case llm.ModelDeprecated:
+		// The replacement is the actionable half — a deprecation the user
+		// cannot act on is just a scolding.
+		if m.Replacement != "" {
+			labels = append(labels, "deprecated, use "+m.Replacement)
+		} else {
+			labels = append(labels, "deprecated")
+		}
+	}
+	if m.AcceptsImages {
+		labels = append(labels, "vision")
+	}
+	if m.Thinks {
+		labels = append(labels, "thinking")
+	}
+	// San is a tool-calling agent, so a model that takes no tools cannot do the
+	// job at all. Worth saying before it is chosen, not after the first turn
+	// fails.
+	if m.RejectsTools {
+		labels = append(labels, "no tools")
+	}
+	return strings.Join(labels, " · ")
+}
 
 // ── Providers tab rows ──────────────────────────────────────────────────────
 

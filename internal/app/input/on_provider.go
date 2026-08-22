@@ -69,12 +69,17 @@ type providerModelItem struct {
 	ID               string
 	Name             string
 	DisplayName      string
-	Description      string
 	ProviderName     string
 	AuthMethod       llm.AuthMethod
 	IsCurrent        bool
 	InputTokenLimit  int
 	OutputTokenLimit int
+	Pricing          *llm.ModelPricing
+	Stage            llm.ModelStage
+	Replacement      string
+	AcceptsImages    bool
+	RejectsTools     bool
+	Thinks           bool
 }
 
 func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm.AuthMethod, current *llm.CurrentModelInfo) providerModelItem {
@@ -82,12 +87,17 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		ID:               mdl.ID,
 		Name:             mdl.Name,
 		DisplayName:      mdl.DisplayName,
-		Description:      mdl.Description,
 		ProviderName:     providerName,
 		AuthMethod:       authMethod,
 		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
+		Pricing:          mdl.Pricing,
+		Stage:            mdl.Stage,
+		Replacement:      mdl.Replacement,
+		AcceptsImages:    mdl.AcceptsImages,
+		RejectsTools:     mdl.RejectsTools,
+		Thinks:           mdl.Reasoning != nil,
 	}
 }
 
@@ -108,6 +118,9 @@ type ProviderSelector struct {
 
 	// Flattened visible-items list (rebuilt on state changes)
 	visibleItems []providerListItem
+	// modelColumns sizes the Models tab grid to whatever is currently listed,
+	// recomputed with visibleItems.
+	modelColumns modelColumnWidths
 	selectedIdx  int
 	scrollOffset int
 	maxVisible   int

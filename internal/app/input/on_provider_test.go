@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -1036,33 +1037,33 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 	}
 }
 
-// A model row carries three things beyond the name: whether it is current, the
-// context window, and whatever the catalog says about the model. The window is
-// what models are most often compared on, so it gets its own aligned column —
-// and a model San could not size shows a warning there instead, because
-// without a window the context percentage cannot render and auto-compaction
-// cannot fire.
-func TestModelRowShowsWindowAndDescription(t *testing.T) {
-	s := NewProviderSelector()
-	s.activeTab = providerTabModels
-	s.width, s.height = 100, 30
-
+// A model row is a grid: name, window, rate, then the labels. The window and
+// the rate are what models get compared on, so each takes an aligned column of
+// its own — and a model San could not size shows a warning in the window's
+// place, because without one the context percentage cannot render and
+// auto-compaction cannot fire.
+func TestModelRowShowsTheGrid(t *testing.T) {
 	models := []providerModelItem{
-		{ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000, Description: "$5/$25 per Mtok · vision · thinking", IsCurrent: true},
+		{
+			ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000,
+			Pricing:       &llm.ModelPricing{Currency: llm.CurrencyUSD, Input: 5, Output: 25},
+			AcceptsImages: true, Thinks: true, IsCurrent: true,
+		},
 		{ID: "qwen3-max", DisplayName: "qwen3-max"},
 	}
+	s, items := selectorWithModels(t, 100, models)
 
-	current := xansi.Strip(s.renderModelRow(providerListItem{Kind: providerItemModel, Model: &models[0]}, true))
+	current := xansi.Strip(s.renderModelRow(items[0], true))
 	if !strings.Contains(current, "[*]") {
 		t.Errorf("the current model is not marked: %q", current)
 	}
-	for _, want := range []string{"Claude Opus 5", "1.0M", "$5/$25 per Mtok · vision · thinking"} {
+	for _, want := range []string{"Claude Opus 5", "1.0M", "$5/$25", "vision · thinking"} {
 		if !strings.Contains(current, want) {
 			t.Errorf("row is missing %q: %q", want, current)
 		}
 	}
 
-	unsized := xansi.Strip(s.renderModelRow(providerListItem{Kind: providerItemModel, Model: &models[1]}, false))
+	unsized := xansi.Strip(s.renderModelRow(items[1], false))
 	if !strings.Contains(unsized, "⚠") {
 		t.Errorf("a model with no window is not flagged: %q", unsized)
 	}
@@ -1071,24 +1072,69 @@ func TestModelRowShowsWindowAndDescription(t *testing.T) {
 	}
 }
 
-// The window column is right-aligned so the descriptions after it all start in
-// the same column; a ragged one cannot be scanned down.
-func TestModelRowsAlignTheirDescriptions(t *testing.T) {
+// The columns are what make the list scannable, so every row's labels have to
+// start in the same place however wide its own name and figures are.
+func TestModelRowsShareOneGrid(t *testing.T) {
+	models := []providerModelItem{
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true,
+			Pricing: &llm.ModelPricing{Currency: llm.CurrencyUSD, Input: 5, Output: 25}},
+		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, AcceptsImages: true,
+			Pricing: &llm.ModelPricing{Currency: llm.CurrencyCNY, Input: 4.2, Output: 16.8}},
+		{ID: "unpriced", DisplayName: "Narrow", InputTokenLimit: 204_800, AcceptsImages: true},
+	}
+	s, items := selectorWithModels(t, 100, models)
+
+	// Measured in columns, not bytes: "¥" is two bytes and one cell, and it is
+	// the column boundary that has to match.
+	var columns []int
+	for _, item := range items {
+		row := xansi.Strip(s.renderModelRow(item, false))
+		columns = append(columns, lipgloss.Width(row[:strings.Index(row, "vision")]))
+	}
+	for i := range columns {
+		if columns[i] != columns[0] {
+			t.Fatalf("labels start in different columns: %v", columns)
+		}
+	}
+}
+
+// A row wider than the panel wraps, and the list code assumes one line per
+// item — so a wrapped row desynchronizes scrolling for everything below it.
+// Ollama and the aggregators routinely serve names long enough to do it.
+func TestALongModelNameCannotOverflowThePanel(t *testing.T) {
+	models := []providerModelItem{
+		{
+			ID:              "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			DisplayName:     "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			InputTokenLimit: 262_144, AcceptsImages: true,
+		},
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true},
+	}
+
+	for _, width := range []int{60, 80, 120} {
+		s, items := selectorWithModels(t, width, models)
+		for _, item := range items {
+			row := xansi.Strip(s.renderModelRow(item, false))
+			if got := lipgloss.Width(row); got > s.panel().ContentWidth() {
+				t.Errorf("width %d: row is %d cols wide, panel holds %d: %q",
+					width, got, s.panel().ContentWidth(), row)
+			}
+		}
+	}
+}
+
+// selectorWithModels builds a Models-tab selector whose grid has been measured
+// against the given models, the way rebuildVisibleItems does it.
+func selectorWithModels(t *testing.T, width int, models []providerModelItem) (ProviderSelector, []providerListItem) {
+	t.Helper()
 	s := NewProviderSelector()
 	s.activeTab = providerTabModels
-	s.width, s.height = 100, 30
+	s.width, s.height = width, 30
 
-	models := []providerModelItem{
-		{ID: "wide", DisplayName: "Wide", InputTokenLimit: 1_000_000, Description: "vision"},
-		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 204_800, Description: "vision"},
-	}
-
-	var columns []int
+	items := make([]providerListItem, len(models))
 	for i := range models {
-		row := xansi.Strip(s.renderModelRow(providerListItem{Kind: providerItemModel, Model: &models[i]}, false))
-		columns = append(columns, strings.Index(row, "vision"))
+		items[i] = providerListItem{Kind: providerItemModel, Model: &models[i]}
 	}
-	if columns[0] != columns[1] {
-		t.Errorf("descriptions start in different columns: %v", columns)
-	}
+	s.modelColumns = measureModelColumns(items, s.panel().ContentWidth())
+	return s, items
 }
