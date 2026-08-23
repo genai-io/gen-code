@@ -38,6 +38,19 @@ func applyFlush(t *testing.T, m *model, cmds []tea.Cmd) {
 	m.handleFlushResult(br)
 }
 
+// trimLinePadding trims the trailing blank cells that ultraviolet's renderer
+// now emits as spaces for full-width rows (charmbracelet/ultraviolet#128
+// flushes trailing empty cells instead of trimming them). Padding is a
+// cosmetic of the full-width buffer, so strip it per row before comparing
+// physical-line content.
+func trimLinePadding(s string) string {
+	rows := []string{}
+	for line := range strings.SplitSeq(s, "\n") {
+		rows = append(rows, strings.TrimRight(line, " "))
+	}
+	return strings.Join(rows, "\n")
+}
+
 // The live welcome banner is visible from launch and tracks the model the user
 // picks after launch — the regression behind #252, where the banner froze "no
 // model selected" because it was committed to scrollback before any selection.
@@ -131,7 +144,7 @@ func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
 			if len(lines) != tt.rows {
 				t.Fatalf("physical rows = %d, want %d", len(lines), tt.rows)
 			}
-			if plain := ansi.Strip(renderScrollbackLines(lines)); plain != tt.plain {
+			if plain := trimLinePadding(ansi.Strip(renderScrollbackLines(lines))); plain != tt.plain {
 				t.Fatalf("rendered physical lines = %q, want %q", plain, tt.plain)
 			}
 		})
@@ -160,7 +173,7 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 		t.Fatalf("finished queue length = %d, want 0", len(flush.pendingPrints))
 	}
 
-	plain := ansi.Strip(strings.Join(chunks, "\n"))
+	plain := trimLinePadding(ansi.Strip(strings.Join(chunks, "\n")))
 	if plain != "abcd\nefgh\nij\nlast\n" {
 		t.Fatalf("chunked content = %q, want all physical rows exactly once", plain)
 	}
@@ -200,7 +213,7 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 
 	first := firstCmd().(scrollbackPrintReadyMsg)
 	firstContent, ok := m.prepareScrollbackPrint(first.id)
-	if !ok || firstContent != "A" {
+	if !ok || trimLinePadding(firstContent) != "A" {
 		t.Fatalf("first print content = %q, ok=%v, want A", firstContent, ok)
 	}
 	if next := m.finishScrollbackPrint(first.id + 1); next != nil {
@@ -216,7 +229,7 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	}
 	second := secondCmd().(scrollbackPrintReadyMsg)
 	secondContent, ok := m.prepareScrollbackPrint(second.id)
-	if !ok || secondContent != "B" {
+	if !ok || trimLinePadding(secondContent) != "B" {
 		t.Fatalf("second print content = %q, ok=%v, want B", secondContent, ok)
 	}
 	if next := m.finishScrollbackPrint(second.id); next != nil {
