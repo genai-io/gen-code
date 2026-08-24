@@ -3,19 +3,19 @@ module github.com/genai-io/san
 go 1.25.8
 
 require (
-	charm.land/bubbles/v2 v2.1.1
+	charm.land/bubbles/v2 v2.2.0
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/ActiveState/vt10x v1.3.1
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
-	github.com/anthropics/anthropic-sdk-go v1.64.0
+	github.com/anthropics/anthropic-sdk-go v1.66.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/creack/pty v1.1.24
 	github.com/genai-io/sdk-go v0.1.2
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
-	github.com/mattn/go-runewidth v0.0.24
+	github.com/mattn/go-runewidth v0.0.27
 	github.com/openai/openai-go/v3 v3.52.0
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.28.0
