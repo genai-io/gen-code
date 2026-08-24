@@ -3,6 +3,19 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.5] - 2026-08-24
+
+### Added
+- Serve every provider through genai-io/sdk-go ([@yanmxa](https://github.com/yanmxa) in [#485](https://github.com/genai-io/san/pull/485))
+### Changed
+- Bump the go-minor-and-patch group across 1 directory with 11 updates ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#487](https://github.com/genai-io/san/pull/487))
+- Scan for reachable vulnerabilities and track Go dependencies ([@yanmxa](https://github.com/yanmxa) in [#482](https://github.com/genai-io/san/pull/482))
+- Gate on errcheck and ineffassign ([@yanmxa](https://github.com/yanmxa) in [#481](https://github.com/genai-io/san/pull/481))
+- Modernize Go idioms with the modernize analyzer ([@yanmxa](https://github.com/yanmxa) in [#483](https://github.com/genai-io/san/pull/483))
+- Run CI on release PRs and request OWNERS review after it passes ([@hchenxa](https://github.com/hchenxa) in [#479](https://github.com/genai-io/san/pull/479))
+### Fixed
+- Refresh model catalogs against vendor docs and fix Claude 4.6+ thinking ([@yanmxa](https://github.com/yanmxa) in [#484](https://github.com/genai-io/san/pull/484))
+- Stop overwriting settings when the file cannot be parsed ([@yanmxa](https://github.com/yanmxa) in [#480](https://github.com/genai-io/san/pull/480))
 ## [v1.22.4] - 2026-08-18
 
 ### Added
