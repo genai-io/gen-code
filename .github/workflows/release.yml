@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Dispatched on a tag ref by release-tag.yml after a release PR merges —
+  # a GITHUB_TOKEN tag push cannot trigger this workflow's push event.
+  workflow_dispatch:
 
 permissions:
   contents: write
