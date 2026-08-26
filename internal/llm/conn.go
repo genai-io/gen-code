@@ -1,10 +1,7 @@
 // Package llm is San's connection to a language model: the registry of every
 // provider it can reach, the store of what the user connected and chose, the
-// Client the agent loop infers through, and the adapter that serves every
-// vendor over github.com/genai-io/sdk-go (see vendor.go).
-//
-// Default() returns the package-level *Conn — the active provider, model and
-// store, behind one mutex.
+// Client the agent loop infers through, and the adapter serving every vendor
+// over github.com/genai-io/sdk-go (see vendor.go).
 package llm
 
 import (
@@ -14,9 +11,8 @@ import (
 )
 
 // Conn is the handle to the active LLM: the connected Provider, the current
-// model, and the Store of available providers/models. Every accessor is
-// mutex-protected; the fields are unexported so all access goes through the
-// locked methods. Callers obtain the package-level singleton via Default().
+// model, and the Store. Fields are unexported so every access goes through the
+// locked accessors; Default() returns the package-level singleton.
 type Conn struct {
 	mu           sync.RWMutex
 	store        *Store
@@ -47,10 +43,6 @@ func Initialize() {
 		defaultConn.SetProvider(resolved.Provider)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Accessors (mutex-protected)
-// ---------------------------------------------------------------------------
 
 func (c *Conn) Provider() Provider {
 	c.mu.RLock()
@@ -96,10 +88,6 @@ func (c *Conn) Store() *Store {
 func (c *Conn) NewClient(model string, maxTokens int) *Client {
 	return NewClient(c.Provider(), model, maxTokens)
 }
-
-// ---------------------------------------------------------------------------
-// Opening a connection
-// ---------------------------------------------------------------------------
 
 // ResolvedProvider is a connected provider plus the identity used to reach it.
 // ModelID carries the saved current model when one is set, and is empty when

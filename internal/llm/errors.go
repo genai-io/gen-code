@@ -10,14 +10,11 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// A provider failure, in the vocabulary the agent loop reads.
+// A provider failure, in the vocabulary the agent loop reads: retry it
+// (core.RetryableError), or compact and retry (core.ContextExceededError).
 //
-// San's loop asks two questions of an error: retry it (core.RetryableError),
-// or compact and retry (core.ContextExceededError). Answering them is the
-// whole of this file. The classification itself belongs to the SDK, which
-// decides from typed provider errors — an HTTP status, a vendor error code —
-// the only place that decision is reliable; what is here is the translation
-// onto the two interfaces core understands, so core carries no provider error
+// Deciding which belongs to the SDK, where the provider's typed error still
+// exists. This file only translates that answer, so core carries no provider
 // vocabulary and San keeps no second copy of the SDK's tables.
 
 // Classify tags a provider failure with what the agent loop needs to know

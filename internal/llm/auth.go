@@ -6,17 +6,13 @@ import (
 )
 
 // Signing in to a provider that authenticates a person rather than a service.
-//
-// An API key is a string San reads from the secret store; an OAuth
-// subscription is a conversation with the user — open this page, type this
-// code — and the vendor half of it lives in the vendor_signin.go adapter.
-// What is here is the contract between the two, so the /models panel can offer
-// a sign-in without knowing which vendor it is talking to.
+// The vendor half lives in vendor_signin.go; what is here is the contract
+// between the two, so the /models panel can offer a sign-in without knowing
+// which vendor it is talking to.
 
-// LoginPrompt is what the user has to do to finish an interactive sign-in: the
-// page to open and, for device-code flows, the code to type there. A
-// browser-callback (PKCE) flow leaves UserCode empty, because opening the URL
-// is the whole instruction.
+// LoginPrompt is what the user must do to finish a sign-in: the page to open
+// and, for device-code flows, the code to type there. A browser-callback (PKCE)
+// flow leaves UserCode empty.
 type LoginPrompt struct {
 	URL      string
 	UserCode string

@@ -255,28 +255,17 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
-// modelLabels says what the figures cannot: where a model sits in its
-// lifecycle, whether it can be sent an image, and whether it reasons at all.
-//
-// Every label is a claim the catalog actually made, and the absence of one is
-// silence, never a denial. That is what decides which way round each is
-// written, and the two capability labels go opposite ways:
-//
-//   - "text-only" names the exception. Nearly every model listed takes an
-//     image, so flagging the handful that cannot is what carries information —
-//     and written the other way round, a listing cached by an older San, which
-//     decodes with the field unset, would claim of every model that it is
-//     blind.
-//   - "thinking" names the norm, because a missing reasoning ladder means the
-//     catalog does not describe this model, not that the model cannot reason.
-//     Ollama and the aggregators reach the picker with no ladder and are often
-//     capable; "no thinking" on them would be a guess stated as a fact.
-//
-// So a row stays quiet unless there is something the catalog vouches for.
+// modelLabels says what the figures cannot. Every label is a claim the catalog
+// actually made, and the absence of one is silence rather than a denial —
+// which is what decides each label's direction, and the two capability labels
+// go opposite ways. "text-only" names the exception, since nearly every model
+// takes an image and the field is unset in listings cached by an older San.
+// "thinking" names the norm, since a missing reasoning ladder means the catalog
+// does not describe the model, not that it cannot reason.
 //
 // The wording and the separator live here rather than in the cached listing:
-// "·" is East Asian Ambiguous, so its width depends on the terminal, and a
-// string measured anywhere but where it is drawn measures wrong.
+// "·" is East Asian Ambiguous, so a string measured anywhere but where it is
+// drawn measures wrong.
 func modelLabels(m providerModelItem) string {
 	var labels []string
 	switch m.Lifecycle {

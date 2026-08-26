@@ -8,24 +8,20 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// A Provider plus a model, as the agent loop sees it.
-//
-// core.LLM is what the loop actually holds, and Client is the only thing that
-// implements it: it fixes a model on a provider, resolves the two token limits
-// that model implies, tags a failure with what the loop needs to know about
-// it, and keeps a running token count for the session. Everything above it
-// talks about "the LLM"; everything below it talks about a vendor.
+// A Provider plus a model, as the agent loop sees it. Everything above talks
+// about "the LLM"; everything below talks about a vendor.
 
-// defaultMaxTokens is the fallback max output tokens when neither the caller
-// nor the provider specifies a limit.
-const defaultMaxTokens = 8192
+const (
+	// defaultMaxTokens applies when neither the caller nor the provider caps
+	// the output.
+	defaultMaxTokens = 8192
+	// completeMaxAttempts bounds in-place retries for utility completions.
+	completeMaxAttempts = 3
+)
 
-// completeMaxAttempts bounds in-place retries for one-shot utility completions.
-const completeMaxAttempts = 3
-
-// Client adapts one Provider and one model to core.LLM, and is also what the
-// loop and app layers stream and complete through. SetThinkingEffort may be
-// called while the agent is running; it takes effect on the next call.
+// Client is the only implementation of core.LLM, and what the loop and app
+// layers stream and complete through. SetThinkingEffort may be called while the
+// agent is running; it takes effect on the next call.
 type Client struct {
 	// provider, model and maxTokens are fixed at construction and read without
 	// the lock. Only thinkingEffort changes over a client's life, which is what
@@ -37,27 +33,14 @@ type Client struct {
 	mu             sync.RWMutex
 	thinkingEffort string
 
-	// Token limits resolve from the provider's ListModels, which is a live
-	// network round-trip for OpenAI-compatible providers (Anthropic/Google
-	// cache it internally). A client's model is fixed for its lifetime, so the
-	// resolved limits are memoized here to keep ListModels off the
-	// per-inference-step hot path (InputLimit for compaction, output cap for
-	// every Infer/Stream).
 	limits modelLimits
 }
 
-// modelLimits memoizes what the provider says a model takes and produces, so
-// the lookup runs once per client instead of once per inference step.
-//
-// The distinction that matters is between a provider that could not answer and
-// one that answered "I don't know". The first is transient and must be asked
-// again. The second is settled: the listing is what it is, and re-asking on
-// every step re-fetches an entire endpoint catalog — hundreds of models, for
-// Model Studio — to be told the same thing. InputLimit sits inside the agent's
-// step loop, so that was a network round-trip per step of every turn for any
-// model whose window nobody publishes.
-//
-// One resolution answers both figures, because one listing states both.
+// modelLimits memoizes what the provider says a model takes and produces. The
+// lookup is a live listing, and InputLimit sits inside the agent's step loop,
+// so what it memoizes matters: a provider that could not answer is transient
+// and asked again, but one that answered "I don't know" is settled — re-asking
+// re-fetches an entire catalog to be told the same thing.
 type modelLimits struct {
 	mu sync.Mutex
 	// answered records that the provider replied. in and out are then final
@@ -88,14 +71,11 @@ func (c *modelLimits) resolve(p Provider, model string) {
 	c.in, c.out, c.answered = resolveModelLimits(p, model)
 }
 
-// resolveModelLimits asks the provider what the model takes and produces,
-// falling back to its per-model endpoint for the vendors whose listing says
-// nothing (see ModelLimitsFetcher).
+// resolveModelLimits asks the provider, falling back to its per-model endpoint
+// for the vendors whose listing says nothing (see ModelLimitsFetcher).
 //
-// answered reports whether the provider replied at all — not whether it knew.
-// Either figure may come back 0 alongside answered=true, which is the provider
-// saying it publishes none; callers treat 0 as "unknown" and skip whatever
-// they would have done with it rather than acting on a guess.
+// answered reports whether the provider replied, not whether it knew: a 0
+// alongside answered=true is the provider saying it publishes no figure.
 func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 	if p == nil {
 		return 0, 0, false
@@ -111,16 +91,14 @@ func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 		}
 	}
 
+	// Either the listing stated everything, or it is all there is to ask.
 	fetcher, ok := p.(ModelLimitsFetcher)
 	if (in > 0 && out > 0) || !ok {
-		// Either the listing stated everything, or it is all there is to ask.
 		return in, out, true
 	}
 	fetchedIn, fetchedOut, err := fetcher.FetchModelLimits(context.TODO(), model)
 	if err != nil {
-		// The listing answered, but the endpoint that fills its gaps did not —
-		// so the pair is incomplete for a reason that may pass.
-		return in, out, false
+		return in, out, false // incomplete for a reason that may pass
 	}
 	return max(in, fetchedIn), max(out, fetchedOut), true
 }
@@ -130,10 +108,6 @@ func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 func NewClient(p Provider, model string, maxTokens int) *Client {
 	return &Client{provider: p, model: model, maxTokens: maxTokens}
 }
-
-// ---------------------------------------------------------------------------
-// core.LLM interface
-// ---------------------------------------------------------------------------
 
 func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.Chunk, error) {
 	srcCh := l.provider.Stream(ctx, l.completionOpts(toProviderMessages(req.Messages), req.Tools, req.System))
@@ -178,37 +152,25 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 	return ch, nil
 }
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-// SetThinkingEffort changes the native thinking/reasoning effort value.
 func (l *Client) SetThinkingEffort(effort string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.thinkingEffort = effort
 }
 
-// ThinkingEffort returns the current native thinking/reasoning effort value.
 func (l *Client) ThinkingEffort() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.thinkingEffort
 }
 
-// ---------------------------------------------------------------------------
-// Streaming & Completion (used by loop/app layer)
-// ---------------------------------------------------------------------------
-
-// Stream starts a streaming completion request and returns a chunk channel.
 func (l *Client) Stream(ctx context.Context, msgs []core.Message,
 	tools []ToolSchema, sysPrompt string,
 ) <-chan StreamChunk {
 	return l.provider.Stream(ctx, l.completionOpts(msgs, tools, sysPrompt))
 }
 
-// Complete sends a one-shot completion (custom max tokens, no tools).
-// Used for utility calls like conversation compaction.
+// Complete sends a one-shot completion, for utility calls like compaction.
 func (l *Client) Complete(ctx context.Context,
 	sysPrompt string, msgs []core.Message, maxTokens int,
 ) (CompletionResponse, error) {
@@ -239,11 +201,6 @@ func (l *Client) Complete(ctx context.Context,
 	return resp, err
 }
 
-// ---------------------------------------------------------------------------
-// Identity & Limits
-// ---------------------------------------------------------------------------
-
-// Name returns the provider name (e.g., "anthropic").
 func (l *Client) Name() string {
 	if l.provider == nil {
 		return ""
@@ -251,31 +208,23 @@ func (l *Client) Name() string {
 	return l.provider.Name()
 }
 
-// ModelID returns the model identifier.
 func (l *Client) ModelID() string { return l.model }
 
 // InputLimit returns the model's context window, or 0 when it cannot be
-// determined — callers treat 0 as "unknown" and skip any size check rather
+// determined — callers treat 0 as "unknown" and skip the size check rather
 // than acting on a guess (see InputLimitEnvVar).
 //
-// It reads the shared resolver (EffectiveInputLimit) rather than taking an
-// injected value, so every client resolves the window the same way the status
-// bar does without any construction site having to remember to pass it. The
-// store answers from memory; the live provider lookup behind it is memoized
-// per model, so this stays cheap enough for the per-inference-step compaction
-// check to call it.
+// It goes through EffectiveInputLimit rather than an injected value, so every
+// client resolves the window the same way the status bar does.
 func (l *Client) InputLimit() int {
 	p, model := l.provider, l.model
 
-	// A provider names itself "vendor:auth_method", which is exactly the two
-	// things the provider-scoped cache is keyed by — and the reason to split
-	// it rather than cast it whole: the store keys connections by the bare
-	// vendor, so the composite string misses every lookup and silently falls
-	// through to the cross-provider scan this call exists to avoid.
-	//
-	// Both store methods are nil-receiver safe, and EffectiveInputLimit is
-	// called unconditionally so the env override it checks first is honored
-	// even before a store exists.
+	// Split rather than cast whole: a provider names itself
+	// "vendor:auth_method" while the store keys connections by the bare vendor,
+	// so the composite string misses every lookup and falls through to the
+	// cross-provider scan this call exists to avoid. Both store methods are
+	// nil-receiver safe, and EffectiveInputLimit runs unconditionally so its
+	// env override is honored even before a store exists.
 	var provider ProviderID
 	var auth AuthMethod
 	if p != nil {
@@ -290,10 +239,6 @@ func (l *Client) InputLimit() int {
 	}
 	return l.limits.input(p, model)
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 // effectiveMaxTokens resolves the output-token cap: an explicit maxTokens
 // override wins, otherwise the memoized provider limit, otherwise the default.

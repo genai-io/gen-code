@@ -6,19 +6,13 @@ import (
 	"time"
 )
 
-// What San remembers about models.
+// What San remembers about models: each provider's listing, cached because
+// fetching it is a network round-trip, and what San concludes from it.
 //
-// Two things live here. The first is the cache: listing a provider's models is
-// a network round-trip, and the picker, the status bar and the compaction
-// check all need the answer, so it is kept in the store keyed by
-// provider:auth. The second is what San concludes from it — a model's display
-// name, and above all its context window.
-//
-// The window is the denominator of every "how full is the context" question
-// San asks: the status bar's percentage and the agent's auto-compaction
-// trigger. Both must get the same answer, so both resolve it through
-// EffectiveInputLimit. Issue #338 was the display and the trigger disagreeing;
-// one resolver is what stops that from recurring.
+// Above all the context window, which is the denominator of every "how full is
+// the context" question — the status bar's percentage and the agent's
+// auto-compaction trigger. Both must get the same answer, so both go through
+// EffectiveInputLimit. Issue #338 was the two disagreeing.
 
 // modelCacheTTL is how long a provider's listing is trusted before it is
 // fetched again.
@@ -36,10 +30,6 @@ type tokenLimitOverride struct {
 	InputTokenLimit  int `json:"inputTokenLimit"`
 	OutputTokenLimit int `json:"outputTokenLimit"`
 }
-
-// ---------------------------------------------------------------------------
-// The cached listings
-// ---------------------------------------------------------------------------
 
 // CacheModels saves model information for a provider.
 func (s *Store) CacheModels(provider ProviderID, authMethod AuthMethod, models []ModelInfo) error {
@@ -109,10 +99,6 @@ func (s *Store) RemoveCachedModels(provider ProviderID, authMethod AuthMethod) e
 	delete(s.data.Models, providerKey(provider, authMethod))
 	return s.save()
 }
-
-// ---------------------------------------------------------------------------
-// What the listings say about one model
-// ---------------------------------------------------------------------------
 
 // CachedModelDisplayName returns the display name for a model ID found in any
 // cached provider list, ignoring TTL. Returns "" if the ID isn't cached.
@@ -222,10 +208,6 @@ func (s *Store) CachedModelReasoningForProvider(provider ProviderID, authMethod 
 	}
 	return m.Reasoning, true
 }
-
-// ---------------------------------------------------------------------------
-// The context window
-// ---------------------------------------------------------------------------
 
 // SetTokenLimit sets custom token limits for a model.
 // It also updates the model cache so subsequent model listings reflect these limits.

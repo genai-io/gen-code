@@ -1,9 +1,6 @@
-// What a turn costs, and who can say.
-//
-// Two things live here because they are one subject: an amount of money and
-// the per-vendor pricing that produces one. Currencies are kept apart rather
-// than summed — there is no exchange rate here, and adding across them would
-// invent a number.
+// What a turn costs, and who can say. Currencies are kept apart rather than
+// summed: there is no exchange rate here, and adding across them would invent a
+// number.
 package llm
 
 import (
@@ -11,10 +8,8 @@ import (
 	"strings"
 )
 
-// CostEstimator computes the money cost of a single inference from its token
-// usage, returning (_, false) when the model's pricing is unknown. The vendor
-// table registers one per provider, so callers price a turn through
-// EstimateCost without knowing which vendor served it.
+// CostEstimator prices one inference from its token usage, reporting false when
+// the model's pricing is unknown. The vendor table registers one per provider.
 type CostEstimator func(modelID string, usage Usage) (Money, bool)
 
 // RegisterCostEstimator records a provider's pricing.

@@ -11,12 +11,9 @@ import (
 	"github.com/genai-io/san/internal/secret"
 )
 
-// The table of everything San can connect to.
-//
-// There is one of it, filled at init by the vendor table and read from the
-// picker, the status bar and every entry point that opens a connection. It is
-// a package-level singleton rather than a value callers pass around, because a
-// second one would be a second answer to "which providers exist".
+// The table of everything San can connect to, filled at init by the vendor
+// table. A package-level singleton rather than a value callers pass around,
+// because a second one would be a second answer to "which providers exist".
 
 // registry holds what is known about each provider/auth-method pair. The four
 // maps are keyed and locked together so a registration is visible whole.
@@ -59,10 +56,6 @@ func parseProviderKey(name string) (ProviderID, AuthMethod) {
 	return ProviderID(provider), AuthMethod(authMethod)
 }
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
-
 // Register records a provider auth method and the factory that opens it.
 func Register(meta Meta, factory Factory) {
 	globalRegistry.mu.Lock()
@@ -102,10 +95,6 @@ func Unregister(provider ProviderID, authMethod AuthMethod) {
 	delete(globalRegistry.displays, provider)
 	delete(globalRegistry.costs, provider)
 }
-
-// ---------------------------------------------------------------------------
-// Lookup
-// ---------------------------------------------------------------------------
 
 // GetProvider opens a connection to a registered provider auth method.
 func GetProvider(ctx context.Context, provider ProviderID, authMethod AuthMethod) (Provider, error) {
@@ -182,10 +171,6 @@ func ProvidersByOrder() []ProviderID {
 	})
 	return names
 }
-
-// ---------------------------------------------------------------------------
-// Connection status
-// ---------------------------------------------------------------------------
 
 // Status is how far a provider auth method is from being usable.
 type Status string
