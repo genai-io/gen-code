@@ -255,10 +255,24 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
-// modelLabels says what the figures cannot. It names only what is unusual
-// about a model — where it sits in its lifecycle, and whether it takes images
-// and reasons at all. A current, ordinary model gets nothing, which is what
-// makes the few rows that do say something stand out.
+// modelLabels says what the figures cannot: where a model sits in its
+// lifecycle, whether it can be sent an image, and whether it reasons at all.
+//
+// Every label is a claim the catalog actually made, and the absence of one is
+// silence, never a denial. That is what decides which way round each is
+// written, and the two capability labels go opposite ways:
+//
+//   - "text-only" names the exception. Nearly every model listed takes an
+//     image, so flagging the handful that cannot is what carries information —
+//     and written the other way round, a listing cached by an older San, which
+//     decodes with the field unset, would claim of every model that it is
+//     blind.
+//   - "thinking" names the norm, because a missing reasoning ladder means the
+//     catalog does not describe this model, not that the model cannot reason.
+//     Ollama and the aggregators reach the picker with no ladder and are often
+//     capable; "no thinking" on them would be a guess stated as a fact.
+//
+// So a row stays quiet unless there is something the catalog vouches for.
 //
 // The wording and the separator live here rather than in the cached listing:
 // "·" is East Asian Ambiguous, so its width depends on the terminal, and a

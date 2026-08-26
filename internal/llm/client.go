@@ -46,78 +46,83 @@ type Client struct {
 	limits modelLimits
 }
 
-// modelLimits memoizes the two token limits for the client's fixed model, so a
-// provider ListModels lookup runs once instead of on every inference step.
+// modelLimits memoizes what the provider says a model takes and produces, so
+// the lookup runs once per client instead of once per inference step.
 //
-// One resolution answers both questions, because one listing states both —
-// asking separately paid for the same network round-trip twice. But each
-// figure is kept on its own: a listing routinely states a window and no output
-// cap, and holding the pair hostage to the missing half would re-list on every
-// call forever. A zero means "unknown, retry later" and is never stored, so a
-// transient provider failure retries rather than sticking at 0.
+// The distinction that matters is between a provider that could not answer and
+// one that answered "I don't know". The first is transient and must be asked
+// again. The second is settled: the listing is what it is, and re-asking on
+// every step re-fetches an entire endpoint catalog — hundreds of models, for
+// Model Studio — to be told the same thing. InputLimit sits inside the agent's
+// step loop, so that was a network round-trip per step of every turn for any
+// model whose window nobody publishes.
+//
+// One resolution answers both figures, because one listing states both.
 type modelLimits struct {
-	mu  sync.Mutex
-	in  int
-	out int
+	mu sync.Mutex
+	// answered records that the provider replied. in and out are then final
+	// for this client's lifetime, zero included.
+	answered bool
+	in, out  int
 }
 
 func (c *modelLimits) input(p Provider, model string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.in == 0 {
-		c.resolve(p, model)
-	}
+	c.resolve(p, model)
 	return c.in
 }
 
 func (c *modelLimits) output(p Provider, model string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.out == 0 {
-		c.resolve(p, model)
-	}
+	c.resolve(p, model)
 	return c.out
 }
 
-// resolve fills in whatever the provider can state. Callers hold c.mu.
+// resolve asks the provider, once it has answered. Callers hold c.mu.
 func (c *modelLimits) resolve(p Provider, model string) {
-	in, out := resolveModelLimits(p, model)
-	if in > 0 {
-		c.in = in
+	if c.answered {
+		return
 	}
-	if out > 0 {
-		c.out = out
-	}
+	c.in, c.out, c.answered = resolveModelLimits(p, model)
 }
 
 // resolveModelLimits asks the provider what the model takes and produces,
 // falling back to its per-model endpoint for the vendors whose listing says
-// nothing (see ModelLimitsFetcher). Either figure may come back 0, which means
-// unknown.
-func resolveModelLimits(p Provider, model string) (in, out int) {
+// nothing (see ModelLimitsFetcher).
+//
+// answered reports whether the provider replied at all — not whether it knew.
+// Either figure may come back 0 alongside answered=true, which is the provider
+// saying it publishes none; callers treat 0 as "unknown" and skip whatever
+// they would have done with it rather than acting on a guess.
+func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 	if p == nil {
-		return 0, 0
+		return 0, 0, false
 	}
-	if models, err := p.ListModels(context.TODO()); err == nil {
-		for _, m := range models {
-			if m.ID == model {
-				in, out = m.InputTokenLimit, m.OutputTokenLimit
-				break
-			}
+	models, err := p.ListModels(context.TODO())
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, m := range models {
+		if m.ID == model {
+			in, out = m.InputTokenLimit, m.OutputTokenLimit
+			break
 		}
 	}
-	if in > 0 && out > 0 {
-		return in, out
-	}
+
 	fetcher, ok := p.(ModelLimitsFetcher)
-	if !ok {
-		return in, out
+	if (in > 0 && out > 0) || !ok {
+		// Either the listing stated everything, or it is all there is to ask.
+		return in, out, true
 	}
 	fetchedIn, fetchedOut, err := fetcher.FetchModelLimits(context.TODO(), model)
 	if err != nil {
-		return in, out
+		// The listing answered, but the endpoint that fills its gaps did not —
+		// so the pair is incomplete for a reason that may pass.
+		return in, out, false
 	}
-	return max(in, fetchedIn), max(out, fetchedOut)
+	return max(in, fetchedIn), max(out, fetchedOut), true
 }
 
 // NewClient fixes a model on a provider. maxTokens=0 means resolve the cap

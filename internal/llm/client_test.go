@@ -271,7 +271,7 @@ func TestModelLimitsFallBackToTheFetcher(t *testing.T) {
 		outputLimit:     8192,
 	}
 
-	in, out := resolveModelLimits(mp, "m")
+	in, out, _ := resolveModelLimits(mp, "m")
 	if in != 400000 || out != 8192 {
 		t.Errorf("resolveModelLimits() = (%d, %d), want (400000, 8192)", in, out)
 	}
@@ -303,11 +303,33 @@ func TestCompletionOptsIncludesThinkingEffort(t *testing.T) {
 // Unknown has to stay 0 rather than become a guess: a guessed window is acted
 // on silently and is wrong in both directions.
 func TestModelLimitsReportUnknownAsZero(t *testing.T) {
-	if in, out := resolveModelLimits(nil, "m"); in != 0 || out != 0 {
-		t.Errorf("no provider = (%d, %d), want (0, 0)", in, out)
+	if in, out, answered := resolveModelLimits(nil, "m"); in != 0 || out != 0 || answered {
+		t.Errorf("no provider = (%d, %d, %v), want (0, 0, false)", in, out, answered)
 	}
-	if in, out := resolveModelLimits(&mockLLMProvider{listErr: errors.New("boom")}, "m"); in != 0 || out != 0 {
-		t.Errorf("failed listing = (%d, %d), want (0, 0)", in, out)
+	if in, out, answered := resolveModelLimits(&mockLLMProvider{listErr: errors.New("boom")}, "m"); in != 0 || out != 0 || answered {
+		t.Errorf("failed listing = (%d, %d, %v), want (0, 0, false)", in, out, answered)
+	}
+}
+
+// A provider that answered "I don't know" has answered. Re-asking re-fetches an
+// entire endpoint catalog, and InputLimit runs inside the agent's step loop —
+// so this was a network round-trip per step of every turn, for any model whose
+// window nobody publishes.
+func TestAnUnknownWindowIsStillAnAnswer(t *testing.T) {
+	t.Setenv(InputLimitEnvVar, "")
+	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m"}}} // listed, no window stated
+	l := &Client{provider: mp, model: "m"}
+
+	for range 5 {
+		if got := l.InputLimit(); got != 0 {
+			t.Fatalf("InputLimit() = %d, want 0 (unknown)", got)
+		}
+		if got := l.effectiveMaxTokens(); got != defaultMaxTokens {
+			t.Fatalf("effectiveMaxTokens() = %d, want the default", got)
+		}
+	}
+	if mp.listCalls != 1 {
+		t.Errorf("ListModels called %d times across 5 rounds, want 1", mp.listCalls)
 	}
 }
 
