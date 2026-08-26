@@ -255,39 +255,31 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
-// modelLabels says what the figures cannot: where the model sits in its
-// vendor's lifecycle, and what it can and cannot do. A plain, current,
-// text-only model gets nothing, and that reads correctly — there is nothing
-// about it to warn about or recommend.
+// modelLabels says what the figures cannot. It names only what is unusual
+// about a model — where it sits in its lifecycle, and whether it takes images
+// and reasons at all. A current, ordinary model gets nothing, which is what
+// makes the few rows that do say something stand out.
 //
 // The wording and the separator live here rather than in the cached listing:
 // "·" is East Asian Ambiguous, so its width depends on the terminal, and a
 // string measured anywhere but where it is drawn measures wrong.
 func modelLabels(m providerModelItem) string {
 	var labels []string
-	switch m.Stage {
+	switch m.Lifecycle {
 	case llm.ModelPreview:
 		labels = append(labels, "preview")
 	case llm.ModelDeprecated:
-		// The replacement is the actionable half — a deprecation the user
-		// cannot act on is just a scolding.
 		if m.Replacement != "" {
 			labels = append(labels, "deprecated, use "+m.Replacement)
 		} else {
 			labels = append(labels, "deprecated")
 		}
 	}
-	if m.AcceptsImages {
-		labels = append(labels, "vision")
+	if m.TextOnly {
+		labels = append(labels, "text-only")
 	}
 	if m.Thinks {
 		labels = append(labels, "thinking")
-	}
-	// San is a tool-calling agent, so a model that takes no tools cannot do the
-	// job at all. Worth saying before it is chosen, not after the first turn
-	// fails.
-	if m.RejectsTools {
-		labels = append(labels, "no tools")
 	}
 	return strings.Join(labels, " · ")
 }

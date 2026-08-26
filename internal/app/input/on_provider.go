@@ -74,10 +74,9 @@ type providerModelItem struct {
 	IsCurrent        bool
 	InputTokenLimit  int
 	OutputTokenLimit int
-	Stage            llm.ModelStage
+	Lifecycle        llm.ModelLifecycle
 	Replacement      string
-	AcceptsImages    bool
-	RejectsTools     bool
+	TextOnly         bool
 	Thinks           bool
 }
 
@@ -91,10 +90,9 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
-		Stage:            mdl.Stage,
+		Lifecycle:        mdl.Lifecycle,
 		Replacement:      mdl.Replacement,
-		AcceptsImages:    mdl.AcceptsImages,
-		RejectsTools:     mdl.RejectsTools,
+		TextOnly:         mdl.TextOnly,
 		Thinks:           mdl.Reasoning != nil,
 	}
 }

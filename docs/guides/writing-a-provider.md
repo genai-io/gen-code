@@ -50,10 +50,10 @@ Three things a provider used to be responsible for, which now belong elsewhere:
   like a context overflow.
 - **History repair.** `ai.Client` runs `RepairHistory` on every request, so an
   interrupted turn's dangling tool call is handled for you.
-- **Presentation.** `ModelInfo` carries facts — `Stage`, `Replacement`,
-  `AcceptsImages`, `RejectsTools`, `Reasoning` — and the `/models` picker writes
-  the labels and aligns the columns. Never put a rendered string in it: it is
-  persisted, so the wording would outlive the release that chose it.
+- **Presentation.** `ModelInfo` carries facts — `Lifecycle`, `Replacement`,
+  `TextOnly`, `Reasoning` — and the `/models` picker writes the labels and
+  aligns the columns. Never put a rendered string in it: it is persisted, so the
+  wording would outlive the release that chose it.
 
 ## Is it not in the catalog?
 
@@ -76,9 +76,10 @@ Two things are worth getting right, because both fail silently:
   says it does.
 
 The row's other fields feed the picker directly: `Stage` and `Replacement` show
-a model as preview or deprecated, `Input` decides whether it reports vision, and
-`Unsupported.Tools` warns that San cannot drive it at all. A model that states
-none of them simply shows its name and window, which is the honest answer.
+a model as preview or deprecated, and `Input` without `ModalityImage` marks it
+text-only. A model that states none of them simply shows its name and window,
+which is the honest answer — the picker labels what is unusual, not what is
+normal.
 
 ## Does it speak a protocol nobody implements?
 

@@ -1045,7 +1045,7 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 	models := []providerModelItem{
 		{
 			ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000,
-			AcceptsImages: true, Thinks: true, IsCurrent: true,
+			Thinks: true, IsCurrent: true,
 		},
 		{ID: "qwen3-max", DisplayName: "qwen3-max"},
 	}
@@ -1055,7 +1055,7 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 	if !strings.Contains(current, "[*]") {
 		t.Errorf("the current model is not marked: %q", current)
 	}
-	for _, want := range []string{"Claude Opus 5", "1.0M", "vision · thinking"} {
+	for _, want := range []string{"Claude Opus 5", "1.0M", "thinking"} {
 		if !strings.Contains(current, want) {
 			t.Errorf("row is missing %q: %q", want, current)
 		}
@@ -1074,16 +1074,16 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 // start in the same place however wide its own name and figures are.
 func TestModelRowsShareOneGrid(t *testing.T) {
 	models := []providerModelItem{
-		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true},
-		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, AcceptsImages: true},
-		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 16_000, AcceptsImages: true},
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
+		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, Thinks: true},
+		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 16_000, Thinks: true},
 	}
 	s, items := selectorWithModels(t, 100, models)
 
 	var columns []int
 	for _, item := range items {
 		row := xansi.Strip(s.renderModelRow(item, false))
-		columns = append(columns, strings.Index(row, "vision"))
+		columns = append(columns, strings.Index(row, "thinking"))
 	}
 	for i := range columns {
 		if columns[i] != columns[0] {
@@ -1100,9 +1100,9 @@ func TestALongModelNameCannotOverflowThePanel(t *testing.T) {
 		{
 			ID:              "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
 			DisplayName:     "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
-			InputTokenLimit: 262_144, AcceptsImages: true,
+			InputTokenLimit: 262_144, Thinks: true,
 		},
-		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, AcceptsImages: true},
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
 	}
 
 	for _, width := range []int{60, 80, 120} {

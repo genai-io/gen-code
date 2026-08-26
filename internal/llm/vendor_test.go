@@ -612,32 +612,33 @@ func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
 		want  ModelInfo
 	}{
 		{
-			name:  "a plain text-only model states nothing extra",
-			model: ai.Model{ID: "plain"},
+			name:  "a plain model states nothing extra",
+			model: ai.Model{ID: "plain", Input: []ai.Modality{ai.ModalityImage}},
 			want:  ModelInfo{ID: "plain", Name: "plain", DisplayName: "plain"},
 		},
 		{
-			name:  "vision input",
+			name:  "a text-only model is flagged; taking images is the norm",
+			model: ai.Model{ID: "chat", Input: []ai.Modality{ai.ModalityText}},
+			want:  ModelInfo{ID: "chat", Name: "chat", DisplayName: "chat", TextOnly: true},
+		},
+		{
+			name:  "a model that takes images says nothing",
 			model: ai.Model{ID: "opus", Input: []ai.Modality{ai.ModalityText, ai.ModalityImage}},
-			want:  ModelInfo{ID: "opus", Name: "opus", DisplayName: "opus", AcceptsImages: true},
+			want:  ModelInfo{ID: "opus", Name: "opus", DisplayName: "opus"},
 		},
 		{
 			name:  "a preview model says so",
-			model: ai.Model{ID: "prev", Stage: ai.StagePreview},
-			want:  ModelInfo{ID: "prev", Name: "prev", DisplayName: "prev", Stage: ModelPreview},
+			model: ai.Model{ID: "prev", Stage: ai.StagePreview, Input: []ai.Modality{ai.ModalityImage}},
+			want:  ModelInfo{ID: "prev", Name: "prev", DisplayName: "prev", Lifecycle: ModelPreview},
 		},
 		{
-			name:  "a deprecation carries its replacement",
-			model: ai.Model{ID: "old", Stage: ai.StageDeprecated, Replacement: "claude-opus-5"},
+			name: "a deprecation carries its replacement",
+			model: ai.Model{ID: "old", Stage: ai.StageDeprecated, Replacement: "claude-opus-5",
+				Input: []ai.Modality{ai.ModalityImage}},
 			want: ModelInfo{
 				ID: "old", Name: "old", DisplayName: "old",
-				Stage: ModelDeprecated, Replacement: "claude-opus-5",
+				Lifecycle: ModelDeprecated, Replacement: "claude-opus-5",
 			},
-		},
-		{
-			name:  "a model San cannot drive is flagged",
-			model: ai.Model{ID: "small", Unsupported: ai.Unsupported{Tools: true}},
-			want:  ModelInfo{ID: "small", Name: "small", DisplayName: "small", RejectsTools: true},
 		},
 	}
 

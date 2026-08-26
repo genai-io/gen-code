@@ -141,24 +141,32 @@ type StreamChunk struct {
 	Error    error               // for an error chunk
 }
 
-// ModelStage is where a model sits in its vendor's lifecycle. The zero value
-// is a generally available model; a retired one never reaches here, because the
-// picker lists only what still serves requests.
-type ModelStage string
+// ModelLifecycle is where a model sits between announcement and retirement.
+// The zero value is a generally available model — the overwhelming majority,
+// and the one a picker has nothing to say about.
+//
+// A retired model never reaches here: ListModels drops it, because a model that
+// no longer serves requests is not one to choose.
+type ModelLifecycle string
 
 const (
-	ModelStable     ModelStage = ""
-	ModelPreview    ModelStage = "preview"
-	ModelDeprecated ModelStage = "deprecated"
+	ModelStable     ModelLifecycle = ""
+	ModelPreview    ModelLifecycle = "preview"
+	ModelDeprecated ModelLifecycle = "deprecated"
 )
 
 // ModelInfo is one model as the picker and the store see it.
 //
-// Every field is a fact, never a rendering of one: the picker aligns these into
-// columns and writes the labels itself, and prose stored here would fix the
-// wording — separators included — in a file that outlives the release that
-// wrote it. A zero token limit means unknown; callers skip the check rather
-// than acting on a guess.
+// Every field is a fact, never a rendering of one: the picker aligns the
+// figures into columns and writes the labels itself, and prose stored here
+// would fix the wording — separators included — in a file that outlives the
+// release that wrote it. A zero token limit means unknown; callers skip the
+// check rather than acting on a guess.
+//
+// The two flags below are phrased so that the common case is the zero value.
+// That is not a style choice: this record is cached to disk, so a listing
+// written by an older San decodes with them unset, and the picker must read
+// that as "nothing unusual" rather than as a claim.
 type ModelInfo struct {
 	ID               string               `json:"id"`
 	Name             string               `json:"name"`
@@ -167,16 +175,16 @@ type ModelInfo struct {
 	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
 	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
 
-	// Stage, and the model to move to when it is deprecated.
-	Stage       ModelStage `json:"stage,omitempty"`
-	Replacement string     `json:"replacement,omitempty"`
+	// Lifecycle, and the model to move to once it is deprecated. Replacement
+	// is the actionable half: a deprecation the user cannot act on is just a
+	// scolding.
+	Lifecycle   ModelLifecycle `json:"lifecycle,omitempty"`
+	Replacement string         `json:"replacement,omitempty"`
 
-	// AcceptsImages reports vision input. RejectsTools reports the opposite of
-	// what its name suggests being false: San is a tool-calling agent, so a
-	// model that takes no tools cannot do the job at all, and the flag is
-	// phrased so that the common case is the zero value.
-	AcceptsImages bool `json:"acceptsImages,omitempty"`
-	RejectsTools  bool `json:"rejectsTools,omitempty"`
+	// TextOnly marks a model that cannot be sent an image. Named for the
+	// exception rather than the rule — nearly every model San lists takes one,
+	// so flagging the handful that do not is what carries information.
+	TextOnly bool `json:"textOnly,omitempty"`
 }
 
 // Complete runs a turn to the end and returns it whole, for the callers that
