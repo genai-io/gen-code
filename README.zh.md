@@ -164,7 +164,7 @@ san --resume                 # 选择历史会话恢复
 <details>
 <summary><b>配置文件与目录结构</b></summary>
 
-配置从 `~/.san/`（用户级）与 `<项目>/.san/`（项目级）加载，项目级覆盖用户级。项目指令依次读取 `.san/SAN.md`、`SAN.md`、`.claude/CLAUDE.md`、`CLAUDE.md`。
+配置从 `~/.san/`（用户级）与 `<项目>/.san/`（项目级）加载，项目级覆盖用户级。项目指令遵循 [AGENTS.md](https://agents.md) 行业标准：`~/.san/AGENTS.md`，从仓库根目录到当前工作目录沿途每一层的 `AGENTS.md`（越近的越优先），以及根目录下不入库的 `AGENTS.local.md`。
 
 用户级（`~/.san/`）：
 

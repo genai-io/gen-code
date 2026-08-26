@@ -128,7 +128,7 @@ func TestGetEffectiveInputLimitWithoutModelIsZero(t *testing.T) {
 	}
 }
 
-// A single ratio over the whole string is what makes a Chinese SAN.md read as
+// A single ratio over the whole string is what makes a Chinese AGENTS.md read as
 // a quarter of its real cost, so the two scripts are checked against each
 // other rather than against exact numbers a tokenizer would have to confirm.
 func TestEstimateTokensCountsCJKHeavierThanASCII(t *testing.T) {

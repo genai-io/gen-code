@@ -17,6 +17,19 @@ import (
 const (
 	maxImportDepth = 5
 
+	// InstructionFile is the industry-standard agent instruction file
+	// (https://agents.md). San reads it at the user level and at every
+	// directory from the project root down to the working directory.
+	InstructionFile = "AGENTS.md"
+
+	// LocalInstructionFile holds project instructions that stay out of git.
+	LocalInstructionFile = "AGENTS.local.md"
+
+	// instructionsByteCap bounds the combined size of the instruction files
+	// injected at session start, matching Codex's 32 KiB project_doc_max_bytes
+	// so a deep directory chain cannot crowd out the conversation.
+	instructionsByteCap = 32 * 1024
+
 	// AutoMemoryIndexName is the index file of the agent-written auto-memory
 	// store. Topic files (loaded on demand by the agent) live beside it.
 	AutoMemoryIndexName = "MEMORY.md"
@@ -82,7 +95,7 @@ func ResolveAutoMemoryDir(cwd, override string) string {
 // resolve it with ResolveAutoMemoryDir so a user-configured memory path is
 // honored (the reviewer prompt and the main-agent memory reminder both do).
 // Capped at autoMemoryByteCap. It is a distinct source from LoadMemoryFiles:
-// agent-written memory and user-authored SAN.md/CLAUDE.md instructions are
+// agent-written memory and user-authored AGENTS.md instructions are
 // injected as separate blocks and never mixed. Returns ("", false) when the
 // store is empty or absent. When the index exceeds the cap it is truncated on
 // a line boundary with a marker — topic files are read on demand and never
@@ -139,107 +152,134 @@ func LoadInstructions(cwd string) (user, project string) {
 	return strings.Join(userParts, "\n\n"), strings.Join(projectParts, "\n\n")
 }
 
-// LoadMemoryFiles loads all memory files with metadata.
-// Returns files in order: global, global rules, project, project rules, local.
+// LoadMemoryFiles loads every instruction file that applies to cwd, in the
+// order they are injected: user-level AGENTS.md, user rules, the project chain
+// from the repository root down to cwd, project rules, then the git-ignored
+// local override. Files closer to cwd are injected last so their instructions
+// win, mirroring the AGENTS.md convention shared by Codex and Cursor.
 func LoadMemoryFiles(cwd string) []MemoryFile {
-	var files []MemoryFile
 	homeDir, _ := os.UserHomeDir()
-	seen := make(map[string]bool)
+	l := &loader{seen: make(map[string]bool), remaining: instructionsByteCap}
 
 	userDir := confdir.Dir(homeDir)
-	userSources := []string{
-		filepath.Join(userDir, "SAN.md"),
-		filepath.Join(homeDir, ".claude", "CLAUDE.md"),
-	}
-	if f := loadMemoryFile(userSources, "global", seen); f != nil {
-		files = append(files, *f)
-	}
+	l.add(filepath.Join(userDir, InstructionFile), "global")
+	l.addRulesDirectory(filepath.Join(userDir, "rules"), "global")
 
-	userRulesDir := filepath.Join(userDir, "rules")
-	files = append(files, loadRulesDirectory(userRulesDir, "global", seen)...)
-
-	projectDir := confdir.Dir(cwd)
-	projectSources := []string{
-		filepath.Join(projectDir, "SAN.md"),
-		filepath.Join(cwd, "SAN.md"),
-		filepath.Join(cwd, ".claude", "CLAUDE.md"),
-		filepath.Join(cwd, "CLAUDE.md"),
+	for _, path := range ProjectInstructionChain(cwd) {
+		l.add(path, "project")
 	}
-	if f := loadMemoryFile(projectSources, "project", seen); f != nil {
-		files = append(files, *f)
-	}
+	l.addRulesDirectory(filepath.Join(confdir.Dir(cwd), "rules"), "project")
 
-	projectRulesDir := filepath.Join(projectDir, "rules")
-	files = append(files, loadRulesDirectory(projectRulesDir, "project", seen)...)
+	l.add(filepath.Join(ProjectRoot(cwd), LocalInstructionFile), "local")
 
-	localSources := []string{
-		filepath.Join(projectDir, "SAN.local.md"),
-	}
-	if f := loadMemoryFile(localSources, "local", seen); f != nil {
-		files = append(files, *f)
-	}
-
-	return files
+	return l.files
 }
 
-func loadMemoryFile(sources []string, level string, seen map[string]bool) *MemoryFile {
-	for _, src := range sources {
-		info, err := os.Stat(src)
-		if err != nil {
-			continue
+// ProjectRoot returns the repository root at or above cwd, falling back to cwd
+// when cwd is not inside a repository. Instruction discovery starts here.
+func ProjectRoot(cwd string) string {
+	dir := cwd
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
 		}
-		if seen[src] {
-			continue
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return cwd
 		}
-		data, err := os.ReadFile(src)
-		if err != nil {
-			continue
-		}
-		content := strings.TrimSpace(string(data))
-		if content == "" {
-			continue
-		}
-		seen[src] = true
-		content = resolveImports(content, filepath.Dir(src), 0, seen)
-
-		log.Logger().Info("Loaded memory file",
-			zap.String("path", src),
-			zap.Int64("bytes", info.Size()),
-			zap.String("level", level))
-
-		return &MemoryFile{
-			Path:    src,
-			Size:    info.Size(),
-			Content: fmt.Sprintf("<!-- Source: %s -->\n%s", src, content),
-			Level:   level,
-		}
+		dir = parent
 	}
-	return nil
 }
 
-func loadRulesDirectory(dir string, level string, seen map[string]bool) []MemoryFile {
-	var files []MemoryFile
+// ProjectInstructionChain returns the AGENTS.md path for every directory from
+// the project root down to cwd, root first. Every file in the chain is loaded;
+// the ones nearer cwd are injected last and therefore take precedence.
+func ProjectInstructionChain(cwd string) []string {
+	root := ProjectRoot(cwd)
+	paths := []string{filepath.Join(root, InstructionFile)}
+
+	rel, err := filepath.Rel(root, cwd)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return paths
+	}
+	dir := root
+	for _, segment := range strings.Split(rel, string(filepath.Separator)) {
+		dir = filepath.Join(dir, segment)
+		paths = append(paths, filepath.Join(dir, InstructionFile))
+	}
+	return paths
+}
+
+// loader accumulates instruction files while enforcing the combined byte cap.
+type loader struct {
+	seen      map[string]bool
+	remaining int
+	files     []MemoryFile
+}
+
+// add loads one instruction file, resolves its @imports, and appends it unless
+// the file is missing, empty, already loaded, or the byte cap is exhausted.
+func (l *loader) add(path, level string) {
+	info, err := os.Stat(path)
+	if err != nil || l.seen[path] {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return
+	}
+	l.seen[path] = true
+	content = resolveImports(content, filepath.Dir(path), 0, l.seen)
+
+	if l.remaining <= 0 {
+		log.Logger().Warn("Skipped instruction file: byte cap reached",
+			zap.String("path", path),
+			zap.Int("cap", instructionsByteCap))
+		return
+	}
+	if len(content) > l.remaining {
+		log.Logger().Warn("Truncated instruction file: byte cap reached",
+			zap.String("path", path),
+			zap.Int("cap", instructionsByteCap))
+		content = truncateOnLineBoundary(content, l.remaining) +
+			"\n\n<!-- instructions truncated: combined 32KB cap reached -->"
+	}
+	l.remaining -= len(content)
+
+	log.Logger().Info("Loaded instruction file",
+		zap.String("path", path),
+		zap.Int64("bytes", info.Size()),
+		zap.String("level", level))
+
+	l.files = append(l.files, MemoryFile{
+		Path:    path,
+		Size:    info.Size(),
+		Content: fmt.Sprintf("<!-- Source: %s -->\n%s", path, content),
+		Level:   level,
+	})
+}
+
+// addRulesDirectory loads every .md file in dir, alphabetically.
+func (l *loader) addRulesDirectory(dir, level string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return files
+		return
 	}
-	var mdFiles []string
+	var paths []string
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
 			continue
 		}
-		name := entry.Name()
-		if strings.HasSuffix(strings.ToLower(name), ".md") {
-			mdFiles = append(mdFiles, filepath.Join(dir, name))
-		}
+		paths = append(paths, filepath.Join(dir, entry.Name()))
 	}
-	sort.Strings(mdFiles)
-	for _, path := range mdFiles {
-		if f := loadMemoryFile([]string{path}, level, seen); f != nil {
-			files = append(files, *f)
-		}
+	sort.Strings(paths)
+	for _, path := range paths {
+		l.add(path, level)
 	}
-	return files
 }
 
 // importRe matches @import directives in memory files (e.g., @file.md).
@@ -292,45 +332,49 @@ func resolveImports(content string, basePath string, depth int, seen map[string]
 	})
 }
 
-// MemoryPaths holds categorized memory file paths.
+// MemoryPaths holds the instruction paths San consults, for display and edit.
 type MemoryPaths struct {
-	Global       []string
-	GlobalRules  string
-	Project      []string
-	ProjectRules string
-	Local        []string
+	Global       string   // ~/.san/AGENTS.md
+	GlobalRules  string   // ~/.san/rules/
+	Project      []string // <root>/AGENTS.md ... <cwd>/AGENTS.md, root first
+	ProjectRules string   // <cwd>/.san/rules/
+	Local        string   // <root>/AGENTS.local.md
 }
 
-// GetAllMemoryPaths returns all memory paths organized by category.
+// GetAllMemoryPaths returns all instruction paths organized by category.
 func GetAllMemoryPaths(cwd string) MemoryPaths {
 	homeDir, _ := os.UserHomeDir()
+	userDir := confdir.Dir(homeDir)
 	return MemoryPaths{
-		Global: []string{
-			filepath.Join(confdir.Dir(homeDir), "SAN.md"),
-			filepath.Join(homeDir, ".claude", "CLAUDE.md"),
-		},
-		GlobalRules: filepath.Join(confdir.Dir(homeDir), "rules"),
-		Project: []string{
-			filepath.Join(confdir.Dir(cwd), "SAN.md"),
-			filepath.Join(cwd, "SAN.md"),
-			filepath.Join(cwd, ".claude", "CLAUDE.md"),
-			filepath.Join(cwd, "CLAUDE.md"),
-		},
+		Global:       filepath.Join(userDir, InstructionFile),
+		GlobalRules:  filepath.Join(userDir, "rules"),
+		Project:      ProjectInstructionChain(cwd),
 		ProjectRules: filepath.Join(confdir.Dir(cwd), "rules"),
-		Local: []string{
-			filepath.Join(confdir.Dir(cwd), "SAN.local.md"),
-		},
+		Local:        filepath.Join(ProjectRoot(cwd), LocalInstructionFile),
 	}
 }
 
-// FindMemoryFile returns the first existing file path from the given list.
-func FindMemoryFile(paths []string) string {
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			return path
+// FindNearestMemoryFile returns the existing path closest to the working
+// directory -- the last entry of a root-first chain -- since the instructions
+// nearest cwd are the ones that win.
+func FindNearestMemoryFile(paths []string) string {
+	for i := len(paths) - 1; i >= 0; i-- {
+		if _, err := os.Stat(paths[i]); err == nil {
+			return paths[i]
 		}
 	}
 	return ""
+}
+
+// ExistingMemoryFiles returns the paths that exist, preserving chain order.
+func ExistingMemoryFiles(paths []string) []string {
+	var found []string
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			found = append(found, path)
+		}
+	}
+	return found
 }
 
 // ListRulesFiles returns all .md files in a rules directory.

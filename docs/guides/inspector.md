@@ -68,7 +68,7 @@ hidden fields.
 At any record, you can open the **System Prompt overlay** to see the
 full system prompt that was active at that moment. This includes all
 sections injected by the harness: personas, skills, project memory
-(`SAN.md` / `CLAUDE.md`), and MCP server prompts. (Tool schemas are not
+(`AGENTS.md`), and MCP server prompts. (Tool schemas are not
 part of the system prompt — see Replay State below for those.)
 
 ### Replay State
