@@ -1,0 +1,72 @@
+name: Release Tag
+
+# Automatically tags a merged release PR (`release/vX.Y.Z`) and kicks off
+# .github/workflows/release.yml to build and publish.
+#
+# The release bot only creates the PR — tagging was previously a manual
+# step that kept being skipped (v1.22.5 sat merged for a day before its
+# tag was pushed). This workflow closes that gap:
+#
+#   1. release-bot.yml  -> creates the release/vX.Y.Z PR
+#   2. [PR merged]      -> this workflow pushes the vX.Y.Z tag
+#   3. release.yml      -> builds binaries and publishes the Release
+#
+# Note: a tag pushed with GITHUB_TOKEN does NOT fire release.yml's
+# `push: tags` trigger (GitHub's recursion guard), so we push the tag
+# here and then explicitly dispatch release.yml via workflow_dispatch —
+# the documented exception — which requires `actions: write`.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Push release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          TAG="${PR_HEAD#release/}"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error:: unexpected release branch name: $PR_HEAD"
+            exit 1
+          fi
+          # Already tagged — a human pushed it first, so release.yml ran
+          # via the push event. Skip rather than publish a duplicate.
+          if gh api "repos/genai-io/san/git/ref/tags/$TAG" --jq .ref >/dev/null 2>&1; then
+            echo "::notice:: tag $TAG already exists — skipping"
+            exit 0
+          fi
+          # Belt-and-braces: the tag must match the version in main.go.
+          VERSION=$(grep -oE 'var version = "[^"]+"' cmd/san/main.go | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [[ "v$VERSION" != "$TAG" ]]; then
+            echo "::error:: cmd/san/main.go version (v$VERSION) does not match tag ($TAG)"
+            exit 1
+          fi
+          git tag "$TAG" "$MERGE_SHA"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger release build
+        if: steps.tag.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --ref "${{ steps.tag.outputs.tag }}"

@@ -9,8 +9,9 @@ name: Release Bot
 #   - CHANGELOG.md      (new version section)
 #   - cmd/san/main.go   (version string bumped)
 #
-# After the PR is merged, pushing the tag triggers
-# .github/workflows/release.yml to build and publish.
+# After the PR is merged, .github/workflows/release-tag.yml pushes the
+# vX.Y.Z tag and dispatches .github/workflows/release.yml to build and
+# publish.
 
 on:
   schedule:
@@ -35,6 +36,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Required by the release-bot script's `gh workflow run ci.yml` dispatch.
+  actions: write
 
 jobs:
   create-release-pr:
