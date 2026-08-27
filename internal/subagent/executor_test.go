@@ -114,11 +114,11 @@ func (stubProvider) Name() string                                               
 // stubResolver records the vendor it was asked to resolve.
 type stubResolver struct {
 	provider llm.Provider
-	vendor   llm.Name
+	vendor   llm.ProviderID
 	err      error
 }
 
-func (s *stubResolver) Resolve(_ context.Context, p llm.Name) (llm.Provider, error) {
+func (s *stubResolver) Resolve(_ context.Context, p llm.ProviderID) (llm.Provider, error) {
 	s.vendor = p
 	return s.provider, s.err
 }
@@ -268,7 +268,7 @@ func TestResolveModelMissingCatalogLeavesOverrideUnverified(t *testing.T) {
 func TestParseVendorModel(t *testing.T) {
 	tests := []struct {
 		ref    string
-		vendor llm.Name
+		vendor llm.ProviderID
 		model  string
 		ok     bool
 	}{

@@ -244,6 +244,9 @@ func toModelInfo(m ai.Model) ModelInfo {
 		DisplayName:      m.Name,
 		InputTokenLimit:  m.ContextWindow,
 		OutputTokenLimit: m.MaxOutput,
+		Lifecycle:        toModelLifecycle(m.Stage),
+		Replacement:      m.Replacement,
+		TextOnly:         !m.Accepts(ai.ModalityImage),
 	}
 	if info.Name == "" {
 		info.Name = m.ID
@@ -261,4 +264,17 @@ func toModelInfo(m ai.Model) ModelInfo {
 		info.Reasoning = NewReasoningCapability(labels, fallback)
 	}
 	return info
+}
+
+// toModelLifecycle maps the catalog's stage onto San's. A retired model never
+// reaches here — ListModels drops it — so it has no San equivalent.
+func toModelLifecycle(stage ai.Stage) ModelLifecycle {
+	switch stage {
+	case ai.StagePreview:
+		return ModelPreview
+	case ai.StageDeprecated:
+		return ModelDeprecated
+	default:
+		return ModelStable
+	}
 }

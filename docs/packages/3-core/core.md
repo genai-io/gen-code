@@ -120,7 +120,7 @@ need no changes.
 There are no business-logic internals to document — implementations live
 in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
 `System`), `internal/tool/` (for `Tool`/`Tools`), and
-`internal/llm/<provider>/` (for `LLM`).
+`internal/llm` (for `LLM`).
 
 The single implementation file here is `agent_impl.go` (the `*agent`
 struct backing `NewAgent`) — kept inside `core` because the run loop is

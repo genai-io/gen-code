@@ -538,7 +538,7 @@ func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
 }
 
 // The turn loop must recognize the tag the llm layer attaches, not the
-// provider wording behind it — that vocabulary lives in llmerr now.
+// provider wording behind it — that vocabulary lives in the llm layer now.
 func TestIsPromptTooLongReadsTheContextExceededTag(t *testing.T) {
 	if !isPromptTooLong(fmt.Errorf("infer: %w", stubContextExceeded{})) {
 		t.Fatal("isPromptTooLong() = false for a tagged error, want true")

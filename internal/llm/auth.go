@@ -5,20 +5,21 @@ import (
 	"fmt"
 )
 
-// LoginPrompt is what the user has to do to finish an interactive sign-in: the
-// page to open and, for device-code flows, the code to type there. A
-// browser-callback (PKCE) flow leaves UserCode empty, because opening the URL
-// is the whole instruction.
+// Signing in to a provider that authenticates a person rather than a service.
+// The vendor half lives in vendor_signin.go; what is here is the contract
+// between the two, so the /models panel can offer a sign-in without knowing
+// which vendor it is talking to.
+
+// LoginPrompt is what the user must do to finish a sign-in: the page to open
+// and, for device-code flows, the code to type there. A browser-callback (PKCE)
+// flow leaves UserCode empty.
 type LoginPrompt struct {
 	URL      string
 	UserCode string
 }
 
 // Authenticator performs interactive (non-API-key) sign-in for a provider auth
-// method — e.g. an OAuth subscription login. Provider packages register one per
-// (provider, authMethod) alongside their factory, so product code can trigger
-// sign-in/sign-out through this facade without importing the concrete provider
-// package.
+// method.
 type Authenticator interface {
 	// Login runs the interactive sign-in, persisting credentials on success.
 	// onPrompt, if non-nil, receives the instruction the user must follow —
@@ -35,41 +36,31 @@ type StoredCredentialAuthenticator interface {
 	HasCredentials() bool
 }
 
-// RegisterAuthenticator registers the interactive login handler for a provider
+// RegisterAuthenticator records the interactive login handler for a provider
 // auth method.
-func RegisterAuthenticator(provider Name, authMethod AuthMethod, a Authenticator) {
-	globalRegistry.RegisterAuthenticator(provider, authMethod, a)
-}
-
-// RegisterAuthenticator registers the interactive login handler for a provider
-// auth method.
-func (r *Registry) RegisterAuthenticator(provider Name, authMethod AuthMethod, a Authenticator) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.authenticators[makeProviderKey(provider, authMethod)] = a
+func RegisterAuthenticator(provider ProviderID, authMethod AuthMethod, a Authenticator) {
+	globalRegistry.mu.Lock()
+	defer globalRegistry.mu.Unlock()
+	globalRegistry.authenticators[providerKey(provider, authMethod)] = a
 }
 
 // SupportsInteractiveLogin reports whether a provider auth method signs in
 // interactively (OAuth) rather than via an API key.
-func SupportsInteractiveLogin(provider Name, authMethod AuthMethod) bool {
-	return globalRegistry.authenticator(provider, authMethod) != nil
+func SupportsInteractiveLogin(provider ProviderID, authMethod AuthMethod) bool {
+	return lookupAuthenticator(provider, authMethod) != nil
 }
 
 // HasInteractiveCredentials reports whether an interactive auth method already
 // has stored credentials. Callers should still verify them with the provider,
 // because this only checks local presence, not remote validity.
-func HasInteractiveCredentials(provider Name, authMethod AuthMethod) bool {
-	a := globalRegistry.authenticator(provider, authMethod)
-	if a == nil {
-		return false
-	}
-	withCredentials, ok := a.(StoredCredentialAuthenticator)
-	return ok && withCredentials.HasCredentials()
+func HasInteractiveCredentials(provider ProviderID, authMethod AuthMethod) bool {
+	stored, ok := lookupAuthenticator(provider, authMethod).(StoredCredentialAuthenticator)
+	return ok && stored.HasCredentials()
 }
 
 // Login runs the interactive sign-in for a provider auth method.
-func Login(ctx context.Context, provider Name, authMethod AuthMethod, onPrompt func(LoginPrompt)) error {
-	a := globalRegistry.authenticator(provider, authMethod)
+func Login(ctx context.Context, provider ProviderID, authMethod AuthMethod, onPrompt func(LoginPrompt)) error {
+	a := lookupAuthenticator(provider, authMethod)
 	if a == nil {
 		return fmt.Errorf("provider %s:%s does not support interactive login", provider, authMethod)
 	}
@@ -79,18 +70,18 @@ func Login(ctx context.Context, provider Name, authMethod AuthMethod, onPrompt f
 // Logout clears stored credentials for a provider auth method. It is a no-op for
 // methods without an interactive authenticator (API-key credentials are cleared
 // via the secret store instead).
-func Logout(provider Name, authMethod AuthMethod) error {
-	a := globalRegistry.authenticator(provider, authMethod)
+func Logout(provider ProviderID, authMethod AuthMethod) error {
+	a := lookupAuthenticator(provider, authMethod)
 	if a == nil {
 		return nil
 	}
 	return a.Logout()
 }
 
-// authenticator returns the registered Authenticator for a provider auth method,
-// or nil when none is registered.
-func (r *Registry) authenticator(provider Name, authMethod AuthMethod) Authenticator {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.authenticators[makeProviderKey(provider, authMethod)]
+// lookupAuthenticator returns the registered Authenticator for a provider auth
+// method, or nil when none is registered.
+func lookupAuthenticator(provider ProviderID, authMethod AuthMethod) Authenticator {
+	globalRegistry.mu.RLock()
+	defer globalRegistry.mu.RUnlock()
+	return globalRegistry.authenticators[providerKey(provider, authMethod)]
 }

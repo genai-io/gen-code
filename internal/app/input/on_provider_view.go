@@ -225,33 +225,66 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 		indicatorStyle = kit.SelectorStatusConnected()
 	}
 
-	displayName := m.DisplayName
-	if displayName == "" {
-		displayName = m.Name
-	}
-	if displayName == "" {
-		displayName = m.ID
+	// A grid, not a sentence. The name and the window each take a column of
+	// their own, so the windows line up on their units; only the labels, which
+	// have no shape to align, trail as free text.
+	cols := s.modelColumns
+	name := padRight(modelDisplayName(*m), cols.name)
+
+	window, windowStyle := kit.FormatTokenCount(m.InputTokenLimit), kit.DimStyle()
+	if m.InputTokenLimit == 0 {
+		// With no window the context percentage cannot render and
+		// auto-compaction cannot fire, which is worth flagging in its place.
+		window, windowStyle = "⚠", lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 	}
 
-	warning := ""
-	if m.InputTokenLimit == 0 && m.OutputTokenLimit == 0 {
-		warning = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(" ⚠")
-	}
+	line := fmt.Sprintf("%s  %s  %s",
+		indicatorStyle.Render(indicator), name,
+		windowStyle.Render(padLeft(window, modelWindowColumnWidth)))
 
-	line := fmt.Sprintf("%s %s%s", indicatorStyle.Render(indicator), displayName, warning)
-
-	// When the catalog describes the model, trail the name with a dimmed
-	// description. Truncate it to whatever room is left on the row (after the
-	// selection prefix and a two-column gap) so a long blurb never wraps.
-	if desc := strings.TrimSpace(m.Description); desc != "" {
+	// Then what the catalog says about the model, in whatever room is left on
+	// the row, so a long list of labels never wraps.
+	if labels := modelLabels(*m); labels != "" {
 		const prefixAndGap = 6 // up to 4 cols of selection prefix + a 2-col gap
 		budget := s.panel().ContentWidth() - lipgloss.Width(line) - prefixAndGap
 		if budget >= 8 {
-			line += "  " + kit.DimStyle().Render(kit.TruncateText(desc, budget))
+			line += "  " + kit.DimStyle().Render(kit.TruncateText(labels, budget))
 		}
 	}
 
 	return kit.RenderSelectableRow(line, isSelected)
+}
+
+// modelLabels says what the figures cannot. Every label is a claim the catalog
+// actually made, and the absence of one is silence rather than a denial —
+// which is what decides each label's direction, and the two capability labels
+// go opposite ways. "text-only" names the exception, since nearly every model
+// takes an image and the field is unset in listings cached by an older San.
+// "thinking" names the norm, since a missing reasoning ladder means the catalog
+// does not describe the model, not that it cannot reason.
+//
+// The wording and the separator live here rather than in the cached listing:
+// "·" is East Asian Ambiguous, so a string measured anywhere but where it is
+// drawn measures wrong.
+func modelLabels(m providerModelItem) string {
+	var labels []string
+	switch m.Lifecycle {
+	case llm.ModelPreview:
+		labels = append(labels, "preview")
+	case llm.ModelDeprecated:
+		if m.Replacement != "" {
+			labels = append(labels, "deprecated, use "+m.Replacement)
+		} else {
+			labels = append(labels, "deprecated")
+		}
+	}
+	if m.TextOnly {
+		labels = append(labels, "text-only")
+	}
+	if m.Thinks {
+		labels = append(labels, "thinking")
+	}
+	return strings.Join(labels, " · ")
 }
 
 // ── Providers tab rows ──────────────────────────────────────────────────────

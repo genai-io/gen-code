@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
@@ -87,10 +88,7 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 	current := store.GetCurrentModel()
 
 	s.allModels = nil
-	allCached := store.GetAllCachedModels()
-	if len(allCached) == 0 {
-		allCached = store.GetAllCachedModelsIncludeExpired()
-	}
+	allCached := store.CachedModelsByProvider()
 
 	if len(allCached) > 0 {
 		s.loadModelsCached(allCached, current)
@@ -120,13 +118,13 @@ func (s *ProviderSelector) ensureModelProvidersExist() {
 		}
 		seen[m.ProviderName] = true
 
-		displayName := llm.ProviderDisplayName(llm.Name(m.ProviderName))
+		displayName := llm.ProviderDisplayName(llm.ProviderID(m.ProviderName))
 		if displayName == "" {
 			displayName = m.ProviderName
 		}
 
 		s.connectedProviders = append(s.connectedProviders, providerProviderItem{
-			Provider:    llm.Name(m.ProviderName),
+			Provider:    llm.ProviderID(m.ProviderName),
 			DisplayName: displayName,
 			Connected:   true,
 		})
@@ -157,13 +155,13 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 				// result replaces the whole list, so returning nothing on a
 				// transient blip would drop an otherwise-connected provider's
 				// models from the picker.
-				if p, err := llm.GetProvider(ctx, llm.Name(providerName), authMethod); err == nil {
+				if p, err := llm.GetProvider(ctx, llm.ProviderID(providerName), authMethod); err == nil {
 					if mdls, err := p.ListModels(ctx); err == nil {
 						ch <- providerResult{providerName, authMethod, mdls}
 						return
 					}
 				}
-				if cached, ok := store.GetCachedModels(llm.Name(providerName), authMethod); ok {
+				if cached, ok := store.GetCachedModels(llm.ProviderID(providerName), authMethod); ok {
 					ch <- providerResult{providerName, authMethod, cached}
 				}
 			}(name, conn.AuthMethod)
@@ -173,7 +171,7 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 
 		var models []providerModelItem
 		for r := range ch {
-			prov := llm.Name(r.providerName)
+			prov := llm.ProviderID(r.providerName)
 			_ = store.CacheModels(prov, r.authMethod, r.models)
 
 			for _, mdl := range r.models {
@@ -214,7 +212,7 @@ func (s *ProviderSelector) loadModelsCached(allCached map[string][]llm.ModelInfo
 	}
 }
 
-func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.Name, authMethod llm.AuthMethod, models []llm.ModelInfo) {
+func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.ProviderID, authMethod llm.AuthMethod, models []llm.ModelInfo) {
 	if provider == "" {
 		return
 	}
@@ -302,6 +300,68 @@ func (s *ProviderSelector) rebuildModelsTab() {
 			})
 		}
 	}
+
+	s.modelColumns = measureModelColumns(s.visibleItems, s.panel().ContentWidth())
+}
+
+// modelColumnWidths sizes the Models tab grid.
+//
+// The widths are measured from what is actually listed rather than fixed, for
+// two reasons. A fixed name column is either too narrow for the longest ID a
+// vendor ships — Ollama and the aggregators serve names past 50 columns — which
+// pushes that row's figures out of line with every other row, or too wide for
+// the rest, which strands the figures far from the names. And the whole row has
+// to fit the panel: a row wider than the overlay wraps, and the list code
+// assumes one line per item, so a wrapped row desynchronizes scrolling for
+// everything below it.
+type modelColumnWidths struct {
+	name int
+}
+
+const (
+	// modelNameColumnMax bounds the name column so one very long ID cannot
+	// strand the figures at the right edge. Anything past it is truncated.
+	modelNameColumnMax = 34
+	// modelNameColumnMin keeps the name readable when the panel is too narrow
+	// to give every column what it asked for.
+	modelNameColumnMin = 12
+	// modelWindowColumnWidth fits the widest window any catalog states
+	// ("204.8k") and never varies, so windows line up on their units.
+	modelWindowColumnWidth = 6
+	// modelRowFixedWidth is everything on a row that is not the name: the
+	// selection prefix, the "[ ]" indicator, and the gaps around the window
+	// column.
+	modelRowFixedWidth = 4 + 3 + 2 + 2 + modelWindowColumnWidth
+)
+
+// measureModelColumns sizes the grid to the rows it will hold, then shrinks the
+// name column until the whole row fits contentWidth.
+func measureModelColumns(items []providerListItem, contentWidth int) modelColumnWidths {
+	var widths modelColumnWidths
+	for _, item := range items {
+		if item.Kind != providerItemModel || item.Model == nil {
+			continue
+		}
+		widths.name = max(widths.name, lipgloss.Width(modelDisplayName(*item.Model)))
+	}
+	widths.name = min(widths.name, modelNameColumnMax)
+
+	if room := contentWidth - modelRowFixedWidth; room < widths.name {
+		widths.name = max(room, modelNameColumnMin)
+	}
+	return widths
+}
+
+// modelDisplayName is what a row calls a model: whatever name the provider
+// gave it, falling back to the raw ID.
+func modelDisplayName(m providerModelItem) string {
+	if m.DisplayName != "" {
+		return m.DisplayName
+	}
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.ID
 }
 
 // sortProviderModelsByNameDescending keeps each provider's model picker in a

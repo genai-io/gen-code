@@ -26,7 +26,7 @@ const (
 )
 
 // isCustomProvider reports whether name is the custom provider's fixed name.
-func (s *ProviderSelector) isCustomProvider(name llm.Name) bool {
+func (s *ProviderSelector) isCustomProvider(name llm.ProviderID) bool {
 	return name == llm.CustomProvider
 }
 

@@ -20,7 +20,7 @@ import (
 const ollamaEnvVar = "OLLAMA_BASE_URL"
 
 // isOllamaProvider reports whether name is the Ollama provider.
-func (s *ProviderSelector) isOllamaProvider(name llm.Name) bool {
+func (s *ProviderSelector) isOllamaProvider(name llm.ProviderID) bool {
 	return name == llm.Ollama
 }
 

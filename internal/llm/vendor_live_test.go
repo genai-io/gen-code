@@ -19,7 +19,7 @@ func TestLiveTurn(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider Name
+		provider ProviderID
 		auth     AuthMethod
 		model    string
 		key      string
@@ -99,7 +99,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider Name
+		provider ProviderID
 		model    string
 		key      string
 	}{
@@ -202,7 +202,7 @@ func TestLiveSubscription(t *testing.T) {
 	}
 
 	cases := []struct {
-		provider Name
+		provider ProviderID
 		vendorID string
 		model    string
 	}{

@@ -49,7 +49,7 @@ type providerListItem struct {
 
 // providerProviderItem represents a provider with its auth methods.
 type providerProviderItem struct {
-	Provider    llm.Name
+	Provider    llm.ProviderID
 	DisplayName string
 	AuthMethods []providerAuthMethodItem
 	Connected   bool // whether this provider has at least one connected auth method
@@ -57,7 +57,7 @@ type providerProviderItem struct {
 
 // providerAuthMethodItem represents an auth method in the second level.
 type providerAuthMethodItem struct {
-	Provider    llm.Name
+	Provider    llm.ProviderID
 	AuthMethod  llm.AuthMethod
 	DisplayName string
 	Status      llm.Status
@@ -69,12 +69,15 @@ type providerModelItem struct {
 	ID               string
 	Name             string
 	DisplayName      string
-	Description      string
 	ProviderName     string
 	AuthMethod       llm.AuthMethod
 	IsCurrent        bool
 	InputTokenLimit  int
 	OutputTokenLimit int
+	Lifecycle        llm.ModelLifecycle
+	Replacement      string
+	TextOnly         bool
+	Thinks           bool
 }
 
 func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm.AuthMethod, current *llm.CurrentModelInfo) providerModelItem {
@@ -82,12 +85,15 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		ID:               mdl.ID,
 		Name:             mdl.Name,
 		DisplayName:      mdl.DisplayName,
-		Description:      mdl.Description,
 		ProviderName:     providerName,
 		AuthMethod:       authMethod,
 		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
+		Lifecycle:        mdl.Lifecycle,
+		Replacement:      mdl.Replacement,
+		TextOnly:         mdl.TextOnly,
+		Thinks:           mdl.Reasoning != nil,
 	}
 }
 
@@ -108,6 +114,9 @@ type ProviderSelector struct {
 
 	// Flattened visible-items list (rebuilt on state changes)
 	visibleItems []providerListItem
+	// modelColumns sizes the Models tab grid to whatever is currently listed,
+	// recomputed with visibleItems.
+	modelColumns modelColumnWidths
 	selectedIdx  int
 	scrollOffset int
 	maxVisible   int
@@ -203,7 +212,7 @@ type providerConnectResultMsg struct {
 	Success    bool
 	Message    string
 	NewStatus  llm.Status
-	Provider   llm.Name
+	Provider   llm.ProviderID
 	AuthMethod llm.AuthMethod
 	Models     []llm.ModelInfo
 }
@@ -318,15 +327,15 @@ func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg pro
 
 	deps.SetCurrentModel(&llm.CurrentModelInfo{
 		ModelID:    msg.ModelID,
-		Provider:   llm.Name(msg.ProviderName),
+		Provider:   llm.ProviderID(msg.ProviderName),
 		AuthMethod: msg.AuthMethod,
 	})
 	ctx := context.Background()
-	providerRefreshConnection(deps, state, ctx, llm.Name(msg.ProviderName), msg.AuthMethod)
+	providerRefreshConnection(deps, state, ctx, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
 	return tea.Batch(deps.CommitMessages()...)
 }
 
-func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.Name, authMethod llm.AuthMethod) {
+func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.ProviderID, authMethod llm.AuthMethod) {
 	p, err := llm.GetProvider(ctx, providerName, authMethod)
 	if err != nil {
 		log.Logger().Warn("failed to refresh provider connection",

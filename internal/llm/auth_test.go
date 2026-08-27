@@ -27,7 +27,7 @@ func (f *fakeAuthenticator) Logout() error {
 func (f *fakeAuthenticator) HasCredentials() bool { return f.hasCredentials }
 
 func TestAuthenticatorRegistrationAndDispatch(t *testing.T) {
-	const provider, method = Name("fakeprovider"), AuthMethod("fakeauth")
+	const provider, method = ProviderID("fakeprovider"), AuthMethod("fakeauth")
 
 	// Before registration: no interactive login; Login errors, Logout no-ops.
 	if SupportsInteractiveLogin(provider, method) {
@@ -44,7 +44,7 @@ func TestAuthenticatorRegistrationAndDispatch(t *testing.T) {
 	RegisterAuthenticator(provider, method, fa)
 	t.Cleanup(func() {
 		globalRegistry.mu.Lock()
-		delete(globalRegistry.authenticators, makeProviderKey(provider, method))
+		delete(globalRegistry.authenticators, providerKey(provider, method))
 		globalRegistry.mu.Unlock()
 	})
 

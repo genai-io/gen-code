@@ -23,8 +23,8 @@ see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
 4. **Sessions** — transcript persistence, resume, fork, projection
    (`internal/session`). Replayable in the inspector
    (`internal/inspector`).
-5. **Providers** — pluggable LLM backends
-   (`internal/llm/{anthropic,openai,google,...}`) and search backends
+5. **Providers** — every LLM vendor through one adapter
+   (`internal/llm/vendor*.go`, over `genai-io/sdk-go`) and search backends
    (`internal/search/{exa,tavily,brave,serper}`).
 
 ## Runtime Model

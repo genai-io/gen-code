@@ -398,7 +398,7 @@ func (s *ProviderSelector) SetModel(modelID string, providerName string, authMet
 		s.store = store
 	}
 
-	if err := s.store.SetCurrentModel(modelID, llm.Name(providerName), authMethod); err != nil {
+	if err := s.store.SetCurrentModel(modelID, llm.ProviderID(providerName), authMethod); err != nil {
 		return "", fmt.Errorf("failed to set model: %w", err)
 	}
 

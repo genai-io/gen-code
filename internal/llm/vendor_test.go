@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
@@ -562,12 +560,12 @@ func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
 	}
 }
 
-// llmerr classifies a failure a second time, from the vendor SDK's own error
-// type, and that is the only reason San still depends on anthropic-sdk-go and
-// openai-go directly. It works because the SDK wraps rather than replaces what
-// its driver was given — assert it, so that if the SDK ever stops, the
-// second net is known to have gone rather than quietly reading as "unknown".
-func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
+// A vendor's transient failure has to reach the agent loop as one. The SDK
+// classifies it from the provider's typed error; San's job is to carry that
+// answer across onto core.RetryableError, which is the only thing the loop
+// reads. Assert the whole path, because a break anywhere in it turns a
+// retryable overload into a failed turn.
+func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -594,12 +592,61 @@ func TestAVendorsOwnErrorSurvivesTheSDK(t *testing.T) {
 		t.Fatal("an overloaded endpoint produced no error")
 	}
 
-	var vendorErr *anthropic.Error
-	if !errors.As(streamErr, &vendorErr) {
-		t.Errorf("the vendor's own error no longer unwraps out of %T", streamErr)
-	}
 	var retryable core.RetryableError
 	if !errors.As(streamErr, &retryable) {
-		t.Error("an overloaded endpoint was not marked retryable")
+		t.Errorf("an overloaded endpoint was not marked retryable: %T", streamErr)
+	}
+	if !strings.Contains(streamErr.Error(), "overloaded") {
+		t.Errorf("the provider's own message was lost: %v", streamErr)
+	}
+}
+
+// The picker's labels are only as good as the facts behind them, and every one
+// of these was blank before: nothing populated a model's stage or its
+// modalities. Assert the projection, not the wording — the wording is the
+// picker's (see modelLabels).
+func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
+	tests := []struct {
+		name  string
+		model ai.Model
+		want  ModelInfo
+	}{
+		{
+			name:  "a plain model states nothing extra",
+			model: ai.Model{ID: "plain", Input: []ai.Modality{ai.ModalityImage}},
+			want:  ModelInfo{ID: "plain", Name: "plain", DisplayName: "plain"},
+		},
+		{
+			name:  "a text-only model is flagged; taking images is the norm",
+			model: ai.Model{ID: "chat", Input: []ai.Modality{ai.ModalityText}},
+			want:  ModelInfo{ID: "chat", Name: "chat", DisplayName: "chat", TextOnly: true},
+		},
+		{
+			name:  "a model that takes images says nothing",
+			model: ai.Model{ID: "opus", Input: []ai.Modality{ai.ModalityText, ai.ModalityImage}},
+			want:  ModelInfo{ID: "opus", Name: "opus", DisplayName: "opus"},
+		},
+		{
+			name:  "a preview model says so",
+			model: ai.Model{ID: "prev", Stage: ai.StagePreview, Input: []ai.Modality{ai.ModalityImage}},
+			want:  ModelInfo{ID: "prev", Name: "prev", DisplayName: "prev", Lifecycle: ModelPreview},
+		},
+		{
+			name: "a deprecation carries its replacement",
+			model: ai.Model{ID: "old", Stage: ai.StageDeprecated, Replacement: "claude-opus-5",
+				Input: []ai.Modality{ai.ModalityImage}},
+			want: ModelInfo{
+				ID: "old", Name: "old", DisplayName: "old",
+				Lifecycle: ModelDeprecated, Replacement: "claude-opus-5",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := toModelInfo(tc.model); got != tc.want {
+				t.Errorf("toModelInfo() = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

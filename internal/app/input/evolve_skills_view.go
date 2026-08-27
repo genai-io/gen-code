@@ -244,11 +244,22 @@ func splitLines(s string) []string {
 	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }
 
-// padRight pads s with spaces to n runes, truncating (with an ellipsis) when
-// it is already wider than n.
+// padRight pads s with spaces to n columns, truncating (with an ellipsis) when
+// it is already wider. padLeft is the same cell, right-aligned — for figures,
+// which line up on their units rather than on their first digit.
+//
+// Both measure display width rather than counting runes, so a CJK name lands
+// where it should instead of overhanging its column by one cell per character.
 func padRight(s string, n int) string {
-	if r := []rune(s); len(r) < n {
-		return s + strings.Repeat(" ", n-len(r))
+	if w := lipgloss.Width(s); w < n {
+		return s + strings.Repeat(" ", n-w)
+	}
+	return kit.TruncateText(s, n)
+}
+
+func padLeft(s string, n int) string {
+	if w := lipgloss.Width(s); w < n {
+		return strings.Repeat(" ", n-w) + s
 	}
 	return kit.TruncateText(s, n)
 }

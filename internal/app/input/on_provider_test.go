@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -449,7 +450,7 @@ func TestEnterLoadsCachedModelsAndPutsCurrentFirst(t *testing.T) {
 
 func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
 	store := newProviderTestStore(t)
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_REFRESH_WITH_CACHE_KEY"
 	t.Setenv(envVar, "test")
 
@@ -510,7 +511,7 @@ func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
 
 func TestRefreshAuthMethodReplacesModelsImmediately(t *testing.T) {
 	store := newProviderTestStore(t)
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_REFRESH_AUTH_METHOD_KEY"
 	t.Setenv(envVar, "test")
 
@@ -625,7 +626,7 @@ func TestSetModelPersistsSelection(t *testing.T) {
 
 func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	envVar := "TEST_CONNECT_FAIL_KEY"
 	t.Setenv(envVar, "test")
 	llm.Register(llm.Meta{
@@ -671,7 +672,7 @@ func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 
 func TestInteractiveAuthReusesStoredCredentials(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 	authMethod := llm.AuthMethod("subscription-reuse")
 
 	llm.Register(llm.Meta{
@@ -1005,7 +1006,7 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 	for _, stored := range []bool{true, false} {
 		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+			providerName := llm.ProviderID(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
 			authMethod := llm.AuthMethod("subscription-row")
 
 			llm.Register(llm.Meta{
@@ -1034,4 +1035,100 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A model row is a grid: name, window, then the labels. The window is what
+// models get compared on, so it takes an aligned column of its own — and a
+// model San could not size shows a warning in its place, because without one
+// the context percentage cannot render and auto-compaction cannot fire.
+func TestModelRowShowsTheGrid(t *testing.T) {
+	models := []providerModelItem{
+		{
+			ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000,
+			Thinks: true, IsCurrent: true,
+		},
+		{ID: "qwen3-max", DisplayName: "qwen3-max"},
+	}
+	s, items := selectorWithModels(t, 100, models)
+
+	current := xansi.Strip(s.renderModelRow(items[0], true))
+	if !strings.Contains(current, "[*]") {
+		t.Errorf("the current model is not marked: %q", current)
+	}
+	for _, want := range []string{"Claude Opus 5", "1.0M", "thinking"} {
+		if !strings.Contains(current, want) {
+			t.Errorf("row is missing %q: %q", want, current)
+		}
+	}
+
+	unsized := xansi.Strip(s.renderModelRow(items[1], false))
+	if !strings.Contains(unsized, "⚠") {
+		t.Errorf("a model with no window is not flagged: %q", unsized)
+	}
+	if strings.Contains(unsized, "0") {
+		t.Errorf("an unknown window rendered as a number: %q", unsized)
+	}
+}
+
+// The columns are what make the list scannable, so every row's labels have to
+// start in the same place however wide its own name and figures are.
+func TestModelRowsShareOneGrid(t *testing.T) {
+	models := []providerModelItem{
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
+		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, Thinks: true},
+		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 16_000, Thinks: true},
+	}
+	s, items := selectorWithModels(t, 100, models)
+
+	var columns []int
+	for _, item := range items {
+		row := xansi.Strip(s.renderModelRow(item, false))
+		columns = append(columns, strings.Index(row, "thinking"))
+	}
+	for i := range columns {
+		if columns[i] != columns[0] {
+			t.Fatalf("labels start in different columns: %v", columns)
+		}
+	}
+}
+
+// A row wider than the panel wraps, and the list code assumes one line per
+// item — so a wrapped row desynchronizes scrolling for everything below it.
+// Ollama and the aggregators routinely serve names long enough to do it.
+func TestALongModelNameCannotOverflowThePanel(t *testing.T) {
+	models := []providerModelItem{
+		{
+			ID:              "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			DisplayName:     "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			InputTokenLimit: 262_144, Thinks: true,
+		},
+		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
+	}
+
+	for _, width := range []int{60, 80, 120} {
+		s, items := selectorWithModels(t, width, models)
+		for _, item := range items {
+			row := xansi.Strip(s.renderModelRow(item, false))
+			if got := lipgloss.Width(row); got > s.panel().ContentWidth() {
+				t.Errorf("width %d: row is %d cols wide, panel holds %d: %q",
+					width, got, s.panel().ContentWidth(), row)
+			}
+		}
+	}
+}
+
+// selectorWithModels builds a Models-tab selector whose grid has been measured
+// against the given models, the way rebuildVisibleItems does it.
+func selectorWithModels(t *testing.T, width int, models []providerModelItem) (ProviderSelector, []providerListItem) {
+	t.Helper()
+	s := NewProviderSelector()
+	s.activeTab = providerTabModels
+	s.width, s.height = width, 30
+
+	items := make([]providerListItem, len(models))
+	for i := range models {
+		items[i] = providerListItem{Kind: providerItemModel, Model: &models[i]}
+	}
+	s.modelColumns = measureModelColumns(items, s.panel().ContentWidth())
+	return s, items
 }

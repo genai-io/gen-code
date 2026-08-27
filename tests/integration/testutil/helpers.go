@@ -15,10 +15,10 @@ import (
 // Client helpers
 // ---------------------------------------------------------------------------
 
-// NewTestClient wraps a FakeLLM in a llm.Client ready for use in loops
-// or compact calls. This avoids repeating the FakeProvider wiring in every test.
-func NewTestClient(fake *llm.FakeLLM) *llm.Client {
-	return llm.NewClient(&FakeProvider{Client: fake}, "fake-model", 8192)
+// NewTestClient fixes a model on a FakeProvider, ready for use in loops or
+// compact calls.
+func NewTestClient(fake *FakeProvider) *llm.Client {
+	return llm.NewClient(fake, "fake-model", 8192)
 }
 
 // ---------------------------------------------------------------------------
@@ -102,42 +102,3 @@ func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolre
 // ---------------------------------------------------------------------------
 // Fake / mock providers
 // ---------------------------------------------------------------------------
-
-// FakeProvider wraps a FakeClient as a llm.Provider.
-// Use this when the code under test expects a llm.Provider and you
-// want to control responses via FakeClient.
-type FakeProvider struct {
-	Client *llm.FakeLLM
-}
-
-func (p *FakeProvider) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	return p.Client.Stream(ctx, opts.Messages, opts.Tools, opts.SystemPrompt)
-}
-func (p *FakeProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
-func (p *FakeProvider) Name() string                                          { return p.Client.Name() }
-
-// MockProvider is a standalone llm.Provider backed by a response queue.
-// Unlike FakeProvider, it does not require a FakeClient — use this when the
-// code under test (e.g., agent.Executor) creates its own client internally.
-type MockProvider struct {
-	Responses []llm.CompletionResponse
-	callIdx   int
-}
-
-func (m *MockProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk, 1)
-	go func() {
-		defer close(ch)
-		var resp llm.CompletionResponse
-		if m.callIdx < len(m.Responses) {
-			resp = m.Responses[m.callIdx]
-			m.callIdx++
-		} else {
-			resp = llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
-		}
-		ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &resp}
-	}()
-	return ch
-}
-func (m *MockProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
-func (m *MockProvider) Name() string                                          { return "mock" }

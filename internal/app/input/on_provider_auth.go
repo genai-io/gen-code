@@ -574,7 +574,7 @@ func (s *ProviderSelector) HandleConnectResult(msg providerConnectResultMsg) tea
 }
 
 // ConnectProvider connects to a provider and verifies the connection.
-func (s *ProviderSelector) ConnectProvider(ctx context.Context, p llm.Name, authMethod llm.AuthMethod) (string, error) {
+func (s *ProviderSelector) ConnectProvider(ctx context.Context, p llm.ProviderID, authMethod llm.AuthMethod) (string, error) {
 	if s.store == nil {
 		store, err := llm.NewStore()
 		if err != nil {

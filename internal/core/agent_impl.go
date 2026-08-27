@@ -679,7 +679,7 @@ func (a *agent) applyCompaction(ctx context.Context, summary string, originalCou
 
 // isPromptTooLong reports whether the prompt overflowed the model's context
 // window. The llm layer tags that case during classification (see
-// llmerr.Wrap), so this stays free of provider error vocabulary.
+// llm.Classify), so this stays free of provider error vocabulary.
 func isPromptTooLong(err error) bool {
 	var exceeded ContextExceededError
 	return errors.As(err, &exceeded)

@@ -38,7 +38,7 @@ type vendorEntry struct {
 }
 
 // displays are the provider-level UI rows, one per San provider.
-var vendorDisplays = map[Name]ProviderDisplay{
+var vendorDisplays = map[ProviderID]ProviderDisplay{
 	Anthropic:      {Name: "Anthropic", Order: 10},
 	OpenAI:         {Name: "OpenAI", Order: 20},
 	Copilot:        {Name: "GitHub Copilot", Order: 25},
