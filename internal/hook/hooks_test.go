@@ -76,7 +76,7 @@ func Test_getMatchValue(t *testing.T) {
 		{TaskCreated, HookInput{TaskSubject: "Explore"}, "Explore"},
 		{TaskCompleted, HookInput{TaskSubject: "Plan"}, "Plan"},
 		{ConfigChange, HookInput{Source: "user_settings"}, "user_settings"},
-		{InstructionsLoaded, HookInput{FilePath: "/tmp/SAN.md"}, "/tmp/SAN.md"},
+		{InstructionsLoaded, HookInput{FilePath: "/tmp/AGENTS.md"}, "/tmp/AGENTS.md"},
 		{CwdChanged, HookInput{NewCwd: "/tmp/worktree"}, "/tmp/worktree"},
 		{FileChanged, HookInput{FilePath: "/tmp/file.txt"}, "/tmp/file.txt"},
 		{PreCompact, HookInput{Trigger: "auto"}, "auto"},

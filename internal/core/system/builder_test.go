@@ -89,7 +89,7 @@ func TestBuildPromptCaching(t *testing.T) {
 }
 
 func TestBuildPromptOmitsMemory(t *testing.T) {
-	// Memory (CLAUDE.md / SAN.md) no longer lives in the system prompt — it
+	// Memory (AGENTS.md) no longer lives in the system prompt — it
 	// rides on user messages as a <system-reminder> block via the harness's
 	// reminder service so memory edits don't invalidate the cache prefix.
 	sys := Build(core.ScopeMain,

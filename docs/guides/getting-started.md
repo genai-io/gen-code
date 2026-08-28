@@ -103,7 +103,8 @@ san --continue                       # resume the last session
 | User | `~/.san/skills/` `~/.san/agents/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
 | Project | `<project>/.san/settings.json` | Per-project overrides |
 | Project | `<project>/.san/{skills,agents,commands}/` | Project-scoped extensions |
-| Project | `<project>/SAN.md` or `CLAUDE.md` | Auto-loaded into the system prompt |
+| Project | `<project>/AGENTS.md` (and one per subdirectory) | Auto-loaded as project instructions |
+| Project | `<project>/AGENTS.local.md` | Same, but git-ignored |
 
 See [`reference/configuration.md`](../reference/configuration.md) for the
 full schema.

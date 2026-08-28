@@ -93,7 +93,7 @@ func runTokens(class runeClass, n int) int {
 // far more tokens per character — measuring those against a prose ratio
 // understates the two largest categories in the breakdown. The same reasoning
 // separates CJK, which sits near one token per character; a single ratio reads
-// a Chinese SAN.md as a quarter of its real size.
+// a Chinese AGENTS.md as a quarter of its real size.
 //
 // The result is an estimate and is always presented as one: only the provider
 // reports exact counts, and /context labels which numbers are which.

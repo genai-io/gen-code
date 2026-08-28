@@ -4,10 +4,12 @@ This file is the short navigation map for agents and contributors. Keep durable
 knowledge in `docs/`; keep this file focused on where to look and what rules to
 follow before changing code.
 
-`AGENTS.md` is a static navigation aid for whoever opens the repository.
-`SAN.md` and `CLAUDE.md` at the project root are loaded into the running
-agent's system prompt at startup — they belong to runtime context, not to
-this file. Do not mix the two.
+San follows the [AGENTS.md](https://agents.md) standard, so this file is both
+the navigation aid for whoever opens the repository and the project
+instructions loaded into the running agent's context at session start. Keep it
+short: pointers and rules only. Uncommitted personal notes belong in
+`AGENTS.local.md` (git-ignored); a subdirectory with its own conventions can
+carry its own `AGENTS.md`, and the file nearest the working directory wins.
 
 ## Start Here
 

@@ -31,5 +31,6 @@ coverage.out
 .mcp.json
 CLAUDE.md
 CLAUDE.local.md
+AGENTS.local.md
 .autodev/
 /layercheck

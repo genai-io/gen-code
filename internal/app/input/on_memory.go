@@ -79,22 +79,25 @@ func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
 
 	paths := system.GetAllMemoryPaths(cwd)
 	m.items = []memoryItem{
-		m.buildMemoryItem("Global", "global", paths.Global, cwd,
-			fmt.Sprintf("Saved in %s", kit.ShortenPath(paths.Global[0])),
+		m.buildMemoryItem("Global", "global", []string{paths.Global}, cwd,
+			fmt.Sprintf("Saved in %s", kit.ShortenPath(paths.Global)),
 			"Will be created on edit"),
 
 		m.buildMemoryItem("Project", "project", paths.Project, cwd,
-			"Checked in at .san/SAN.md",
+			"Checked in at AGENTS.md",
 			"Use /init to create"),
 
-		m.buildMemoryItem("Local", "local", paths.Local, cwd,
+		m.buildMemoryItem("Local", "local", []string{paths.Local}, cwd,
 			"Not committed (git-ignored)",
 			"Use /init local to create"),
 	}
 }
 
+// buildMemoryItem describes one memory level. searchPaths is a root-first
+// chain, so the nearest existing file is the one the agent actually obeys;
+// when none exists the first path is where the file would be created.
 func (m *MemorySelector) buildMemoryItem(label, level string, searchPaths []string, cwd, defaultDesc, createHint string) memoryItem {
-	foundPath := system.FindMemoryFile(searchPaths)
+	foundPath := system.FindNearestMemoryFile(searchPaths)
 	exists := foundPath != ""
 
 	path := foundPath
@@ -307,8 +310,6 @@ func HandleInitCommand(cwd, args string) (string, error) {
 	args = strings.TrimSpace(args)
 	parts := strings.Fields(args)
 
-	isClaude := strings.Contains(args, "--claude")
-
 	subCmd := ""
 	if len(parts) > 0 && !strings.HasPrefix(parts[0], "--") {
 		subCmd = strings.ToLower(parts[0])
@@ -318,31 +319,21 @@ func HandleInitCommand(cwd, args string) (string, error) {
 	case "local":
 		return handleInitLocal(cwd)
 	case "rules":
-		return handleInitRules(cwd, isClaude)
+		return handleInitRules(cwd)
 	default:
-		return handleInitProject(cwd, isClaude)
+		return handleInitProject(cwd)
 	}
 }
 
-func handleInitProject(cwd string, isClaude bool) (string, error) {
-	var targetDir, fileName string
-	if isClaude {
-		targetDir = filepath.Join(cwd, ".claude")
-		fileName = "CLAUDE.md"
-	} else {
-		targetDir = confdir.Dir(cwd)
-		fileName = "SAN.md"
-	}
-	filePath := filepath.Join(targetDir, fileName)
+func handleInitProject(cwd string) (string, error) {
+	root := system.ProjectRoot(cwd)
+	filePath := filepath.Join(root, system.InstructionFile)
 
 	if _, err := os.Stat(filePath); err == nil {
 		return fmt.Sprintf("File already exists: %s\nUse /memory edit to modify it.", filePath), nil
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create directory %s: %w", targetDir, err)
-	}
-	if err := os.WriteFile(filePath, []byte(getMemoryProjectTemplate(cwd)), 0o644); err != nil {
+	if err := os.WriteFile(filePath, []byte(getMemoryProjectTemplate(root)), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
@@ -350,32 +341,24 @@ func handleInitProject(cwd string, isClaude bool) (string, error) {
 }
 
 func handleInitLocal(cwd string) (string, error) {
-	targetDir := confdir.Dir(cwd)
-	filePath := filepath.Join(targetDir, "SAN.local.md")
+	root := system.ProjectRoot(cwd)
+	filePath := filepath.Join(root, system.LocalInstructionFile)
 
 	if _, err := os.Stat(filePath); err == nil {
 		return fmt.Sprintf("File already exists: %s\nUse /memory edit local to modify it.", filePath), nil
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create directory %s: %w", targetDir, err)
-	}
 	if err := os.WriteFile(filePath, []byte(getMemoryLocalTemplate()), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
-	memoryAddToGitignore(cwd, "SAN.local.md")
+	memoryAddToGitignore(root, system.LocalInstructionFile)
 
 	return fmt.Sprintf("Created %s (added to .gitignore)\n\nEdit with: /memory edit local", filePath), nil
 }
 
-func handleInitRules(cwd string, isClaude bool) (string, error) {
-	var rulesDir string
-	if isClaude {
-		rulesDir = filepath.Join(cwd, ".claude", "rules")
-	} else {
-		rulesDir = filepath.Join(confdir.Dir(cwd), "rules")
-	}
+func handleInitRules(cwd string) (string, error) {
+	rulesDir := filepath.Join(confdir.Dir(cwd), "rules")
 
 	if _, err := os.Stat(rulesDir); err == nil {
 		return fmt.Sprintf("Directory already exists: %s", rulesDir), nil
@@ -479,7 +462,7 @@ func handleMemoryList(cwd string) (string, error) {
 	sb.WriteString("╭─ Memory Files ─────────────────────────────────────╮\n")
 	sb.WriteString(memoryFormatBoxLine(""))
 
-	state.writeMemorySection(&sb, "Global", paths.Global, paths.GlobalRules, paths.Global[0], false)
+	state.writeMemorySection(&sb, "Global", []string{paths.Global}, paths.GlobalRules, paths.Global, false)
 	state.writeMemorySection(&sb, "Project", paths.Project, paths.ProjectRules, "/init", true)
 	state.writeMemoryLocalSection(&sb, paths.Local)
 
@@ -497,13 +480,13 @@ func handleMemoryList(cwd string) (string, error) {
 }
 
 func (s *memoryListState) writeMemorySection(sb *strings.Builder, label string, mainPaths []string, rulesDir, createHint string, isProject bool) {
-	mainFound := system.FindMemoryFile(mainPaths)
+	mainFound := system.ExistingMemoryFiles(mainPaths)
 	rulesFiles := system.ListRulesFiles(rulesDir)
 
-	if mainFound != "" || len(rulesFiles) > 0 {
+	if len(mainFound) > 0 || len(rulesFiles) > 0 {
 		sb.WriteString(memoryFormatBoxLine(fmt.Sprintf(" ● %s", label)))
-		if mainFound != "" {
-			s.writeMemoryFileLine(sb, mainFound, isProject)
+		for _, mf := range mainFound {
+			s.writeMemoryFileLine(sb, mf, isProject)
 		}
 		for _, rf := range rulesFiles {
 			s.writeMemoryFileLine(sb, rf, isProject)
@@ -515,11 +498,10 @@ func (s *memoryListState) writeMemorySection(sb *strings.Builder, label string, 
 	sb.WriteString(memoryFormatBoxLine(""))
 }
 
-func (s *memoryListState) writeMemoryLocalSection(sb *strings.Builder, localPaths []string) {
-	localFound := system.FindMemoryFile(localPaths)
-	if localFound != "" {
+func (s *memoryListState) writeMemoryLocalSection(sb *strings.Builder, localPath string) {
+	if _, err := os.Stat(localPath); err == nil {
 		sb.WriteString(memoryFormatBoxLine(" ● Local (git-ignored)"))
-		s.writeMemoryFileLine(sb, localFound, true)
+		s.writeMemoryFileLine(sb, localPath, true)
 	} else {
 		sb.WriteString(memoryFormatBoxLine(" ○ Local (not found)"))
 		sb.WriteString(memoryFormatBoxLine("   Create: /init local"))
@@ -622,11 +604,11 @@ func handleMemoryEdit(cwd, scope string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		memoryAddToGitignore(cwd, "SAN.local.md")
+		memoryAddToGitignore(system.ProjectRoot(cwd), system.LocalInstructionFile)
 		return filePath, nil
 
 	default:
-		filePath := system.FindMemoryFile(paths.Project)
+		filePath := system.FindNearestMemoryFile(paths.Project)
 		if filePath == "" {
 			// Return empty path; caller should display the message.
 			return "", nil
@@ -635,14 +617,12 @@ func handleMemoryEdit(cwd, scope string) (string, error) {
 	}
 }
 
-// ensureMemoryFile finds or creates a memory file from the given search paths.
-func ensureMemoryFile(searchPaths []string, template string) (string, error) {
-	filePath := system.FindMemoryFile(searchPaths)
-	if filePath != "" {
+// ensureMemoryFile returns filePath, creating it from template when absent.
+func ensureMemoryFile(filePath, template string) (string, error) {
+	if _, err := os.Stat(filePath); err == nil {
 		return filePath, nil
 	}
 
-	filePath = searchPaths[0]
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return "", fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -652,11 +632,12 @@ func ensureMemoryFile(searchPaths []string, template string) (string, error) {
 	return filePath, nil
 }
 
-func getMemoryProjectTemplate(cwd string) string {
-	projectName := filepath.Base(cwd)
-	return fmt.Sprintf(`# SAN.md
+func getMemoryProjectTemplate(root string) string {
+	projectName := filepath.Base(root)
+	return fmt.Sprintf(`# AGENTS.md
 
-This file provides guidance to San when working with code in this repository.
+This file provides guidance to San and other coding agents working in this
+repository.
 
 ## Project Overview
 
@@ -679,7 +660,7 @@ This file provides guidance to San when working with code in this repository.
 }
 
 func getMemoryGlobalTemplate() string {
-	return `# SAN.md
+	return `# AGENTS.md
 
 Global instructions for San (applies to all projects).
 
@@ -694,7 +675,7 @@ Global instructions for San (applies to all projects).
 }
 
 func getMemoryLocalTemplate() string {
-	return `# SAN.local.md
+	return `# AGENTS.local.md
 
 Local instructions for this project (not committed to git).
 
@@ -730,11 +711,11 @@ This file defines specific rules for San to follow.
 // CreateMemoryFile creates a memory file if it doesn't exist.
 func CreateMemoryFile(filePath, level, cwd string) error {
 	template := getMemoryTemplateForLevel(level, cwd)
-	if _, err := ensureMemoryFile([]string{filePath}, template); err != nil {
+	if _, err := ensureMemoryFile(filePath, template); err != nil {
 		return err
 	}
 	if level == "local" {
-		memoryAddToGitignore(cwd, "SAN.local.md")
+		memoryAddToGitignore(system.ProjectRoot(cwd), system.LocalInstructionFile)
 	}
 	return nil
 }
@@ -745,7 +726,7 @@ func getMemoryTemplateForLevel(level, cwd string) string {
 	case "global":
 		return getMemoryGlobalTemplate()
 	case "project":
-		return getMemoryProjectTemplate(cwd)
+		return getMemoryProjectTemplate(system.ProjectRoot(cwd))
 	case "local":
 		return getMemoryLocalTemplate()
 	default:

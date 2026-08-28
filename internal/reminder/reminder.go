@@ -30,7 +30,7 @@ const (
 	ProviderMemoryProject   = "memory-project"
 	// ProviderMemoryAuto is the agent-written memory store maintained by the
 	// L1 reviewer (internal/selflearn). It is a distinct source from the
-	// user-authored SAN.md/CLAUDE.md so agent-written and user-authored
+	// user-authored AGENTS.md so agent-written and user-authored
 	// instructions are never mixed in the prompt. See
 	// notes/active/l1-background-review.md §4.5.
 	ProviderMemoryAuto = "memory-auto"

@@ -112,7 +112,7 @@ Requires a Bash tool call + counting + response.
 
 Measured separately from the runs above, on **San v1.22.0** and **Claude Code v2.1.220** (2026-07-26). This is the fixed cost the harness itself imposes on every conversation: the system prompt plus the tool schemas, sent before the user's first message.
 
-Both were measured in an empty directory with no project instructions (`CLAUDE.md` / `SAN.md`), no MCP servers, and no plugins, so the numbers reflect the harness alone.
+Both were measured in an empty directory with no project instructions (`AGENTS.md`), no MCP servers, and no plugins, so the numbers reflect the harness alone.
 
 | Component | San | Claude Code |
 |-----------|-----|-------------|

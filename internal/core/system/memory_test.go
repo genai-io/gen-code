@@ -104,63 +104,199 @@ func TestResolveImportsMaxDepth(t *testing.T) {
 }
 
 func TestLoadRulesDirectory(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-rules")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
+	tmpDir := t.TempDir()
 	rulesDir := filepath.Join(tmpDir, "rules")
 	if err := os.MkdirAll(rulesDir, 0o755); err != nil {
 		t.Fatalf("Failed to create rules dir: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(rulesDir, "coding.md"), []byte("# Coding Rules"), 0o644); err != nil {
-		t.Fatalf("Failed to write coding.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "security.md"), []byte("# Security Rules"), 0o644); err != nil {
-		t.Fatalf("Failed to write security.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(rulesDir, "readme.txt"), []byte("Ignore me"), 0o644); err != nil {
-		t.Fatalf("Failed to write readme.txt: %v", err)
-	}
+	writeFile(t, filepath.Join(rulesDir, "coding.md"), "# Coding Rules")
+	writeFile(t, filepath.Join(rulesDir, "security.md"), "# Security Rules")
+	writeFile(t, filepath.Join(rulesDir, "readme.txt"), "Ignore me")
 
-	seen := make(map[string]bool)
-	files := loadRulesDirectory(rulesDir, "project", seen)
+	l := &loader{seen: make(map[string]bool), remaining: instructionsByteCap}
+	l.addRulesDirectory(rulesDir, "project")
 
-	if len(files) != 2 {
-		t.Errorf("Expected 2 rule files, got %d", len(files))
+	if len(l.files) != 2 {
+		t.Fatalf("Expected 2 rule files, got %d", len(l.files))
 	}
-
-	if len(files) > 0 && !strings.Contains(files[0].Path, "coding.md") {
-		t.Errorf("Expected coding.md first (alphabetical), got: %s", files[0].Path)
+	if !strings.Contains(l.files[0].Path, "coding.md") {
+		t.Errorf("Expected coding.md first (alphabetical), got: %s", l.files[0].Path)
 	}
-	if len(files) > 1 && !strings.Contains(files[1].Path, "security.md") {
-		t.Errorf("Expected security.md second, got: %s", files[1].Path)
+	if !strings.Contains(l.files[1].Path, "security.md") {
+		t.Errorf("Expected security.md second, got: %s", l.files[1].Path)
 	}
 }
 
 func TestGetAllMemoryPaths(t *testing.T) {
-	cwd := "/test/project"
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cwd := t.TempDir()
+
 	paths := GetAllMemoryPaths(cwd)
 
-	// SAN.md (+ root) and CLAUDE.md (+ .claude).
-	if len(paths.Project) != 4 {
-		t.Errorf("Expected 4 project paths, got %d", len(paths.Project))
+	if want := filepath.Join(home, ".san", InstructionFile); paths.Global != want {
+		t.Errorf("Global = %q, want %q", paths.Global, want)
 	}
-	if !strings.Contains(paths.Project[0], "SAN.md") {
-		t.Errorf("Expected SAN.md preferred first, got: %s", paths.Project[0])
+	if len(paths.Project) != 1 || paths.Project[0] != filepath.Join(cwd, InstructionFile) {
+		t.Errorf("Project = %v, want [%s]", paths.Project, filepath.Join(cwd, InstructionFile))
+	}
+	if want := filepath.Join(cwd, LocalInstructionFile); paths.Local != want {
+		t.Errorf("Local = %q, want %q", paths.Local, want)
+	}
+	if want := filepath.Join(cwd, ".san", "rules"); paths.ProjectRules != want {
+		t.Errorf("ProjectRules = %q, want %q", paths.ProjectRules, want)
+	}
+}
+
+func TestProjectRootAndInstructionChain(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".git"), "gitdir: elsewhere")
+	sub := filepath.Join(root, "packages", "api")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	if len(paths.Local) != 1 {
-		t.Errorf("Expected 1 local path, got %d", len(paths.Local))
-	}
-	if !strings.Contains(paths.Local[0], "SAN.local.md") {
-		t.Errorf("Expected SAN.local.md in local paths, got: %s", paths.Local[0])
+	if got := ProjectRoot(sub); got != root {
+		t.Errorf("ProjectRoot(%s) = %q, want %q", sub, got, root)
 	}
 
-	if !strings.Contains(paths.ProjectRules, "rules") {
-		t.Errorf("Expected rules in project rules path, got: %s", paths.ProjectRules)
+	chain := ProjectInstructionChain(sub)
+	want := []string{
+		filepath.Join(root, InstructionFile),
+		filepath.Join(root, "packages", InstructionFile),
+		filepath.Join(sub, InstructionFile),
+	}
+	if len(chain) != len(want) {
+		t.Fatalf("chain = %v, want %v", chain, want)
+	}
+	for i := range want {
+		if chain[i] != want[i] {
+			t.Errorf("chain[%d] = %q, want %q", i, chain[i], want[i])
+		}
+	}
+
+	loose := t.TempDir()
+	if got := ProjectInstructionChain(loose); len(got) != 1 || got[0] != filepath.Join(loose, InstructionFile) {
+		t.Errorf("outside a repository the chain should be the cwd file alone, got %v", got)
+	}
+}
+
+func TestLoadMemoryFiles_NestedChainNearestLast(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".git"), "gitdir: elsewhere")
+	writeFile(t, filepath.Join(root, InstructionFile), "root instructions")
+
+	sub := filepath.Join(root, "packages", "api")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writeFile(t, filepath.Join(sub, InstructionFile), "package instructions")
+
+	files := LoadMemoryFiles(sub)
+	if len(files) != 2 {
+		t.Fatalf("expected the root and package files, got %d: %v", len(files), files)
+	}
+	if !strings.Contains(files[0].Content, "root instructions") {
+		t.Errorf("expected the root file first, got: %s", files[0].Path)
+	}
+	if !strings.Contains(files[1].Content, "package instructions") {
+		t.Errorf("expected the package file last so it wins, got: %s", files[1].Path)
+	}
+}
+
+func TestLoadMemoryFiles_SectionOrder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := t.TempDir()
+
+	writeFile(t, filepath.Join(home, ".san", InstructionFile), "user instructions")
+	writeFile(t, filepath.Join(home, ".san", "rules", "01-global.md"), "global rule")
+	writeFile(t, filepath.Join(root, InstructionFile), "project instructions")
+	writeFile(t, filepath.Join(root, ".san", "rules", "01-project.md"), "project rule")
+	writeFile(t, filepath.Join(root, LocalInstructionFile), "local instructions")
+
+	files := LoadMemoryFiles(root)
+	if len(files) != 5 {
+		t.Fatalf("expected 5 instruction files, got %d", len(files))
+	}
+
+	wantLevels := []string{"global", "global", "project", "project", "local"}
+	wantPaths := []string{
+		filepath.Join(home, ".san", InstructionFile),
+		filepath.Join(home, ".san", "rules", "01-global.md"),
+		filepath.Join(root, InstructionFile),
+		filepath.Join(root, ".san", "rules", "01-project.md"),
+		filepath.Join(root, LocalInstructionFile),
+	}
+	for i := range wantPaths {
+		if files[i].Level != wantLevels[i] || files[i].Path != wantPaths[i] {
+			t.Errorf("files[%d] = (%s, %s), want (%s, %s)", i, files[i].Level, files[i].Path, wantLevels[i], wantPaths[i])
+		}
+	}
+}
+
+func TestLoadMemoryFiles_ByteCap(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".git"), "gitdir: elsewhere")
+	writeFile(t, filepath.Join(root, InstructionFile), strings.Repeat("root line\n", instructionsByteCap/5))
+
+	sub := filepath.Join(root, "packages")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writeFile(t, filepath.Join(sub, InstructionFile), "package instructions")
+
+	files := LoadMemoryFiles(sub)
+	if len(files) != 1 {
+		t.Fatalf("expected the oversized root file to exhaust the cap, got %d files", len(files))
+	}
+	if !strings.Contains(files[0].Content, "instructions truncated") {
+		t.Error("expected a truncation marker in the capped file")
+	}
+	if len(files[0].Content) > instructionsByteCap+len(files[0].Path)+200 {
+		t.Errorf("capped content is %d bytes, want at most ~%d", len(files[0].Content), instructionsByteCap)
+	}
+}
+
+func TestFindNearestMemoryFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	root := filepath.Join(tmpDir, "root.md")
+	nested := filepath.Join(tmpDir, "nested.md")
+	writeFile(t, root, "root")
+	writeFile(t, nested, "nested")
+
+	tests := []struct {
+		name     string
+		paths    []string
+		expected string
+	}{
+		{"nearest wins", []string{root, filepath.Join(tmpDir, "gone.md"), nested}, nested},
+		{"falls back to the only existing file", []string{root, filepath.Join(tmpDir, "gone.md")}, root},
+		{"no files exist", []string{filepath.Join(tmpDir, "a.md")}, ""},
+		{"empty chain", nil, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := FindNearestMemoryFile(tc.paths); got != tc.expected {
+				t.Errorf("FindNearestMemoryFile() = %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestExistingMemoryFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	first := filepath.Join(tmpDir, "first.md")
+	second := filepath.Join(tmpDir, "second.md")
+	writeFile(t, first, "first")
+	writeFile(t, second, "second")
+
+	got := ExistingMemoryFiles([]string{first, filepath.Join(tmpDir, "gone.md"), second})
+	if len(got) != 2 || got[0] != first || got[1] != second {
+		t.Errorf("ExistingMemoryFiles() = %v, want [%s %s]", got, first, second)
 	}
 }
 
@@ -269,44 +405,13 @@ Nested content here`
 }
 
 func TestLoadMemoryFilesWithImports(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-memory-imports")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
 
-	sanDir := filepath.Join(tmpDir, ".san")
-	if err := os.MkdirAll(sanDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .san dir: %v", err)
-	}
+	writeFile(t, filepath.Join(root, InstructionFile), "# Project Memory\n@extra.md\nEnd of memory")
+	writeFile(t, filepath.Join(root, "extra.md"), "## Extra Content\nThis was imported")
 
-	sanMdContent := `# Project Memory
-@extra.md
-End of memory`
-
-	extraContent := `## Extra Content
-This was imported`
-
-	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte(sanMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write SAN.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sanDir, "extra.md"), []byte(extraContent), 0o644); err != nil {
-		t.Fatalf("Failed to write extra.md: %v", err)
-	}
-
-	files := LoadMemoryFiles(tmpDir)
-
-	var projectFile *MemoryFile
-	for i := range files {
-		if files[i].Level == "project" && strings.Contains(files[i].Path, "SAN.md") {
-			projectFile = &files[i]
-			break
-		}
-	}
-
-	if projectFile == nil {
-		t.Fatal("Expected to find project SAN.md file")
-	}
+	projectFile := findProjectFile(t, LoadMemoryFiles(root))
 
 	if !strings.Contains(projectFile.Content, "<!-- Imported: extra.md -->") {
 		t.Errorf("Expected import comment in content, got: %s", projectFile.Content)
@@ -316,218 +421,82 @@ This was imported`
 	}
 }
 
-func TestFindMemoryFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-find")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	existingFile := filepath.Join(tmpDir, "exists.md")
-	if err := os.WriteFile(existingFile, []byte("content"), 0o644); err != nil {
-		t.Fatalf("Failed to write file: %v", err)
-	}
-
-	tests := []struct {
-		name     string
-		paths    []string
-		expected string
-	}{
-		{
-			name:     "first existing file wins",
-			paths:    []string{filepath.Join(tmpDir, "notexist.md"), existingFile},
-			expected: existingFile,
-		},
-		{
-			name:     "no files exist",
-			paths:    []string{filepath.Join(tmpDir, "a.md"), filepath.Join(tmpDir, "b.md")},
-			expected: "",
-		},
-		{
-			name:     "empty paths",
-			paths:    []string{},
-			expected: "",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := FindMemoryFile(tc.paths)
-			if result != tc.expected {
-				t.Errorf("FindMemoryFile() = %q, expected %q", result, tc.expected)
-			}
-		})
-	}
-}
-
 func TestLoadInstructions(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-instructions")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := t.TempDir()
 
-	sanDir := filepath.Join(tmpDir, ".san")
-	if err := os.MkdirAll(sanDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .san dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte("Project instructions here"), 0o644); err != nil {
-		t.Fatalf("Failed to write SAN.md: %v", err)
-	}
+	writeFile(t, filepath.Join(home, ".san", InstructionFile), "User instructions here")
+	writeFile(t, filepath.Join(root, InstructionFile), "Project instructions here")
+	writeFile(t, filepath.Join(root, LocalInstructionFile), "Local instructions here")
 
-	if err := os.WriteFile(filepath.Join(sanDir, "SAN.local.md"), []byte("Local instructions here"), 0o644); err != nil {
-		t.Fatalf("Failed to write SAN.local.md: %v", err)
+	user, project := LoadInstructions(root)
+
+	if !strings.Contains(user, "User instructions here") {
+		t.Errorf("user instructions should contain the user AGENTS.md content, got: %s", user)
 	}
-
-	user, project := LoadInstructions(tmpDir)
-
 	if !strings.Contains(project, "Project instructions here") {
-		t.Errorf("project instructions should contain SAN.md content, got: %s", project)
+		t.Errorf("project instructions should contain the AGENTS.md content, got: %s", project)
 	}
 	if !strings.Contains(project, "Local instructions here") {
-		t.Errorf("project instructions should contain SAN.local.md content, got: %s", project)
-	}
-
-	_ = user
-}
-
-func TestLoadMemoryFiles_PrefersSanPathsAndPreservesSectionOrder(t *testing.T) {
-	tmpHome := t.TempDir()
-	tmpDir := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-
-	userSanDir := filepath.Join(tmpHome, ".san")
-	userClaudeDir := filepath.Join(tmpHome, ".claude")
-	projectSanDir := filepath.Join(tmpDir, ".san")
-	projectClaudeDir := filepath.Join(tmpDir, ".claude")
-
-	for _, dir := range []string{userSanDir, userClaudeDir, projectSanDir, projectClaudeDir, filepath.Join(userSanDir, "rules"), filepath.Join(projectSanDir, "rules")} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("MkdirAll(%s): %v", dir, err)
-		}
-	}
-
-	if err := os.WriteFile(filepath.Join(userSanDir, "SAN.md"), []byte("user san"), 0o644); err != nil {
-		t.Fatalf("WriteFile(user SAN): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(userClaudeDir, "CLAUDE.md"), []byte("user claude fallback"), 0o644); err != nil {
-		t.Fatalf("WriteFile(user CLAUDE): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(userSanDir, "rules", "01-global.md"), []byte("global rule"), 0o644); err != nil {
-		t.Fatalf("WriteFile(global rule): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectSanDir, "SAN.md"), []byte("project san"), 0o644); err != nil {
-		t.Fatalf("WriteFile(project SAN): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectClaudeDir, "CLAUDE.md"), []byte("project claude fallback"), 0o644); err != nil {
-		t.Fatalf("WriteFile(project CLAUDE): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectSanDir, "rules", "01-project.md"), []byte("project rule"), 0o644); err != nil {
-		t.Fatalf("WriteFile(project rule): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(projectSanDir, "SAN.local.md"), []byte("project local"), 0o644); err != nil {
-		t.Fatalf("WriteFile(local SAN): %v", err)
-	}
-
-	files := LoadMemoryFiles(tmpDir)
-	if len(files) != 5 {
-		t.Fatalf("expected 5 memory files, got %d", len(files))
-	}
-
-	if files[0].Level != "global" || !strings.Contains(files[0].Path, filepath.Join(".san", "SAN.md")) {
-		t.Fatalf("expected global SAN.md first, got level=%q path=%q", files[0].Level, files[0].Path)
-	}
-	if strings.Contains(files[0].Content, "user claude fallback") {
-		t.Fatal("expected user .san/SAN.md to take precedence over ~/.claude/CLAUDE.md")
-	}
-	if files[1].Level != "global" {
-		t.Fatalf("expected global rules second, got level=%q", files[1].Level)
-	}
-	if files[2].Level != "project" || !strings.Contains(files[2].Path, filepath.Join(".san", "SAN.md")) {
-		t.Fatalf("expected project SAN.md third, got level=%q path=%q", files[2].Level, files[2].Path)
-	}
-	if strings.Contains(files[2].Content, "project claude fallback") {
-		t.Fatal("expected project .san/SAN.md to take precedence over project CLAUDE.md")
-	}
-	if files[3].Level != "project" {
-		t.Fatalf("expected project rules fourth, got level=%q", files[3].Level)
-	}
-	if files[4].Level != "local" || !strings.Contains(files[4].Path, "SAN.local.md") {
-		t.Fatalf("expected local SAN.local.md last, got level=%q path=%q", files[4].Level, files[4].Path)
+		t.Errorf("project instructions should contain the AGENTS.local.md content, got: %s", project)
 	}
 }
 
 func TestMemory_ImportChain(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-import-chain")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
 
-	sanDir := filepath.Join(tmpDir, ".san")
-	if err := os.MkdirAll(sanDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .san dir: %v", err)
-	}
+	writeFile(t, filepath.Join(root, InstructionFile), "# Root\n@a.md")
+	writeFile(t, filepath.Join(root, "a.md"), "## Level A\n@b.md")
+	writeFile(t, filepath.Join(root, "b.md"), "### Level B\nFinal content from B")
 
-	sanMdContent := "# Root\n@a.md"
-	aMdContent := "## Level A\n@b.md"
-	bMdContent := "### Level B\nFinal content from B"
+	projectFile := findProjectFile(t, LoadMemoryFiles(root))
 
-	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte(sanMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write SAN.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sanDir, "a.md"), []byte(aMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write a.md: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(sanDir, "b.md"), []byte(bMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write b.md: %v", err)
-	}
-
-	files := LoadMemoryFiles(tmpDir)
-
-	var projectFile *MemoryFile
-	for i := range files {
-		if files[i].Level == "project" && strings.Contains(files[i].Path, "SAN.md") {
-			projectFile = &files[i]
-			break
+	for _, want := range []string{"Level A", "Final content from B", "<!-- Imported: a.md -->", "<!-- Imported: b.md -->"} {
+		if !strings.Contains(projectFile.Content, want) {
+			t.Errorf("Expected %q in resolved output; got: %s", want, projectFile.Content)
 		}
-	}
-
-	if projectFile == nil {
-		t.Fatal("Expected to find project SAN.md file")
-	}
-
-	if !strings.Contains(projectFile.Content, "Level A") {
-		t.Errorf("Expected 'Level A' content (from a.md) in resolved output; got: %s", projectFile.Content)
-	}
-	if !strings.Contains(projectFile.Content, "Final content from B") {
-		t.Errorf("Expected 'Final content from B' (from b.md) in resolved output; got: %s", projectFile.Content)
-	}
-	if !strings.Contains(projectFile.Content, "<!-- Imported: a.md -->") {
-		t.Errorf("Expected import comment for a.md; got: %s", projectFile.Content)
-	}
-	if !strings.Contains(projectFile.Content, "<!-- Imported: b.md -->") {
-		t.Errorf("Expected import comment for b.md; got: %s", projectFile.Content)
 	}
 }
 
 func TestMemory_MissingFile_NoError(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-missing-sanmd")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
 
-	files := LoadMemoryFiles(tmpDir)
-
+	files := LoadMemoryFiles(root)
 	for _, f := range files {
-		if f.Level == "project" && strings.Contains(f.Path, tmpDir) {
-			t.Errorf("Did not expect a project memory file when SAN.md is absent, got: %s", f.Path)
+		if f.Level == "project" && strings.Contains(f.Path, root) {
+			t.Errorf("Did not expect a project instruction file when AGENTS.md is absent, got: %s", f.Path)
 		}
 	}
 
-	_, project := LoadInstructions(tmpDir)
-	_ = project
+	if _, project := LoadInstructions(root); project != "" {
+		t.Errorf("Expected no project instructions, got: %s", project)
+	}
+}
+
+// writeFile writes content to path, creating parent directories as needed.
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+// findProjectFile returns the single project-level instruction file.
+func findProjectFile(t *testing.T, files []MemoryFile) MemoryFile {
+	t.Helper()
+	for _, f := range files {
+		if f.Level == "project" {
+			return f
+		}
+	}
+	t.Fatal("Expected a project-level AGENTS.md in the loaded files")
+	return MemoryFile{}
 }
 
 func TestResolveAutoMemoryDir(t *testing.T) {

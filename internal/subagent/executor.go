@@ -45,7 +45,7 @@ type Executor struct {
 	hooks                      hook.Handler
 	sessionStore               SubagentSessionStore // Optional: when set, subagent sessions are persisted
 	parentSessionID            string               // Parent session ID for linking subagent sessions
-	projectInstructions        string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
+	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
 	mcpTools                   mcp.Tools            // tool schemas + execution
 	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
@@ -114,7 +114,7 @@ func (e *Executor) currentParentPermissionMode() PermissionMode {
 }
 
 // SetProjectInstructions provides the project's instruction memory
-// (CLAUDE.md/AGENTS.md). Edit-capable subagents receive it as a
+// (AGENTS.md). Edit-capable subagents receive it as a
 // <system-reminder> so their changes follow project conventions; read-only
 // agents do not carry it.
 func (e *Executor) SetProjectInstructions(instructions string) {

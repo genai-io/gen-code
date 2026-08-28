@@ -166,7 +166,7 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 <details>
 <summary><b>Config files &amp; layout</b></summary>
 
-Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
+Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions follow the [AGENTS.md](https://agents.md) standard: `~/.san/AGENTS.md`, every `AGENTS.md` from the repository root down to the working directory (the nearest one wins), and a git-ignored `AGENTS.local.md` at the root.
 
 User-level (`~/.san/`):
 
