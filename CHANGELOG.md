@@ -3,6 +3,14 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.6] - 2026-08-31
+
+### Added
+- Adopt the AGENTS.md standard for project instructions ([@yanmxa](https://github.com/yanmxa) in [#492](https://github.com/genai-io/san/pull/492))
+### Changed
+- Bump the go-minor-and-patch group with 2 updates ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#493](https://github.com/genai-io/san/pull/493))
+- One subject per file, and one answer per question ([@yanmxa](https://github.com/yanmxa) in [#488](https://github.com/genai-io/san/pull/488))
+- Tag releases automatically when the release PR merges ([@hchenxa](https://github.com/hchenxa) in [#491](https://github.com/genai-io/san/pull/491))
 ## [v1.22.5] - 2026-08-24
 
 ### Added
