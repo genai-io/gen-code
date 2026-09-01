@@ -1,6 +1,10 @@
 package testutil
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -33,47 +37,53 @@ func DenyAllPermission() perm.PermissionFunc {
 	}
 }
 
-// FakeLLM implements core.LLM for testing, returning queued responses.
+// FakeLLM answers with queued responses. It fakes the protocol rather than an
+// abstraction over it: a driver is what pkg/ai asks for, and what five real
+// implementations sit behind.
 type FakeLLM struct {
 	Responses []llm.CompletionResponse
 	callIdx   int
 }
 
-func (f *FakeLLM) InputLimit() int { return 0 }
+func (f *FakeLLM) Name() string { return "fake" }
 
-func (f *FakeLLM) Infer(_ context.Context, _ core.InferRequest) (<-chan core.Chunk, error) {
-	ch := make(chan core.Chunk, 1)
-	go func() {
-		defer close(ch)
-		var resp llm.CompletionResponse
-		if f.callIdx < len(f.Responses) {
-			resp = f.Responses[f.callIdx]
-			f.callIdx++
-		} else {
-			resp = llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+func (f *FakeLLM) Stream(_ context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
+	resp := llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+	if f.callIdx < len(f.Responses) {
+		resp = f.Responses[f.callIdx]
+		f.callIdx++
+	}
+	return func(yield func(ai.Delta, error) bool) {
+		for _, delta := range FakeDeltas(resp) {
+			if !yield(delta, nil) {
+				return
+			}
 		}
-		// Convert via bridge's toInferResponse path
-		ch <- core.Chunk{
-			Done: true,
-			Response: &core.InferResponse{
-				Content:    resp.Content,
-				Thinking:   resp.Thinking,
-				ToolCalls:  legacyToCoreCalls(resp.ToolCalls),
-				StopReason: core.StopReason(resp.StopReason),
-				Usage:      core.Usage{InputTokens: resp.Usage.InputTokens, OutputTokens: resp.Usage.OutputTokens},
-			},
-		}
-	}()
-	return ch, nil
+	}
 }
 
-func legacyToCoreCalls(calls []core.ToolCall) []core.ToolCall {
-	if len(calls) == 0 {
-		return nil
+// FakeDeltas renders one answer as the stream a driver would produce.
+func FakeDeltas(r llm.CompletionResponse) []ai.Delta {
+	var out []ai.Delta
+	if r.Thinking != "" {
+		out = append(out, ai.Delta{Block: ai.ThinkingBlock(r.Thinking, r.ThinkingSignature)},
+			ai.Delta{EndBlock: true})
 	}
-	out := make([]core.ToolCall, len(calls))
-	copy(out, calls)
-	return out
+	if r.Content != "" {
+		out = append(out, ai.Delta{Block: ai.TextBlock(r.Content)}, ai.Delta{EndBlock: true})
+	}
+	for _, c := range r.ToolCalls {
+		out = append(out, ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{
+			ID: c.ID, Name: c.Name, Input: c.Input, Signature: c.ThoughtSignature,
+		})})
+	}
+	stop := ai.StopEndTurn
+	if len(r.ToolCalls) > 0 {
+		stop = ai.StopToolUse
+	}
+	return append(out, ai.Delta{StopReason: stop, Usage: &ai.Usage{
+		Input: r.Usage.InputTokens, Output: r.Usage.OutputTokens,
+	}})
 }
 
 // NewTestAgent creates a core.Agent backed by a FakeLLM with queued responses.
@@ -84,7 +94,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",
-		LLM:    fakeLLM,
+		Client: ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 
@@ -117,7 +127,7 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 	tools := tool.WithPermission(buildAllRegisteredTools(cwd), permFn)
 	return core.NewAgent(core.Config{
 		ID:       "test-agent",
-		LLM:      fakeLLM,
+		Client:   ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
 		System:   core.NewSystem(),
 		Tools:    tools,
 		CWD:      cwd,
@@ -132,7 +142,7 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",
-		LLM:    fakeLLM,
+		Client: ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 

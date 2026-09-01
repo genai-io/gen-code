@@ -1,6 +1,9 @@
 package llm
 
 import (
+	"errors"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"slices"
 	"testing"
@@ -10,9 +13,11 @@ import (
 // helper must default it to true.
 type plainProvider struct{}
 
-func (plainProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk { return nil }
-func (plainProvider) ListModels(context.Context) ([]ModelInfo, error)              { return nil, nil }
-func (plainProvider) Name() string                                                 { return "plain" }
+func (plainProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
+}
+func (plainProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
+func (plainProvider) Name() string                                    { return "plain" }
 
 // textOnlyProvider opts out of image input via ImageSupportProvider.
 type textOnlyProvider struct{ plainProvider }

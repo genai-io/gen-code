@@ -1,6 +1,9 @@
 package app
 
 import (
+	"errors"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -10,10 +13,8 @@ import (
 
 type switchProviderStub struct{ name string }
 
-func (p *switchProviderStub) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk)
-	close(ch)
-	return ch
+func (p *switchProviderStub) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
 }
 
 func (p *switchProviderStub) ListModels(context.Context) ([]llm.ModelInfo, error) {

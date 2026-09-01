@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"iter"
+
 	"context"
 	"testing"
 
@@ -12,13 +15,14 @@ import (
 // Session can start without a real backend.
 type stubProvider struct{}
 
-func (stubProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk, 1)
-	go func() {
-		defer close(ch)
-		ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &llm.CompletionResponse{StopReason: "end_turn"}}
-	}()
-	return ch
+func (p stubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
+}
+
+func (stubProvider) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
+	return func(yield func(ai.Delta, error) bool) {
+		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
+	}
 }
 func (stubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (stubProvider) Name() string                                        { return "stub" }

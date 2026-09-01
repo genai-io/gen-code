@@ -1,6 +1,10 @@
 package core
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +22,7 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
@@ -90,7 +94,7 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
@@ -208,7 +212,7 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 	t.Helper()
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -246,7 +250,7 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:      "test",
-		LLM:     newBlockingLLM(1),
+		Client:  testClient(newBlockingLLM(1)),
 		System:  NewSystem(),
 		Tools:   NewTools(),
 		OnEvent: func(e Event) { captured = append(captured, e) },
@@ -307,33 +311,28 @@ func newBlockingLLM(capacity int) *blockingLLM {
 	return &blockingLLM{release: make(chan struct{}, capacity)}
 }
 
-func (b *blockingLLM) InputLimit() int { return 0 }
+func (b *blockingLLM) Name() string { return "blocking" }
 
-func (b *blockingLLM) Infer(ctx context.Context, _ InferRequest) (<-chan Chunk, error) {
-	ch := make(chan Chunk, 1)
-	go func() {
-		defer close(ch)
+func (b *blockingLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
+	return func(yield func(ai.Delta, error) bool) {
 		select {
 		case <-ctx.Done():
-			ch <- Chunk{Err: ctx.Err()}
+			yield(ai.Delta{}, ctx.Err())
 		case <-b.release:
-			ch <- Chunk{
-				Done: true,
-				Response: &InferResponse{
-					Content:    "released",
-					StopReason: StopEndTurn,
-				},
+			for _, d := range deltas(InferResponse{Content: "released", StopReason: StopEndTurn}) {
+				if !yield(d, nil) {
+					return
+				}
 			}
 		}
-	}()
-	return ch, nil
+	}
 }
 
 func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	llm := newBlockingLLM(4)
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -405,7 +404,7 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 	llm := newBlockingLLM(4)
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	}).(*agent)
@@ -446,7 +445,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	llm.release <- struct{}{}
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -583,19 +582,17 @@ func (c cancelOnRunTool) Execute(ctx context.Context, _ map[string]any) (string,
 // batch sequentially.
 type batchLLM struct{}
 
-func (batchLLM) InputLimit() int { return 0 }
-func (batchLLM) Infer(context.Context, InferRequest) (<-chan Chunk, error) {
-	ch := make(chan Chunk, 1)
-	ch <- Chunk{Done: true, Response: &InferResponse{
+func (batchLLM) Name() string { return "batch" }
+
+func (batchLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
+	return yieldAll(deltas(InferResponse{
 		StopReason: StopToolUse,
 		ToolCalls: []ToolCall{
 			{ID: "c1", Name: "first", Input: "{}"},
 			{ID: "c2", Name: "second", Input: "{}"},
 			{ID: "c3", Name: "third", Input: "{}"},
 		},
-	}}
-	close(ch)
-	return ch, nil
+	}))
 }
 
 // A cancel landing mid-batch must stop the rest of the batch, not just the
@@ -606,7 +603,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	defer cancel()
 
 	ag := NewAgent(Config{
-		ID: "test", LLM: batchLLM{}, System: NewSystem(),
+		ID: "test", Client: testClient(batchLLM{}), System: NewSystem(),
 		Tools: NewTools(
 			cancelOnRunTool{name: "first", ran: &ran, ranOnDead: &ranOnDead, onRun: cancel},
 			cancelOnRunTool{name: "second", ran: &ran, ranOnDead: &ranOnDead},

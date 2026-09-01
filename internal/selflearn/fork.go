@@ -1,6 +1,8 @@
 package selflearn
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"time"
 
@@ -24,7 +26,7 @@ const forkDeadline = 5 * time.Minute
 // skill actions this pass may take are read from Skills.Perms() — the prompt is
 // tailored to them and the manager enforces them at dispatch.
 type ForkConfig struct {
-	LLM    core.LLM
+	Client *ai.Client
 	System core.System // parent's system — read for its prompt only
 	CWD    string
 	Memory *MemoryStore
@@ -68,7 +70,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	restricted := tool.WithPermission(tools, allowOnly(tools))
 
 	ag := core.NewAgent(core.Config{
-		LLM:       fc.LLM,
+		Client:    fc.Client,
 		System:    sys,
 		Tools:     restricted,
 		CWD:       fc.CWD,

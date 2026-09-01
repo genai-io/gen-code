@@ -450,8 +450,13 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	coreTools = tool.WithPermission(coreTools, permFn)
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
+	aiClient, err := llmClient.AI(nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reaching the model: %w", err)
+	}
 	ag = core.NewAgent(core.Config{
-		LLM:         llmClient,
+		Client:      aiClient,
+		InputLimit:  llmClient.InputLimit,
 		System:      sys,
 		Tools:       coreTools,
 		CompactFunc: subagentCompactFunc(llmClient),

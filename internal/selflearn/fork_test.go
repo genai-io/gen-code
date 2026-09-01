@@ -1,6 +1,10 @@
 package selflearn
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"strings"
 	"sync"
@@ -14,30 +18,40 @@ import (
 type scriptedLLM struct {
 	mu        sync.Mutex
 	responses []core.InferResponse
-	lastReq   core.InferRequest
+	lastReq   *ai.Request
 	calls     int
 }
 
-func (s *scriptedLLM) InputLimit() int { return 1 << 20 }
+func (s *scriptedLLM) Name() string { return "scripted" }
 
-func (s *scriptedLLM) Infer(_ context.Context, req core.InferRequest) (<-chan core.Chunk, error) {
+func (s *scriptedLLM) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	s.mu.Lock()
 	s.lastReq = req
 	s.calls++
-	var r core.InferResponse
+	r := core.InferResponse{Content: "Nothing to save.", StopReason: core.StopEndTurn}
 	if len(s.responses) > 0 {
 		r = s.responses[0]
 		s.responses = s.responses[1:]
-	} else {
-		r = core.InferResponse{Content: "Nothing to save.", StopReason: core.StopEndTurn}
 	}
 	s.mu.Unlock()
 
-	ch := make(chan core.Chunk, 1)
-	rr := r
-	ch <- core.Chunk{Done: true, Response: &rr}
-	close(ch)
-	return ch, nil
+	return func(yield func(ai.Delta, error) bool) {
+		if r.Content != "" {
+			if !yield(ai.Delta{Block: ai.TextBlock(r.Content)}, nil) || !yield(ai.Delta{EndBlock: true}, nil) {
+				return
+			}
+		}
+		for _, c := range r.ToolCalls {
+			if !yield(ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{ID: c.ID, Name: c.Name, Input: c.Input})}, nil) {
+				return
+			}
+		}
+		stop := ai.StopEndTurn
+		if len(r.ToolCalls) > 0 {
+			stop = ai.StopToolUse
+		}
+		yield(ai.Delta{StopReason: stop}, nil)
+	}
 }
 
 // TestTrimTrailingPendingMessages guards against the "messages must
@@ -147,7 +161,7 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	}, "test")
 
 	fc := ForkConfig{
-		LLM:    llm,
+		Client: ai.NewClientWithDriver(llm, ai.Model{ID: "stub", API: "stub"}),
 		System: parentSys,
 		CWD:    "/work/project-x",
 		Memory: store,

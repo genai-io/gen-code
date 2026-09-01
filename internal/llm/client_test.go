@@ -1,6 +1,9 @@
 package llm
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"iter"
+
 	"context"
 	"errors"
 	"testing"
@@ -19,23 +22,26 @@ type mockLLMProvider struct {
 	listCalls int
 }
 
-func (m *mockLLMProvider) Stream(_ context.Context, opts CompletionOptions) <-chan StreamChunk {
-	m.lastOpts = opts
-	ch := make(chan StreamChunk, 1)
-	go func() {
-		defer close(ch)
-		if m.callIdx >= len(m.responses) {
-			ch <- StreamChunk{Type: ChunkTypeDone, Response: &CompletionResponse{
-				Content:    "no more responses",
-				StopReason: "end_turn",
-			}}
-			return
-		}
-		resp := m.responses[m.callIdx]
+func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(m, ai.Model{ID: "mock", API: "mock"}), nil
+}
+
+func (m *mockLLMProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	m.lastOpts = CompletionOptions{SystemPrompt: req.System}
+	resp := CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+	if m.callIdx < len(m.responses) {
+		resp = m.responses[m.callIdx]
 		m.callIdx++
-		ch <- StreamChunk{Type: ChunkTypeDone, Response: &resp}
-	}()
-	return ch
+	}
+	return func(yield func(ai.Delta, error) bool) {
+		if resp.Content != "" {
+			yield(ai.Delta{Block: ai.TextBlock(resp.Content)}, nil)
+			yield(ai.Delta{EndBlock: true}, nil)
+		}
+		yield(ai.Delta{StopReason: ai.StopEndTurn, Usage: &ai.Usage{
+			Input: resp.Usage.InputTokens, Output: resp.Usage.OutputTokens,
+		}}, nil)
+	}
 }
 
 func (m *mockLLMProvider) ListModels(_ context.Context) ([]ModelInfo, error) {
@@ -73,31 +79,6 @@ func TestCompleteCollectsTheStream(t *testing.T) {
 	}
 	if resp.Content != "hello" {
 		t.Errorf("expected 'hello', got '%s'", resp.Content)
-	}
-}
-
-func TestLLMStream(t *testing.T) {
-	mp := &mockLLMProvider{
-		responses: []CompletionResponse{
-			{Content: "streamed", StopReason: "end_turn"},
-		},
-	}
-	l := &Client{provider: mp, model: "test-model"}
-
-	msgs := []core.Message{{Role: core.RoleUser, Content: "hi"}}
-	ch := l.Stream(context.Background(), msgs, nil, "")
-
-	var resp *CompletionResponse
-	for chunk := range ch {
-		if chunk.Type == ChunkTypeDone {
-			resp = chunk.Response
-		}
-	}
-	if resp == nil {
-		t.Fatal("expected response from stream")
-	}
-	if resp.Content != "streamed" {
-		t.Errorf("expected 'streamed', got '%s'", resp.Content)
 	}
 }
 
@@ -370,41 +351,27 @@ type retryThenSuccessProvider struct {
 	calls int
 }
 
-func (p *retryThenSuccessProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk {
+func (p *retryThenSuccessProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
+}
+
+func (p *retryThenSuccessProvider) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
 	p.calls++
-	ch := make(chan StreamChunk, 1)
-	if p.calls == 1 {
-		ch <- StreamChunk{Type: ChunkTypeError, Error: errors.New("opaque terminal stream error")}
-	} else {
-		ch <- StreamChunk{Type: ChunkTypeDone, Response: &CompletionResponse{Content: "recovered"}}
+	first := p.calls == 1
+	return func(yield func(ai.Delta, error) bool) {
+		if first {
+			// An overloaded endpoint: retryable, so the next attempt runs.
+			yield(ai.Delta{}, &ai.Error{Kind: ai.KindOverloaded, Message: "overloaded"})
+			return
+		}
+		yield(ai.Delta{Block: ai.TextBlock("recovered")}, nil)
+		yield(ai.Delta{EndBlock: true}, nil)
+		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
 	}
-	close(ch)
-	return ch
 }
 
 func (*retryThenSuccessProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
 func (*retryThenSuccessProvider) Name() string                                    { return "retry-stream" }
-
-func TestInferWrapsOpaqueStreamErrorAsRetryable(t *testing.T) {
-	original := errors.New("opaque terminal stream error")
-	client := NewClient(streamErrorProvider{err: original}, "test-model", 1)
-
-	chunks, err := client.Infer(context.Background(), core.InferRequest{})
-	if err != nil {
-		t.Fatalf("Infer() error = %v", err)
-	}
-	chunk, ok := <-chunks
-	if !ok {
-		t.Fatal("Infer() returned no error chunk")
-	}
-	var retryable core.RetryableError
-	if !errors.As(chunk.Err, &retryable) {
-		t.Fatalf("chunk error %v is not retryable", chunk.Err)
-	}
-	if !errors.Is(chunk.Err, original) {
-		t.Fatal("chunk error does not preserve the provider error")
-	}
-}
 
 func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	provider := &retryThenSuccessProvider{}

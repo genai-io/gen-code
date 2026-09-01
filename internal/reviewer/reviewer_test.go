@@ -1,6 +1,9 @@
 package reviewer
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"iter"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -48,16 +51,21 @@ type stubProvider struct {
 	lastSystemPrompt string
 }
 
-func (s *stubProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	s.lastSystemPrompt = opts.SystemPrompt
-	ch := make(chan llm.StreamChunk, 1)
-	if s.err != nil {
-		ch <- llm.StreamChunk{Type: llm.ChunkTypeError, Error: s.err}
-	} else {
-		ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &llm.CompletionResponse{Content: s.content}}
+func (s *stubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(s, ai.Model{ID: "stub", API: "stub"}), nil
+}
+
+func (s *stubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	s.lastSystemPrompt = req.System
+	return func(yield func(ai.Delta, error) bool) {
+		if s.err != nil {
+			yield(ai.Delta{}, s.err)
+			return
+		}
+		yield(ai.Delta{Block: ai.TextBlock(s.content)}, nil)
+		yield(ai.Delta{EndBlock: true}, nil)
+		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
 	}
-	close(ch)
-	return ch
 }
 
 func (s *stubProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }

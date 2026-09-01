@@ -1,8 +1,9 @@
 package llm
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
-	"fmt"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -66,8 +67,10 @@ type ProviderDisplay struct {
 
 // Provider is one configured endpoint San can infer through.
 type Provider interface {
-	// Stream sends one turn, closing the channel when the turn ends.
-	Stream(ctx context.Context, opts CompletionOptions) <-chan StreamChunk
+	// Client hands over the SDK client for one model, built and cached by this
+	// provider. Streaming is the SDK's; what a provider owns is reaching the
+	// endpoint — credentials, headers, the model's own entry.
+	Client(modelID string, headers map[string]string) (*ai.Client, error)
 
 	ListModels(ctx context.Context) ([]ModelInfo, error)
 
@@ -153,30 +156,25 @@ type ModelInfo struct {
 	TextOnly bool `json:"textOnly,omitempty"`
 }
 
-// Complete runs a turn to the end and returns it whole, for callers with
-// nothing to show mid-flight (compaction, the autopilot steers).
+// Complete sends one non-streaming call and returns the whole answer. The
+// collection it used to do by hand is ai.Client.Complete.
 func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (CompletionResponse, error) {
-	var response CompletionResponse
-
-	gotDone := false
-	for chunk := range provider.Stream(ctx, opts) {
-		switch chunk.Type {
-		case ChunkTypeText:
-			response.Content += chunk.Text
-		case ChunkTypeDone:
-			if chunk.Response != nil {
-				return *chunk.Response, nil
-			}
-			gotDone = true
-		case ChunkTypeError:
-			return response, chunk.Error
-		}
+	client, err := provider.Client(opts.Model, nil)
+	if err != nil {
+		return CompletionResponse{}, err
 	}
-
-	if !gotDone {
-		return response, fmt.Errorf("stream closed without completion")
+	callOpts := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
+	if len(opts.Tools) > 0 {
+		callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
 	}
-	return response, nil
+	if opts.MaxTokens > 0 {
+		callOpts = append(callOpts, ai.WithMaxTokens(opts.MaxTokens))
+	}
+	resp, err := client.Complete(ctx, core.ToAIMessages(opts.Messages, client.Model()), callOpts...)
+	if err != nil {
+		return CompletionResponse{}, err
+	}
+	return *core.FromAIResponse(resp), nil
 }
 
 // The optional extensions. Each has a default that suits most providers, so it

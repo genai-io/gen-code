@@ -154,9 +154,15 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		return summary, nil
 	}
 
+	aiClient, err := client.AI(nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reaching the model: %w", err)
+	}
+
 	ag = core.NewAgent(core.Config{
 		ID:          "main",
-		LLM:         client,
+		Client:      aiClient,
+		InputLimit:  client.InputLimit,
 		System:      sys,
 		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
 		CompactFunc: compactFunc,

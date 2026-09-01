@@ -165,8 +165,12 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			forkOnEvent = rec.OnAgentEvent
 			forkSessionID = rec.SessionID()
 		}
+		aiClient, err := client.AI(nil)
+		if err != nil {
+			return
+		}
 		fc := selflearn.ForkConfig{
-			LLM:      client,
+			Client:   aiClient,
 			System:   sys,
 			CWD:      m.env.CWD,
 			Memory:   memStore,

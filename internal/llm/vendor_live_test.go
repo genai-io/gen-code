@@ -55,7 +55,7 @@ func TestLiveTurn(t *testing.T) {
 
 			var text string
 			var resp *CompletionResponse
-			for chunk := range p.Stream(ctx, CompletionOptions{
+			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
 				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},
@@ -136,7 +136,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 			turn := func(msgs []core.Message) *CompletionResponse {
 				t.Helper()
 				var resp *CompletionResponse
-				for chunk := range p.Stream(ctx, CompletionOptions{
+				for chunk := range legacyStream(ctx, p, CompletionOptions{
 					Model:        tc.model,
 					SystemPrompt: "Use the tools you are given. Answer in one short sentence.",
 					Messages:     msgs,
@@ -230,7 +230,7 @@ func TestLiveSubscription(t *testing.T) {
 			t.Logf("%d models: %q…", len(models), models[0].ID)
 
 			var text string
-			for chunk := range p.Stream(ctx, CompletionOptions{
+			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
 				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},

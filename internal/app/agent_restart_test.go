@@ -1,6 +1,9 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"iter"
+
 	"context"
 	"testing"
 	"time"
@@ -17,18 +20,26 @@ type restartStubProvider struct {
 	requests chan []core.Message
 }
 
-func (p *restartStubProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	p.requests <- append([]core.Message(nil), opts.Messages...)
-	ch := make(chan llm.StreamChunk, 1)
-	ch <- llm.StreamChunk{
-		Type: llm.ChunkTypeDone,
-		Response: &llm.CompletionResponse{
-			Content:    "ok",
-			StopReason: core.StopEndTurn,
-		},
+func (p *restartStubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
+}
+
+func (p *restartStubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	p.requests <- flattenAI(req.Messages)
+	return func(yield func(ai.Delta, error) bool) {
+		yield(ai.Delta{Block: ai.TextBlock("ok")}, nil)
+		yield(ai.Delta{EndBlock: true}, nil)
+		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
 	}
-	close(ch)
-	return ch
+}
+
+// flattenAI recovers just enough of San's shape for this test's assertion.
+func flattenAI(msgs []ai.Message) []core.Message {
+	out := make([]core.Message, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, core.Message{Role: core.Role(m.Role), Content: m.Content.Text()})
+	}
+	return out
 }
 
 func (*restartStubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }

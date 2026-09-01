@@ -2,6 +2,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"fmt"
 	"os"
@@ -201,18 +203,24 @@ func runPrint(userMessage, personaName string) error {
 		Tools:        schemas,
 	}
 
-	streamChan := llmProvider.Stream(ctx, completionOpts)
-	for chunk := range streamChan {
-		switch chunk.Type {
-		case llm.ChunkTypeText:
-			fmt.Print(chunk.Text)
-		case llm.ChunkTypeError:
-			return chunk.Error
-		case llm.ChunkTypeDone:
+	client, err := llmProvider.Client(modelID, nil)
+	if err != nil {
+		return err
+	}
+	for event, err := range client.Stream(ctx,
+		core.ToAIMessages(completionOpts.Messages, client.Model()),
+		ai.WithSystem(sysPrompt), ai.WithTools(core.ToAITools(schemas)...),
+		ai.WithMaxTokens(setting.DefaultMaxTokens)) {
+		if err != nil {
+			return err
+		}
+		switch {
+		case event.Type == ai.EventBlockDelta && event.Block.Type == ai.BlockText:
+			fmt.Print(event.Block.Text)
+		case event.Type == ai.EventDone:
 			fmt.Println()
 		}
 	}
-
 	return nil
 }
 

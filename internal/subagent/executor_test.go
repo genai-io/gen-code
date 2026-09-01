@@ -1,6 +1,10 @@
 package subagent
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"os"
@@ -107,9 +111,11 @@ func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
 
 type stubProvider struct{}
 
-func (stubProvider) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk { return nil }
-func (stubProvider) ListModels(context.Context) ([]llm.ModelInfo, error)                  { return nil, nil }
-func (stubProvider) Name() string                                                         { return "stub" }
+func (stubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
+}
+func (stubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
+func (stubProvider) Name() string                                        { return "stub" }
 
 // stubResolver records the vendor it was asked to resolve.
 type stubResolver struct {
@@ -972,12 +978,11 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 // stubLLM is a minimal core.LLM for tests that don't call inference.
 type stubLLM struct{}
 
-func (s *stubLLM) Infer(_ context.Context, _ core.InferRequest) (<-chan core.Chunk, error) {
-	ch := make(chan core.Chunk)
-	close(ch)
-	return ch, nil
+func (s *stubLLM) Name() string { return "stub" }
+
+func (s *stubLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
+	return func(func(ai.Delta, error) bool) {}
 }
-func (s *stubLLM) InputLimit() int { return 0 }
 
 // stubSystem is a minimal core.System for tests.
 type stubSystem struct{}

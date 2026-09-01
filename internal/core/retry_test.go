@@ -1,6 +1,10 @@
 package core
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"testing"
@@ -59,44 +63,43 @@ type scriptedLLM struct {
 	calls    int
 }
 
-func (s *scriptedLLM) InputLimit() int { return 0 }
+func (s *scriptedLLM) Name() string { return "scripted" }
 
-func (s *scriptedLLM) Infer(_ context.Context, _ InferRequest) (<-chan Chunk, error) {
+func (s *scriptedLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
 	s.calls++
 	fail := s.calls <= s.failures
-	ch := make(chan Chunk, 1)
-	go func() {
-		defer close(ch)
+	return func(yield func(ai.Delta, error) bool) {
 		if fail {
-			ch <- Chunk{Err: s.failErr}
+			yield(ai.Delta{}, s.failErr)
 			return
 		}
-		ch <- Chunk{Done: true, Response: &InferResponse{Content: "ok", StopReason: StopEndTurn}}
-	}()
-	return ch, nil
+		for _, d := range deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}) {
+			if !yield(d, nil) {
+				return
+			}
+		}
+	}
 }
 
 // hangLLM never produces a chunk; it unblocks only when the per-inference ctx
 // is canceled (by the idle-timeout watchdog).
 type hangLLM struct{ calls int }
 
-func (h *hangLLM) InputLimit() int { return 0 }
+func (h *hangLLM) Name() string { return "hang" }
 
-func (h *hangLLM) Infer(ctx context.Context, _ InferRequest) (<-chan Chunk, error) {
+func (h *hangLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
 	h.calls++
-	ch := make(chan Chunk)
-	go func() {
+	return func(yield func(ai.Delta, error) bool) {
 		<-ctx.Done()
-		close(ch)
-	}()
-	return ch, nil
+		yield(ai.Delta{}, ctx.Err())
+	}
 }
 
-func newRetryAgent(t *testing.T, llm LLM, maxRetries int, timeout time.Duration) *agent {
+func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Duration) *agent {
 	t.Helper()
 	ag := NewAgent(Config{
 		ID:                      "test",
-		LLM:                     llm,
+		Client:                  testClient(d),
 		System:                  NewSystem(),
 		Tools:                   NewTools(),
 		MaxTurnRetries:          maxRetries,
