@@ -160,11 +160,11 @@ func toTools(schemas []ToolSchema) []ai.Tool {
 	}
 	out := make([]ai.Tool, len(schemas))
 	for i, schema := range schemas {
-		out[i] = ai.Tool{
+		out[i] = ai.Tool{Schema: ai.Schema{
 			Name:        schema.Name,
 			Description: schema.Description,
-			Parameters:  schema.Parameters,
-		}
+			Definition:  schema.Parameters,
+		}}
 	}
 	return out
 }
