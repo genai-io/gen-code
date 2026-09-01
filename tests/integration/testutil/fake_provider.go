@@ -1,8 +1,9 @@
 package testutil
 
 import (
-	"github.com/genai-io/san/internal/core"
 	"iter"
+
+	"github.com/genai-io/san/internal/core"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 

@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
 	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
 	"testing"

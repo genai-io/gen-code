@@ -2,6 +2,7 @@ package llm
 
 import (
 	"errors"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
