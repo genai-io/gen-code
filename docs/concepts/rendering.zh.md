@@ -12,9 +12,81 @@
 > 把它写到 alt-screen 区域之上。下面的"渲染管线"全程都是字符串组装；
 > 真正的"画"是终端干的。
 
+## 渲染模式：一个 TUI 可以怎样占用终端
+
+终端程序把内容显示到屏幕上只有三种方式，选哪种决定了**历史归谁所有**
+——归终端，还是归应用：
+
+| 模式 | 屏幕归谁 | 历史存在哪 | 谁负责滚动 |
+| --- | --- | --- | --- |
+| **纯流式输出**——直接往 stdout 写行，不管理任何区域 | 没人 | 终端 | 终端 |
+| **Inline**——只管理底部 N 行，写完的内容推到上方 | 应用管底部条，上方归终端 | 终端 | 终端 |
+| **Alt-screen**——切到备用缓冲区，接管每一个字符格 | 应用 | 应用 | 应用 |
+
+**San 原生用的是 inline**，本文后面讲的也都是它。Bubble Tea 只管理底部
+那一条（活跃尾巴 + 输入区）；每条写完的消息都用 `tea.Println` 推到上面
+去，也就是 `insertAbove`——它滚动终端，把这些行写进**终端自己的**
+scrollback。
+
+这个选择换来了很多东西，而且全是终端白送的，不用 San 自己写：
+
+- **transcript 就是真正的终端输出。** 原生滚动、原生搜索（⌘F）、原生
+  选中复制，而且会话结束后还在——退出 San，对话仍然躺在缓冲区里，就在
+  你之前跑的那条 `git status` 旁边。
+- **重绘很便宜。** 不管对话多长，每帧只重画底部那一条；已 commit 的
+  消息永远不会被再渲染一次。
+- **和终端天然共存。** 输出能和其它程序的输出正常交错，tmux/iTerm 的
+  各种功能照常可用。
+
+inline 放弃的东西，正是同一个性质的反面：**一行内容一旦 commit，San
+就再也碰不到它了。**
+
+- resize 无法重新折行——glamour 是按旧宽度排的版，终端只能 re-flow，
+  没法重新渲染。
+- 切主题无法给它重新上色。
+- 应用内没法滚动、折叠或搜索它，因为它已经不属于应用的内存了。
+- 活跃区受终端高度限制。一条很长的流式回复在 commit 之前只能显示末尾
+  几行（`tailLines` 截断）。
+
+### desktop 表面
+
+desktop（[`internal/app/desktop`](../../internal/app/desktop)）就是
+alt-screen 模式，但它是**可选的第二块表面**，不是替代品——Ctrl-G 切换。
+San 接管整个屏幕，把 transcript 画进自己控制的 viewport，于是历史重新
+变回应用的数据：
+
+- **整段对话在应用内滚动**（pgup/pgdown/home/end），和终端 scrollback
+  的位置互不相干。
+- **不再被截断。** 比屏幕还高的回复在流式过程中就能滚动查看，而不是
+  只看得到尾巴。
+- **已 commit 的输出仍然可被重新渲染**——每次都是从 `m.conv.Messages`
+  重画的，所以宽度和主题变化对全部内容生效，不只是尾巴。
+- **它是一个"框"，不是一条"带"。** 稳定的全屏矩形正是多面板布局需要的
+  东西；这个表面因此是围绕一组 `Pane` 建的，transcript 只是第一个。
+
+代价是对称的：alt-screen 上没有原生 scrollback 可写，所以 desktop 画的
+东西不会留在终端里，而且 transcript 得由 San 自己重渲染，不能靠终端。
+两种模式谁也压不倒谁，所以两个都留着。
+
+### 两者如何共存
+
+它们共用全部渲染函数——desktop 调的是 `RenderMessageRange`、
+`RenderActiveContent`、`renderFooter`，和 inline 视图调的一模一样，所以
+两块表面看起来完全一致。唯一不能共用的是**往终端的那次写入**：
+`insertAbove` 会往当前缓冲区滚动并插入行，因此 alt-screen 打开时发出的
+`tea.Println` 会落进 desktop 的画面里，同时从下面的历史里丢失。
+
+一条不变式解决了这件事：**desktop 占屏期间，commit 管线照常运行，只是
+它往终端的写入在队列里等着**（`scrollbackSuspended`）。commit 偏移量和
+`CommittedCount` 的推进和 inline 时完全一样，所以状态不会分叉；排队的
+分块会在回到 inline 视图时按序补写。desktop 唯一渲染得不一样的是**正在
+流式输出的那条消息**：inline 视图会跳过它已经 flush 到 scrollback 的
+前缀，而 desktop 正盖着那段 scrollback，所以它把整条消息完整画出来。
+
 ## 心智模型：两块表面
 
-会话期间终端窗口有**两块表面**，每条渲染出的字符串都恰好落到其中一块：
+在 inline 模式内部，会话期间终端窗口有**两块表面**，每条渲染出的字符串
+都恰好落到其中一块：
 
 ```
 m.conv.Messages = [ msg0, msg1, msg2, msg3 | msg4, msg5 ]
@@ -376,3 +448,5 @@ CommittedCount = 3                           // 追上
 | `MDRenderer` 生命周期 | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
 | Resize + reflow | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
+| desktop 表面接线（切换、按键、transcript） | [`internal/app/desktop_surface.go`](../../internal/app/desktop_surface.go) |
+| desktop 窗口管理 | [`internal/app/desktop/desktop.go`](../../internal/app/desktop/desktop.go) |

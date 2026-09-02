@@ -116,6 +116,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		return m, m.handleWindowResize(msg)
+	case desktopTickMsg:
+		return m, m.onDesktopTick()
+	case desktopFlushMsg:
+		return m, m.onDesktopFlush()
 	case spinner.TickMsg:
 		// The /autopilot Mission dialog runs its own spinner while awaiting a
 		// reply. Ticks carry a per-spinner id, so a foreign tick returns a nil
@@ -323,6 +327,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:
+		if m.scrollbackSuspended() {
+			// The desktop owns the screen; this chunk waits in the queue and
+			// resumeScrollbackPrints re-posts it on the way back (desktop_surface.go).
+			return m, nil
+		}
 		// Bubble Tea's renderer barrier flushes the latest managed View before
 		// insertAbove. Sequence ensures completion is observed only after this
 		// chunk has been inserted.

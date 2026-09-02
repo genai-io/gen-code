@@ -21,6 +21,9 @@ type env struct {
 	Height        int
 	Ready         bool
 	InitialPrompt string
+	// Surface selects the active presentation: the default inline scrollback
+	// view, or the opt-in full-screen desktop. See desktop_surface.go.
+	Surface Surface
 
 	// ── Provider (mutable — changes via SwitchProvider) ─────────
 	LLMProvider  llm.Provider

@@ -293,6 +293,16 @@ func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
 	return printScrollback(pending.id)
 }
 
+// resumeScrollbackPrints restarts the queue after writes were held back (see
+// scrollbackSuspended): the ready message for the head was dropped while the
+// alt-screen was up, so it needs re-posting. Nothing pending, nothing to do.
+func (m *model) resumeScrollbackPrints() tea.Cmd {
+	if len(m.flush.pendingPrints) == 0 {
+		return nil
+	}
+	return printScrollback(m.flush.pendingPrints[0].id)
+}
+
 // finishScrollbackPrint completes only the in-flight queue head. A stale or
 // out-of-order done message is ignored; the next chunk or queued print cannot
 // start until the current Println has been processed.

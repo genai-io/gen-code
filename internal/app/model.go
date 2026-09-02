@@ -55,6 +55,7 @@ type model struct {
 	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
 	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)
 	conv            conv.Model           // Agent Outbox: conversation + output rendering
+	desktop         desktopSurface       // Opt-in full-screen surface (ctrl+g); see desktop_surface.go
 	env             env                  // Shared app state: provider, session, permission, plan, config
 	services        services             // Domain service singletons, injected at construction
 	learnedStores   *learnedStoreContext // live cwd/settings source for /evolve inventories
