@@ -94,7 +94,23 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 
 type initialPromptMsg string
 
+// Update wraps the message dispatch below so one thing can be observed across
+// every branch of it: an overlay closing. A queued scrollback print is held
+// while any overlay owns the frame, and it has to restart when that frame goes
+// away — whichever of the sixteen panels it was, and whichever way the person
+// dismissed it.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, hadOverlay := m.activeOverlay()
+	model, cmd := m.dispatch(msg)
+	if _, hasOverlay := m.activeOverlay(); hadOverlay && !hasOverlay {
+		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
+			cmd = tea.Batch(cmd, resume)
+		}
+	}
+	return model, cmd
+}
+
+func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
@@ -344,13 +360,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scrollbackPrintDoneMsg:
 		return m, m.finishScrollbackPrint(msg.id)
 	case conv.QuestionResponseMsg:
-		return m, tea.Batch(m.handleQuestionResponse(msg), m.resumeDeferredScrollbackPrint())
+		return m, m.handleQuestionResponse(msg)
 	case input.SecretPromptResponseMsg:
-		return m, tea.Batch(m.handleSecretPromptResponse(msg), m.resumeDeferredScrollbackPrint())
+		return m, m.handleSecretPromptResponse(msg)
 	case input.ApprovalResponseMsg:
-		return m, tea.Batch(m.handlePermGateDecision(permissionDecision{
+		return m, m.handlePermGateDecision(permissionDecision{
 			Approved: msg.Approved, AllowAll: msg.AllowAll, Persist: msg.Persist, Request: msg.Request,
-		}), m.resumeDeferredScrollbackPrint())
+		})
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:

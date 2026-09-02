@@ -511,3 +511,57 @@ func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 		t.Fatalf("the fresh row's ContentCommittedLen = %d, want 0 (stale render must not advance it)", got)
 	}
 }
+
+// A fullscreen picker holds the queue exactly like a docked prompt does, and
+// closing it has to restart the queue. Nothing in the picker's own dismissal
+// says "approval answered", so a resume wired to the three prompt replies never
+// fired: the head stalled, every block queued behind it, and renderAndCommit
+// had already advanced CommittedCount — so the live tail had stopped drawing
+// what the queue was still holding. The output was on neither.
+func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.userInput.Approval.Hide()
+	m.userInput.Config.Enter(m.env.Width, m.env.Height)
+	if _, active := m.activeOverlay(); !active {
+		t.Fatal("the config picker did not become the active overlay")
+	}
+
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the picker is up")
+	}
+
+	// Esc, routed the way a keypress reaches the panel.
+	if _, resume := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape}); resume == nil {
+		t.Fatal("closing the picker must restart the deferred print")
+	}
+	if _, active := m.activeOverlay(); active {
+		t.Fatal("the picker is still up after Esc")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(
+		m.flush.pendingPrints[0].id, m.env.Width, m.env.Height, 0)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// The room above the frame is what caps a chunk, so the frame has to be counted
+// the way the chunk is: in physical rows. A frame line wider than the terminal
+// occupies more rows than it has newlines, and counting newlines instead
+// overstates the room — insertAbove then scrolls live rows into native history.
+func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
+	wide := strings.Repeat("x", 100)
+	logical := strings.Count(wide, "\n") + 1
+	physical := len(scrollbackPhysicalLines(wide, 40))
+	if physical <= logical {
+		t.Fatalf("physical rows = %d, newline count = %d — the case this guards cannot occur",
+			physical, logical)
+	}
+}

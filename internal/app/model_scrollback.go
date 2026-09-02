@@ -277,10 +277,16 @@ func (m *model) queueScrollbackPrint(content string) tea.Cmd {
 	return m.flush.queueScrollbackPrint(content)
 }
 
-// resumeDeferredScrollbackPrint restarts the queue after a docked prompt closes.
-// A Println while an approval/question/secret panel owns the frame makes Bubble
-// Tea's insertAbove capture that transient panel in native history. Leave the
-// head untouched until the panel is gone, then re-emit its ready message.
+// resumeDeferredScrollbackPrint restarts the queue after an overlay closes.
+// A Println while any panel owns the frame makes Bubble Tea's insertAbove
+// capture that transient panel in native history, so the head is left untouched
+// until the panel is gone and its ready message is re-emitted here.
+//
+// Update calls it on the overlay-closed edge rather than on the three prompt
+// replies: the queue is single-flight, so a head nobody restarts stalls every
+// block behind it for the rest of the session, and renderAndCommit has already
+// advanced CommittedCount — the live tail has stopped drawing what the queue
+// is still holding, which makes a stall a disappearance.
 func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
 	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" {
 		return nil
@@ -334,10 +340,13 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 
 func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	frame := m.View()
-	frameHeight := 0
-	if frame.Content != "" {
-		frameHeight = strings.Count(frame.Content, "\n") + 1
-	}
+	// Physical rows, not "\n" count. The chunk this height is subtracted from is
+	// measured after wrapping, and a frame line wider than the terminal occupies
+	// more rows than it has newlines — counting them differently overstates the
+	// room above the frame, and insertAbove then scrolls live rows into native
+	// history. The live tail pre-wraps itself (streamWrapReserve) so the two
+	// usually agree; the status bar, queue preview and composer do not.
+	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
 	content, ok := m.flush.prepareScrollbackPrint(
 		id,
 		m.env.Width,
