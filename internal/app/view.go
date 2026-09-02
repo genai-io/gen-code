@@ -243,6 +243,10 @@ func hangComposerRows(view string) string {
 func (m model) renderChatSection(activeContent, trackerView string) string {
 	var parts []string
 
+	if pending := m.pendingScrollbackView(); pending != "" {
+		parts = append(parts, pending)
+	}
+
 	if banner := m.liveWelcome(); banner != "" {
 		// Trailing blank line so the splash isn't cramped against the
 		// separator/input strip below it — matching the blank line it gets

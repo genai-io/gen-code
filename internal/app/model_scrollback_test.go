@@ -355,15 +355,19 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		t.Fatalf("queued prints = %d, want 2", len(m.flush.pendingPrints))
 	}
 
-	// A live repaint may contain later tool activity, blank fill, input, and the
-	// footer, but never either committed result. The renderer barrier can safely
-	// flush this frame before insertAbove because no handoff copy is present.
+	// A live repaint carries the handoff copy of the print in flight — the head,
+	// and only the head. Holding it is what keeps the frame from shrinking the
+	// moment CommittedCount advances, which is what strands a copy of the live
+	// tail in native history (see pendingScrollbackView). A queued print that
+	// has not started is not drawn: it would be a second copy of content that is
+	// still waiting for its own Println.
 	liveFrame := "LIVE_EDIT_ACTIVITY\n" + strings.Repeat("\n", 12) + "INPUT_SENTINEL\nFOOTER_SENTINEL"
 	managed := m.renderChatSection(liveFrame, "")
-	for _, committed := range []string{"BASH_RESULT_SENTINEL", "EDIT_RESULT_SENTINEL"} {
-		if strings.Contains(managed, committed) {
-			t.Fatalf("managed frame contains committed result %q: %q", committed, managed)
-		}
+	if !strings.Contains(managed, "BASH_RESULT_SENTINEL") {
+		t.Fatalf("managed frame lost the in-flight handoff copy: %q", managed)
+	}
+	if strings.Contains(managed, "EDIT_RESULT_SENTINEL") {
+		t.Fatalf("managed frame drew a print that has not started: %q", managed)
 	}
 	for _, live := range []string{"INPUT_SENTINEL", "FOOTER_SENTINEL"} {
 		if !strings.Contains(managed, live) {
@@ -563,5 +567,54 @@ func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
 	if physical <= logical {
 		t.Fatalf("physical rows = %d, newline count = %d — the case this guards cannot occur",
 			physical, logical)
+	}
+}
+
+// The handoff copy keeps a committed block drawn in the managed view until its
+// Println has landed. Without it the frame shrinks the moment CommittedCount
+// advances, and Bubble Tea's inline renderer leaves the vacated rows on screen —
+// a plain copy of the streaming tail welded into native scrollback, with the
+// rendered version printed underneath it.
+func TestCommittedBlockStaysInTheFrameUntilItsPrintLands(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	cmd := m.queueScrollbackPrint("RENDERED_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start")
+	}
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
+		t.Fatalf("handoff copy = %q, want the queued block", view)
+	}
+
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+		t.Fatal("the print did not prepare")
+	}
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
+		t.Fatalf("handoff copy during the print = %q, want the block still drawn", view)
+	}
+
+	m.finishScrollbackPrint(ready.id)
+	if view := m.pendingScrollbackView(); view != "" {
+		t.Fatalf("handoff copy after the print = %q, want it dropped", view)
+	}
+}
+
+// The rendered block is shorter than the plain wrapped tail it replaces, and
+// every row of that difference is a row the frame vacates — so the copy is
+// padded to what the live tail occupied.
+func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.queueScrollbackPrint("ONE\nTWO")
+	m.flush.handoffRows = 6
+
+	if rows := viewRows(m.pendingScrollbackView()); rows != 6 {
+		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
+	}
+
+	// Never trimmed: a copy taller than the tail it replaces is the frame
+	// growing, which the renderer handles.
+	m.flush.handoffRows = 1
+	if rows := viewRows(m.pendingScrollbackView()); rows != 2 {
+		t.Fatalf("handoff rows = %d, want the block's own 2", rows)
 	}
 }

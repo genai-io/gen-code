@@ -70,10 +70,14 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering        bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer         *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width            int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID      uint64                   // monotonic identity for queued scrollback prints
+	rendering   bool             // one render in flight at a time, so Printlns stay ordered
+	renderer    *conv.MDRenderer // background renderer, off the live-view MDRenderer's mutex
+	width       int              // width the renderer was built for; rebuild when it changes
+	nextPrintID uint64           // monotonic identity for queued scrollback prints
+	// handoffRows is how tall the chat section stood while the live tail still
+	// held the blocks the queued print is carrying. The handoff copy is padded
+	// to it so committing cannot shorten the frame — see pendingScrollbackView.
+	handoffRows      int
 	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
 	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
 	frameForPrint    *tea.View                // freeze insertAbove geometry until the print completes
@@ -239,6 +243,10 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
 	lastIdx := len(m.conv.Messages) - 1
 	params := m.messageRenderParams()
+	// Measured before the loop below empties the live tail: the rows the handoff
+	// copy has to stand in for. The composer and status bar are left out because
+	// a commit does not touch them, and counting them would overshoot.
+	preCommitRows := viewRows(conv.RenderActiveContent(params))
 
 	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
 		msg := m.conv.Messages[i]
@@ -265,6 +273,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
+	m.flush.handoffRows = preCommitRows
 	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"))}
 }
 
@@ -467,4 +476,41 @@ func (m model) welcomeBannerText() string {
 		Model: m.env.GetModelDisplayName(),
 		CWD:   m.env.CWD,
 	})
+}
+
+// pendingScrollbackView is the handoff copy: the queued chunk stays drawn in the
+// managed view until its Println has been processed.
+//
+// Restored from e02ed422, which 74ac1647 dropped on the reading that the FIFO
+// plus the renderer's flush barrier had made it redundant. They had not. The
+// barrier fixes *when* insertAbove sees the frame; this fixes *what* the frame
+// is. Committing empties the live tail before the print runs, and Bubble Tea's
+// inline renderer leaves the rows a shorter frame vacates on screen — so the
+// plain streaming tail is stranded there, and insertAbove prints the rendered
+// version below it. Holding the chunk in the frame keeps its height across the
+// print, so there is no vacated row to strand.
+func (m model) pendingScrollbackView() string {
+	if len(m.flush.pendingPrints) == 0 {
+		return ""
+	}
+	head := m.flush.pendingPrints[0]
+	handoff := head.current
+	if handoff == "" {
+		handoff = head.remaining
+	}
+	// Padded to what committing took out of the frame: the rendered block is
+	// usually shorter than the plain wrapped tail it replaces, and every row of
+	// that difference is a row the frame vacates and the renderer strands.
+	for rows := viewRows(handoff); rows < m.flush.handoffRows; rows++ {
+		handoff += "\n"
+	}
+	return handoff
+}
+
+// viewRows counts the rows a rendered section occupies.
+func viewRows(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
 }
