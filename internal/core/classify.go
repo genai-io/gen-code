@@ -12,12 +12,10 @@ import (
 // (RetryableError), or compact and retry (ContextExceededError).
 //
 // Deciding which belongs to the SDK, where the provider's typed error still
-// exists. This file only translates that answer, so the loop carries no
-// provider vocabulary and San keeps no second copy of the SDK's tables.
-//
-// It sits in core rather than a layer above because core is what reads the
-// answer: the streaming call is core's own, so the error never crosses a
-// package boundary where anyone else could tag it first.
+// exists; this file only translates that answer, so the loop carries no
+// provider vocabulary and San keeps no second copy of the SDK's tables. It
+// lives in core because the streaming call is core's own — there is no package
+// boundary in between for a failure to arrive across untagged.
 
 // Classify tags a provider failure with what the agent loop needs to know
 // about it. A failure of no recognized kind is returned unchanged, which

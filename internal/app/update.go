@@ -94,11 +94,9 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 
 type initialPromptMsg string
 
-// Update wraps the message dispatch below so one thing can be observed across
-// every branch of it: an overlay closing. A queued scrollback print is held
-// while any overlay owns the frame, and it has to restart when that frame goes
-// away — whichever of the sixteen panels it was, and whichever way the person
-// dismissed it.
+// Update wraps the dispatch below so one thing is observed across every branch
+// of it: an overlay closing, which is what restarts a held scrollback print —
+// whichever of the sixteen panels it was, and however it was dismissed.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)

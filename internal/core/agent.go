@@ -108,19 +108,14 @@ type Agent interface {
 // before passing them to NewAgent. See docs/concepts/permission-model.md.
 type Config struct {
 	ID string
-	// Client hands over the model to talk to for one turn. Required.
-	//
-	// A function of the conversation, not a fixed handle, because one
-	// endpoint's headers depend on what the turn sends: Copilot meters an
-	// agent's follow-up differently from a turn the user typed, and rejects
-	// image content unless the request opts into vision. Which client answers
-	// a turn is therefore a per-turn question, and only the application knows
-	// how to answer it.
+	// Client hands over the model to talk to for one turn. Required. A function
+	// of the conversation because an endpoint's headers can depend on what the
+	// turn sends (see llm.TurnHeaders), which only the application knows.
 	Client func(msgs []Message) (*ai.Client, error)
 	// CallOptions are the per-call settings — the output cap, the reasoning
-	// rung — asked for fresh on every inference, because a person can change
-	// the rung mid-session and it has to take effect on the next call. Nil
-	// leaves every setting at the model's own default.
+	// rung — asked for fresh on every inference, so a person changing the rung
+	// mid-session takes effect on the next call. Nil leaves the model's own
+	// defaults.
 	CallOptions func() []ai.Option
 	// InputLimit is the prompt budget auto-compaction measures against, as a
 	// function because the application may let a person change it. Nil, or a

@@ -2,6 +2,14 @@
 // terminal output and emit them via tea.Println. The bubbletea alt-screen
 // only paints the bottom input area; rendered messages live in the
 // terminal's native scrollback above.
+//
+// The frame rule everything here obeys: insertAbove prints above the managed
+// frame and Bubble Tea's inline renderer only ever redraws the frame's current
+// extent, so whatever the frame holds at that moment stays on screen and any
+// row it stops holding is left behind. Both are permanent — native scrollback
+// cannot be rewritten. Hence a chunk no taller than the room above the frame,
+// a queue that waits for a panel to close, and a handoff copy that keeps the
+// frame from shrinking mid-print.
 package app
 
 import (
@@ -75,8 +83,7 @@ type flushState struct {
 	width       int              // width the renderer was built for; rebuild when it changes
 	nextPrintID uint64           // monotonic identity for queued scrollback prints
 	// handoffRows is how tall the chat section stood while the live tail still
-	// held the blocks the queued print is carrying. The handoff copy is padded
-	// to it so committing cannot shorten the frame — see pendingScrollbackView.
+	// held the blocks the queued print carries; the copy is padded to it.
 	handoffRows      int
 	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
 	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
@@ -286,16 +293,13 @@ func (m *model) queueScrollbackPrint(content string) tea.Cmd {
 	return m.flush.queueScrollbackPrint(content)
 }
 
-// resumeDeferredScrollbackPrint restarts the queue after an overlay closes.
-// A Println while any panel owns the frame makes Bubble Tea's insertAbove
-// capture that transient panel in native history, so the head is left untouched
-// until the panel is gone and its ready message is re-emitted here.
+// resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.
 //
 // Update calls it on the overlay-closed edge rather than on the three prompt
 // replies: the queue is single-flight, so a head nobody restarts stalls every
-// block behind it for the rest of the session, and renderAndCommit has already
-// advanced CommittedCount — the live tail has stopped drawing what the queue
-// is still holding, which makes a stall a disappearance.
+// block behind it for the session, and renderAndCommit advances CommittedCount
+// before the print runs — the live tail has already stopped drawing what the
+// queue is still holding, which makes a stall a disappearance.
 func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
 	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" {
 		return nil
@@ -349,12 +353,9 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 
 func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	frame := m.View()
-	// Physical rows, not "\n" count. The chunk this height is subtracted from is
-	// measured after wrapping, and a frame line wider than the terminal occupies
-	// more rows than it has newlines — counting them differently overstates the
-	// room above the frame, and insertAbove then scrolls live rows into native
-	// history. The live tail pre-wraps itself (streamWrapReserve) so the two
-	// usually agree; the status bar, queue preview and composer do not.
+	// Physical rows, like the chunk this is subtracted from: a frame line wider
+	// than the terminal occupies more rows than it has newlines, and counting
+	// the two differently overstates the room above the frame.
 	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
 	content, ok := m.flush.prepareScrollbackPrint(
 		id,
@@ -479,16 +480,13 @@ func (m model) welcomeBannerText() string {
 }
 
 // pendingScrollbackView is the handoff copy: the queued chunk stays drawn in the
-// managed view until its Println has been processed.
+// managed view until its Println has been processed, so committing — which
+// empties the live tail first — cannot shrink the frame mid-print and leave the
+// plain streaming tail on screen for insertAbove to print underneath.
 //
-// Restored from e02ed422, which 74ac1647 dropped on the reading that the FIFO
-// plus the renderer's flush barrier had made it redundant. They had not. The
-// barrier fixes *when* insertAbove sees the frame; this fixes *what* the frame
-// is. Committing empties the live tail before the print runs, and Bubble Tea's
-// inline renderer leaves the rows a shorter frame vacates on screen — so the
-// plain streaming tail is stranded there, and insertAbove prints the rendered
-// version below it. Holding the chunk in the frame keeps its height across the
-// print, so there is no vacated row to strand.
+// Restored from e02ed422, which 74ac1647 dropped as redundant beside the FIFO
+// and the renderer's flush barrier. It is not: the barrier fixes *when*
+// insertAbove sees the frame, this fixes *what* the frame is.
 func (m model) pendingScrollbackView() string {
 	if len(m.flush.pendingPrints) == 0 {
 		return ""
@@ -498,9 +496,8 @@ func (m model) pendingScrollbackView() string {
 	if handoff == "" {
 		handoff = head.remaining
 	}
-	// Padded to what committing took out of the frame: the rendered block is
-	// usually shorter than the plain wrapped tail it replaces, and every row of
-	// that difference is a row the frame vacates and the renderer strands.
+	// The rendered block is usually shorter than the plain wrapped tail it
+	// replaces, and every row of that difference is one the frame would vacate.
 	for rows := viewRows(handoff); rows < m.flush.handoffRows; rows++ {
 		handoff += "\n"
 	}
