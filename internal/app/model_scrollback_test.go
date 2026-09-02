@@ -155,7 +155,7 @@ func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
 func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 	var flush flushState
 	content := "\x1b[31mabcdefghij\x1b[0m\nlast\n"
-	cmd := flush.queueScrollbackPrint(content)
+	cmd := flush.queueScrollbackPrint(content, 0)
 	if cmd == nil {
 		t.Fatal("the first chunk must start immediately")
 	}
@@ -183,7 +183,7 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.env.Height = 1
-	cmd := m.queueScrollbackPrint("A")
+	cmd := m.queueScrollbackPrint("A", 0)
 	if cmd == nil {
 		t.Fatal("the first chunk must start immediately")
 	}
@@ -207,7 +207,7 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 // terminal history together with the actual conversation output.
 func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -248,7 +248,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 		ToolName: "Bash",
 		BashMeta: &perm.BashMetadata{Command: "git status"},
 	}
-	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL")
+	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
 	if cmd == nil {
 		t.Fatal("the queued print must start")
 	}
@@ -269,11 +269,11 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 
 func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	firstCmd := m.queueScrollbackPrint("A")
+	firstCmd := m.queueScrollbackPrint("A", 0)
 	if firstCmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
-	if secondCmd := m.queueScrollbackPrint("B"); secondCmd != nil {
+	if secondCmd := m.queueScrollbackPrint("B", 0); secondCmd != nil {
 		t.Fatal("a second print must wait until the in-flight head completes")
 	}
 
@@ -530,7 +530,7 @@ func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 		t.Fatal("the config picker did not become the active overlay")
 	}
 
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -577,7 +577,7 @@ func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
 // rendered version printed underneath it.
 func TestCommittedBlockStaysInTheFrameUntilItsPrintLands(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	cmd := m.queueScrollbackPrint("RENDERED_BLOCK")
+	cmd := m.queueScrollbackPrint("RENDERED_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start")
 	}
@@ -604,8 +604,10 @@ func TestCommittedBlockStaysInTheFrameUntilItsPrintLands(t *testing.T) {
 // padded to what the live tail occupied.
 func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	m.queueScrollbackPrint("ONE\nTWO")
-	m.flush.handoffRows = 6
+	m.queueScrollbackPrint("ONE\nTWO", 6)
+	cmd := printScrollback(m.flush.pendingPrints[0].id)
+	ready := cmd().(scrollbackPrintReadyMsg)
+	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0)
 
 	if rows := viewRows(m.pendingScrollbackView()); rows != 6 {
 		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
@@ -613,8 +615,49 @@ func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 
 	// Never trimmed: a copy taller than the tail it replaces is the frame
 	// growing, which the renderer handles.
-	m.flush.handoffRows = 1
+	m.flush.pendingPrints[0].frameRows = 1
 	if rows := viewRows(m.pendingScrollbackView()); rows != 2 {
 		t.Fatalf("handoff rows = %d, want the block's own 2", rows)
+	}
+}
+
+// A payload taller than the room above the frame is printed in several chunks.
+// The handoff copy stands in for the tail only until the first chunk goes out;
+// after that part of the payload is already in scrollback, and holding the rest
+// in the frame is what the next chunk's insertAbove welds into the middle of
+// the output it belongs to.
+func TestHandoffCopyDropsTheRemainderOncePrintingStarts(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.env.Height = 6
+	tall := strings.Join([]string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"}, "\n")
+	cmd := m.queueScrollbackPrint(tall, 0)
+	if cmd == nil {
+		t.Fatal("the first queued print must start")
+	}
+
+	// Before the first chunk: the whole payload stands in for the emptied tail.
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "L8") {
+		t.Fatalf("handoff copy before printing = %q, want the whole payload", view)
+	}
+
+	ready := cmd().(scrollbackPrintReadyMsg)
+	chunk, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 2)
+	if !ok {
+		t.Fatal("the print did not prepare")
+	}
+	if m.flush.pendingPrints[0].remaining == "" {
+		t.Fatal("the payload fit in one chunk; this test needs it split")
+	}
+
+	// Once printing has started, only the chunk in flight.
+	view := m.pendingScrollbackView()
+	if view != chunk {
+		t.Fatalf("handoff copy = %q, want only the chunk in flight %q", view, chunk)
+	}
+
+	// And nothing at all between chunks.
+	m.finishScrollbackPrint(ready.id)
+	if view := m.pendingScrollbackView(); view != "" {
+		t.Fatalf("handoff copy between chunks = %q, want none", view)
 	}
 }

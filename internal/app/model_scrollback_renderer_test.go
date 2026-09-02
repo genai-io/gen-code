@@ -205,8 +205,8 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nativeBash + "6",
 			nativeBash + "7",
 			nativeBash + "8",
-		}, "\n"))
-		m.queueScrollbackPrint(nativeEdit)
+		}, "\n"), 0)
+		m.queueScrollbackPrint(nativeEdit, 0)
 		return m, first
 	case scrollbackPrintReadyMsg:
 		frame := m.View()
@@ -262,8 +262,8 @@ func (m *nativeHistoryModel) View() tea.View {
 	}, "\n"))
 }
 
-func (m *nativeHistoryModel) queueScrollbackPrint(content string) tea.Cmd {
-	return m.flush.queueScrollbackPrint(content)
+func (m *nativeHistoryModel) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
+	return m.flush.queueScrollbackPrint(content, frameRows)
 }
 
 func (m *nativeHistoryModel) finishScrollbackPrint(id uint64) tea.Cmd {
