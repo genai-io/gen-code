@@ -165,7 +165,7 @@ func renderNestedToolBody(content string) string {
 
 	var sb strings.Builder
 	for line := range strings.SplitSeq(content, "\n") {
-		line = afterLastCarriageReturn(line)
+		line = visibleLine(line)
 		if strings.TrimSpace(line) == "" {
 			sb.WriteString(strings.Repeat(" ", lipgloss.Width(nestedBodyPrefix)) + "\n")
 			continue
@@ -175,17 +175,11 @@ func renderNestedToolBody(content string) string {
 	return sb.String()
 }
 
-// afterLastCarriageReturn keeps only what a terminal would have left on screen.
-//
-// A tool that draws progress in place — git's "Rebasing (1/3)", a download
-// meter — ends each update with a carriage return and writes the next over it,
-// so everything before the final one was overwritten and never read. Passing
-// the whole line through puts that carriage return inside San's own gutter and
-// the terminal obeys it: the row restarts at column 0 and the "┊" connector is
-// gone, which is the stray unindented line in a rebase's output.
-//
-// A trailing one is CRLF, not an overwrite, so it goes first.
-func afterLastCarriageReturn(line string) string {
+// visibleLine drops the progress a tool drew in place and then wrote over —
+// git's "Rebasing (1/3)\r…". Left in, the carriage return lands inside the "┊"
+// gutter and the terminal restarts the row at column 0, connector and all. A
+// trailing one is CRLF, not an overwrite.
+func visibleLine(line string) string {
 	line = strings.TrimSuffix(line, "\r")
 	if i := strings.LastIndexByte(line, '\r'); i >= 0 {
 		return line[i+1:]
@@ -194,7 +188,7 @@ func afterLastCarriageReturn(line string) string {
 }
 
 func renderNestedToolBodyLine(line string) string {
-	return toolResultStyle.Render(nestedBodyPrefix+afterLastCarriageReturn(line)) + "\n"
+	return toolResultStyle.Render(nestedBodyPrefix+visibleLine(line)) + "\n"
 }
 
 func renderNestedToolBodyContinuous(content string) string {

@@ -4,12 +4,9 @@
 // terminal's native scrollback above.
 //
 // The frame rule everything here obeys: insertAbove prints above the managed
-// frame and Bubble Tea's inline renderer only ever redraws the frame's current
-// extent, so whatever the frame holds at that moment stays on screen and any
-// row it stops holding is left behind. Both are permanent — native scrollback
-// cannot be rewritten. Hence a chunk no taller than the room above the frame,
-// a queue that waits for a panel to close, and a handoff copy that keeps the
-// frame from shrinking mid-print.
+// frame, and the inline renderer only redraws the frame's current extent — so
+// what the frame holds then stays on screen, and any row it stops holding is
+// left behind. Both are permanent; scrollback cannot be rewritten.
 package app
 
 import (
@@ -31,14 +28,8 @@ type pendingScrollbackPrint struct {
 	id        uint64
 	remaining string
 	current   string
-	// frameRows is how tall the chat section stood while the live tail still
-	// held what this print carries. The handoff copy is padded to it, so
-	// committing cannot shorten the frame — see pendingScrollbackView.
-	frameRows int
-	// started marks the first chunk having been prepared, after which part of
-	// the payload is already in scrollback and only the chunk in flight may be
-	// drawn — see pendingScrollbackView.
-	started bool
+	frameRows int  // chat rows this print's content occupied in the live tail
+	started   bool // first chunk prepared; the rest is no longer the frame's job
 }
 
 func printScrollback(id uint64) tea.Cmd {
@@ -223,8 +214,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 
 	var cmds []tea.Cmd
 	if msg.printed != "" {
-		// No row budget: a streamed block leaves the live tail as its rendered
-		// self, so the copy already stands the same height as what it replaced.
+		// No budget: a streamed block leaves the tail as its rendered self.
 		cmds = append(cmds, m.queueScrollbackPrint(msg.printed, 0))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
@@ -257,10 +247,8 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
 	lastIdx := len(m.conv.Messages) - 1
 	params := m.messageRenderParams()
-	// Measured before the loop below empties the live tail: the rows the handoff
-	// copy has to stand in for. The composer and status bar are left out because
-	// a commit does not touch them, and counting them would overshoot.
-	preCommitRows := viewRows(conv.RenderActiveContent(params))
+	// What the loop below is about to take out of the frame.
+	preCommitRows := rowCount(conv.RenderActiveContent(params))
 
 	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
 		msg := m.conv.Messages[i]
@@ -421,15 +409,11 @@ func (m *model) useMinimalScrollbackFrame() {
 	m.flush.minimizeForPrint = true
 }
 
-// trimTrailingBlanks drops the empty cells a full-width buffer leaves at the end
-// of a row.
-//
-// They cost nothing at the width they were printed at, and native scrollback is
-// immutable, so they are still there when the window narrows — where the
-// terminal rewraps a row of visible text plus padding into two, the second all
-// spaces. That is the blank line a resize inserts between committed blocks.
-// Styled trailing cells are kept: a background color is content, not padding.
-func trimTrailingBlanks(line uv.Line) uv.Line {
+// trimPadding drops the padding a full-width buffer leaves on a row.
+// Free at the width it was printed at, but scrollback is immutable: narrow the
+// window and text-plus-padding rewraps into two rows, the second all spaces.
+// Styled cells stay — a background colour is content.
+func trimPadding(line uv.Line) uv.Line {
 	end := len(line)
 	for end > 0 && (line[end-1].IsZero() || line[end-1].Equal(&uv.EmptyCell)) {
 		end--
@@ -472,11 +456,10 @@ func renderScrollbackLines(lines []uv.Line) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	trimmed := make(uv.Lines, len(lines))
 	for i, line := range lines {
-		trimmed[i] = trimTrailingBlanks(line)
+		lines[i] = trimPadding(line)
 	}
-	if rendered := trimmed.Render(); rendered != "" {
+	if rendered := uv.Lines(lines).Render(); rendered != "" {
 		return rendered
 	}
 	// insertAbove ignores an empty string. A reset sequence represents one
@@ -508,9 +491,7 @@ func (m model) welcomeBannerText() string {
 }
 
 // pendingScrollbackView is the handoff copy: the queued chunk stays drawn in the
-// managed view until its Println has been processed, so committing — which
-// empties the live tail first — cannot shrink the frame mid-print and leave the
-// plain streaming tail on screen for insertAbove to print underneath.
+// frame until its Println lands, so committing cannot shrink the frame mid-print.
 //
 // Restored from e02ed422, which 74ac1647 dropped as redundant beside the FIFO
 // and the renderer's flush barrier. It is not: the barrier fixes *when*
@@ -519,13 +500,10 @@ func (m model) pendingScrollbackView() string {
 	if len(m.flush.pendingPrints) == 0 {
 		return ""
 	}
+	// Until the first chunk goes out the whole payload stands in for the tail;
+	// after it, only the chunk in flight. Holding the remainder would swell the
+	// frame, and the next chunk's insertAbove welds that into its own output.
 	head := m.flush.pendingPrints[0]
-	// Before the first chunk the whole payload stands in for the tail that
-	// committing just emptied. After it, part is already in scrollback and only
-	// the chunk in flight may be drawn: a payload too tall for the room above
-	// the frame is printed in several, and holding the remainder here would put
-	// it in the frame for the next chunk's insertAbove to weld into the middle
-	// of the output it belongs to.
 	handoff := head.current
 	if !head.started {
 		handoff = head.remaining
@@ -533,16 +511,13 @@ func (m model) pendingScrollbackView() string {
 	if handoff == "" {
 		return ""
 	}
-	// The rendered block is usually shorter than the plain wrapped tail it
-	// replaces, and every row of that difference is one the frame would vacate.
-	for rows := viewRows(handoff); rows < head.frameRows; rows++ {
-		handoff += "\n"
-	}
-	return handoff
+	// The rendered block is shorter than the plain tail it replaces, and every
+	// row of the difference is one the frame would vacate.
+	return handoff + strings.Repeat("\n", max(head.frameRows-rowCount(handoff), 0))
 }
 
-// viewRows counts the rows a rendered section occupies.
-func viewRows(s string) int {
+// rowCount is how many terminal rows a rendered section occupies.
+func rowCount(s string) int {
 	if s == "" {
 		return 0
 	}

@@ -7,10 +7,8 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 )
 
-// A tool that draws progress in place ends each update with a carriage return.
-// Rendering the whole line puts that carriage return inside the "┊" gutter and
-// the terminal obeys it — the row restarts at column 0 and the connector is
-// gone. git rebase is the one people see: "Rebasing (1/3)\rAuto-merging f.go".
+// A carriage return left in the line lands inside the "┊" gutter, and the
+// terminal restarts the row at column 0. git rebase is where people see it.
 func TestNestedToolBodyDropsOverwrittenProgress(t *testing.T) {
 	body := renderNestedToolBody("Rebasing (1/1)\rAuto-merging f.txt\nCONFLICT (content): Merge conflict")
 
