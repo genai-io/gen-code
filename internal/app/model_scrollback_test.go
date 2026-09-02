@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -201,6 +202,71 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	}
 }
 
+// A queued Println must not run while a docked approval prompt owns the
+// managed frame. insertAbove otherwise promotes that temporary prompt into
+// terminal history together with the actual conversation output.
+func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the approval modal is visible")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	if m.flush.frameForPrint != nil {
+		t.Fatal("a deferred print must not freeze the approval frame")
+	}
+
+	m.userInput.Approval.Hide()
+	resume := m.resumeDeferredScrollbackPrint()
+	if resume == nil {
+		t.Fatal("closing the modal must restart the deferred print")
+	}
+	resumed := resume().(scrollbackPrintReadyMsg)
+	if resumed.id != ready.id {
+		t.Fatalf("resumed print id = %d, want %d", resumed.id, ready.id)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height, 0)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// A permission prompt opened after a print has been queued has the inverse race:
+// the prompt's frame could be captured by insertAbove after it appears. Hold the
+// prompt until the final Println completes, then open it on the clean live frame.
+func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.userInput.Approval.Hide()
+	m.deferredApproval = &perm.PermissionRequest{
+		ToolName: "Bash",
+		BashMeta: &perm.BashMetadata{Command: "git status"},
+	}
+	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL")
+	if cmd == nil {
+		t.Fatal("the queued print must start")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+		t.Fatal("the print should prepare before the approval opens")
+	}
+	if m.userInput.Approval.IsActive() {
+		t.Fatal("approval opened before the scrollback handoff completed")
+	}
+	if next := m.finishScrollbackPrint(ready.id); next != nil {
+		t.Fatal("the one-line print should finish in one chunk")
+	}
+	if !m.userInput.Approval.IsActive() {
+		t.Fatal("approval did not open after the scrollback handoff completed")
+	}
+}
+
 func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	firstCmd := m.queueScrollbackPrint("A")
@@ -289,15 +355,19 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		t.Fatalf("queued prints = %d, want 2", len(m.flush.pendingPrints))
 	}
 
-	// A live repaint may contain later tool activity, blank fill, input, and the
-	// footer, but never either committed result. The renderer barrier can safely
-	// flush this frame before insertAbove because no handoff copy is present.
+	// A live repaint carries the handoff copy of the print in flight — the head,
+	// and only the head. Holding it is what keeps the frame from shrinking the
+	// moment CommittedCount advances, which is what strands a copy of the live
+	// tail in native history (see pendingScrollbackView). A queued print that
+	// has not started is not drawn: it would be a second copy of content that is
+	// still waiting for its own Println.
 	liveFrame := "LIVE_EDIT_ACTIVITY\n" + strings.Repeat("\n", 12) + "INPUT_SENTINEL\nFOOTER_SENTINEL"
 	managed := m.renderChatSection(liveFrame, "")
-	for _, committed := range []string{"BASH_RESULT_SENTINEL", "EDIT_RESULT_SENTINEL"} {
-		if strings.Contains(managed, committed) {
-			t.Fatalf("managed frame contains committed result %q: %q", committed, managed)
-		}
+	if !strings.Contains(managed, "BASH_RESULT_SENTINEL") {
+		t.Fatalf("managed frame lost the in-flight handoff copy: %q", managed)
+	}
+	if strings.Contains(managed, "EDIT_RESULT_SENTINEL") {
+		t.Fatalf("managed frame drew a print that has not started: %q", managed)
 	}
 	for _, live := range []string{"INPUT_SENTINEL", "FOOTER_SENTINEL"} {
 		if !strings.Contains(managed, live) {
@@ -443,5 +513,108 @@ func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 	}
 	if got := m.conv.Messages[0].ContentCommittedLen; got != 0 {
 		t.Fatalf("the fresh row's ContentCommittedLen = %d, want 0 (stale render must not advance it)", got)
+	}
+}
+
+// A fullscreen picker holds the queue exactly like a docked prompt does, and
+// closing it has to restart the queue. Nothing in the picker's own dismissal
+// says "approval answered", so a resume wired to the three prompt replies never
+// fired: the head stalled, every block queued behind it, and renderAndCommit
+// had already advanced CommittedCount — so the live tail had stopped drawing
+// what the queue was still holding. The output was on neither.
+func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.userInput.Approval.Hide()
+	m.userInput.Config.Enter(m.env.Width, m.env.Height)
+	if _, active := m.activeOverlay(); !active {
+		t.Fatal("the config picker did not become the active overlay")
+	}
+
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the picker is up")
+	}
+
+	// Esc, routed the way a keypress reaches the panel.
+	if _, resume := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape}); resume == nil {
+		t.Fatal("closing the picker must restart the deferred print")
+	}
+	if _, active := m.activeOverlay(); active {
+		t.Fatal("the picker is still up after Esc")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(
+		m.flush.pendingPrints[0].id, m.env.Width, m.env.Height, 0)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// The room above the frame is what caps a chunk, so the frame has to be counted
+// the way the chunk is: in physical rows. A frame line wider than the terminal
+// occupies more rows than it has newlines, and counting newlines instead
+// overstates the room — insertAbove then scrolls live rows into native history.
+func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
+	wide := strings.Repeat("x", 100)
+	logical := strings.Count(wide, "\n") + 1
+	physical := len(scrollbackPhysicalLines(wide, 40))
+	if physical <= logical {
+		t.Fatalf("physical rows = %d, newline count = %d — the case this guards cannot occur",
+			physical, logical)
+	}
+}
+
+// The handoff copy keeps a committed block drawn in the managed view until its
+// Println has landed. Without it the frame shrinks the moment CommittedCount
+// advances, and Bubble Tea's inline renderer leaves the vacated rows on screen —
+// a plain copy of the streaming tail welded into native scrollback, with the
+// rendered version printed underneath it.
+func TestCommittedBlockStaysInTheFrameUntilItsPrintLands(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	cmd := m.queueScrollbackPrint("RENDERED_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start")
+	}
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
+		t.Fatalf("handoff copy = %q, want the queued block", view)
+	}
+
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+		t.Fatal("the print did not prepare")
+	}
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
+		t.Fatalf("handoff copy during the print = %q, want the block still drawn", view)
+	}
+
+	m.finishScrollbackPrint(ready.id)
+	if view := m.pendingScrollbackView(); view != "" {
+		t.Fatalf("handoff copy after the print = %q, want it dropped", view)
+	}
+}
+
+// The rendered block is shorter than the plain wrapped tail it replaces, and
+// every row of that difference is a row the frame vacates — so the copy is
+// padded to what the live tail occupied.
+func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.queueScrollbackPrint("ONE\nTWO")
+	m.flush.handoffRows = 6
+
+	if rows := viewRows(m.pendingScrollbackView()); rows != 6 {
+		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
+	}
+
+	// Never trimmed: a copy taller than the tail it replaces is the frame
+	// growing, which the renderer handles.
+	m.flush.handoffRows = 1
+	if rows := viewRows(m.pendingScrollbackView()); rows != 2 {
+		t.Fatalf("handoff rows = %d, want the block's own 2", rows)
 	}
 }

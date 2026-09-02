@@ -2,6 +2,8 @@
 package conv
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -203,12 +205,19 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	if !m.Stream.Active {
 		return nil
 	}
-	if chunk.Text != "" || chunk.Thinking != "" {
-		m.AppendToLast(chunk.Text, chunk.Thinking)
+	// The wire says which block a fragment belongs to, where San's own chunk
+	// had two named fields and could carry nothing else.
+	if chunk.Type == ai.EventBlockDelta && chunk.Block.Text != "" {
+		switch chunk.Block.Type {
+		case ai.BlockText:
+			m.AppendToLast(chunk.Block.Text, "")
+		case ai.BlockThinking:
+			m.AppendToLast("", chunk.Block.Text)
+		}
 	}
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
-	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
+	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
 		m.Stream.Active = false
 		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)

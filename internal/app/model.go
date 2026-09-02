@@ -33,6 +33,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 const defaultWidth = 80
@@ -66,6 +67,12 @@ type model struct {
 	// Set in Run for fresh sessions. See view.go (liveWelcome) and
 	// model_scrollback.go (takeWelcomeBanner).
 	welcomePending bool
+
+	// deferredApproval waits for an in-flight scrollback handoff to finish before
+	// opening a permission prompt. Bubble Tea's insertAbove preserves its managed
+	// frame, so opening the prompt first would write the temporary approval panel
+	// into native terminal history.
+	deferredApproval *perm.PermissionRequest
 
 	// reviewerApprovals / reviewerEscalations count auto-review outcomes this
 	// session for the status bar: gray-zone tool calls the judge auto-approved

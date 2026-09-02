@@ -1,6 +1,8 @@
 package core
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"time"
 )
@@ -105,8 +107,22 @@ type Agent interface {
 // Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
 // before passing them to NewAgent. See docs/concepts/permission-model.md.
 type Config struct {
-	ID                      string
-	LLM                     LLM                                                       // required: inference backend
+	ID string
+	// Client hands over the model to talk to for one turn. Required. A function
+	// of the conversation because an endpoint's headers can depend on what the
+	// turn sends (see llm.TurnHeaders), which only the application knows.
+	Client func(msgs []Message) (*ai.Client, error)
+	// CallOptions are the per-call settings — the output cap, the reasoning
+	// rung — asked for fresh on every inference, so a person changing the rung
+	// mid-session takes effect on the next call. Nil leaves the model's own
+	// defaults.
+	CallOptions func() []ai.Option
+	// InputLimit is the prompt budget auto-compaction measures against, as a
+	// function because the application may let a person change it. Nil, or a
+	// zero return, turns auto-compaction off. It is not read off the client:
+	// the figure San uses is the model's window unless a setting overrides it,
+	// and that setting is the application's.
+	InputLimit              func() int
 	System                  System                                                    // required: system prompt layers
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
@@ -128,8 +144,8 @@ type Config struct {
 // Inbox is owned by the caller (caller closes when done sending).
 // Outbox is owned by the agent (closed when Run returns).
 func NewAgent(cfg Config) Agent {
-	if cfg.LLM == nil {
-		panic("core.NewAgent: LLM is required")
+	if cfg.Client == nil {
+		panic("core.NewAgent: Client is required")
 	}
 	if cfg.System == nil {
 		panic("core.NewAgent: System is required")
@@ -163,7 +179,9 @@ func NewAgent(cfg Config) Agent {
 		system:            cfg.System,
 		tools:             cfg.Tools,
 		compactFunc:       cfg.CompactFunc,
-		llm:               cfg.LLM,
+		client:            cfg.Client,
+		callOptions:       cfg.CallOptions,
+		inputLimit:        cfg.InputLimit,
 		cwd:               cfg.CWD,
 		maxSteps:          cfg.MaxSteps,
 		maxOutputRecovery: cfg.MaxOutputRecovery,
@@ -208,7 +226,7 @@ const (
 	OnStop    EventType = "AgentStop"  // agent ends (error or nil in Data)
 	PreInfer  EventType = "PreInfer"   // before LLM call
 	PostInfer EventType = "PostInfer"  // after LLM response (*InferResponse in Data)
-	OnChunk   EventType = "Chunk"      // streaming chunk (Chunk in Data)
+	OnChunk   EventType = "Chunk"      // one streamed fragment (ai.Event in Data)
 
 	// OnStreamReset fires when a transient stream failure is about to be
 	// retried: the partial assistant output streamed so far must be discarded
@@ -253,7 +271,7 @@ func (e Event) ToolResult() (ToolResult, bool)     { tr, ok := e.Data.(ToolResul
 func (e Event) Message() (Message, bool)           { m, ok := e.Data.(Message); return m, ok }
 func (e Event) Result() (Result, bool)             { r, ok := e.Data.(Result); return r, ok }
 func (e Event) Response() (*InferResponse, bool)   { r, ok := e.Data.(*InferResponse); return r, ok }
-func (e Event) Chunk() (Chunk, bool)               { c, ok := e.Data.(Chunk); return c, ok }
+func (e Event) Chunk() (ai.Event, bool)            { c, ok := e.Data.(ai.Event); return c, ok }
 func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
 func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
 func (e Event) CompactStart() (CompactStart, bool) { cs, ok := e.Data.(CompactStart); return cs, ok }
@@ -328,8 +346,10 @@ func StartEvent(agentID string) Event { return Event{Type: OnStart, Source: agen
 func StopEvent(agentID string, err error) Event {
 	return Event{Type: OnStop, Source: agentID, Data: err}
 }
-func ChunkEvent(agentID string, c Chunk) Event { return Event{Type: OnChunk, Source: agentID, Data: c} }
-func StreamResetEvent(agentID string) Event    { return Event{Type: OnStreamReset, Source: agentID} }
+func ChunkEvent(agentID string, e ai.Event) Event {
+	return Event{Type: OnChunk, Source: agentID, Data: e}
+}
+func StreamResetEvent(agentID string) Event { return Event{Type: OnStreamReset, Source: agentID} }
 func MessageEvent(agentID string, msg Message) Event {
 	return Event{Type: OnMessage, Source: agentID, Data: msg}
 }

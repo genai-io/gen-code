@@ -65,94 +65,22 @@ func (p *vendorProvider) Name() string { return p.name }
 // Inference
 // ---------------------------------------------------------------------------
 
-// Stream runs one turn and forwards it as San's chunks. Text and thinking
-// arrive as they are generated; tool calls ride complete in the final
-// response, which is the shape San's agent loop consumes.
-func (p *vendorProvider) Stream(ctx context.Context, opts CompletionOptions) <-chan StreamChunk {
-	ch := make(chan StreamChunk)
-
-	go func() {
-		defer close(ch)
-
-		send := func(chunk StreamChunk) bool {
-			select {
-			case ch <- chunk:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		}
-
-		client, err := p.client(opts.Model, p.headersFor(opts.Messages))
-		if err != nil {
-			send(StreamChunk{Type: ChunkTypeError, Error: Classify(err)})
-			return
-		}
-
-		messages := toMessages(opts.Messages, client.Model())
-		for event, err := range client.Stream(ctx, messages, requestOptions(opts)...) {
-			if err != nil {
-				send(StreamChunk{Type: ChunkTypeError, Error: Classify(err)})
-				return
-			}
-			switch event.Type {
-			case ai.EventBlockDelta:
-				switch event.Block.Type {
-				case ai.BlockText:
-					if event.Block.Text != "" && !send(StreamChunk{Type: ChunkTypeText, Text: event.Block.Text}) {
-						return
-					}
-				case ai.BlockThinking:
-					if event.Block.Text != "" && !send(StreamChunk{Type: ChunkTypeThinking, Text: event.Block.Text}) {
-						return
-					}
-				}
-			case ai.EventDone:
-				send(StreamChunk{Type: ChunkTypeDone, Response: toResponse(event.Response)})
-				return
-			}
-		}
-	}()
-
-	return ch
-}
-
-// requestOptions turns San's completion options into the SDK's.
-//
-// An option is only passed when San actually set it: passing one is what marks
-// a setting explicit, so sending a zero would override the model's own default
-// rather than inherit it.
-func requestOptions(opts CompletionOptions) []ai.Option {
-	out := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
-	if tools := toTools(opts.Tools); len(tools) > 0 {
-		out = append(out, ai.WithTools(tools...))
-	}
-	if opts.MaxTokens > 0 {
-		out = append(out, ai.WithMaxTokens(opts.MaxTokens))
-	}
-	if opts.Temperature > 0 {
-		out = append(out, ai.WithTemperature(opts.Temperature))
-	}
-	// An empty effort is ai.EffortDefault, which is the model's own default
-	// rung — the same thing San means by leaving it unset.
-	out = append(out, ai.WithEffort(ai.Effort(opts.ThinkingEffort)))
-	return out
-}
-
-// headersFor returns the headers this turn needs beyond the fixed ones.
-func (p *vendorProvider) headersFor(msgs []core.Message) map[string]string {
+// TurnHeaders returns the headers this turn needs beyond the fixed ones, for
+// the one vendor whose headers vary with what the turn sends.
+func (p *vendorProvider) TurnHeaders(msgs []core.Message) map[string]string {
 	if p.turnHeaders == nil {
 		return nil
 	}
 	return p.turnHeaders(msgs)
 }
 
-// client returns the client for a model and header set, building it once.
+// Client returns the SDK client for one model and header set, building and
+// caching it.
 //
 // A client is a request template, not a connection — the transport underneath
 // is shared — so keying the cache by the headers too costs an entry per
 // distinct header set rather than a new connection pool.
-func (p *vendorProvider) client(modelID string, headers map[string]string) (*ai.Client, error) {
+func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.Client, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

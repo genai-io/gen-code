@@ -94,7 +94,21 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 
 type initialPromptMsg string
 
+// Update wraps the dispatch below so one thing is observed across every branch
+// of it: an overlay closing, which is what restarts a held scrollback print —
+// whichever of the sixteen panels it was, and however it was dismissed.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, hadOverlay := m.activeOverlay()
+	model, cmd := m.dispatch(msg)
+	if _, hasOverlay := m.activeOverlay(); hadOverlay && !hasOverlay {
+		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
+			cmd = tea.Batch(cmd, resume)
+		}
+	}
+	return model, cmd
+}
+
+func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
@@ -323,6 +337,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:
+		// insertAbove preserves the managed frame around a Println. If that frame
+		// is a docked prompt, preserving it also leaves the transient approval UI
+		// in native scrollback. Keep the queued payload intact and restart it when
+		// the prompt response hides the overlay.
+		if _, active := m.activeOverlay(); active {
+			return m, nil
+		}
 		// Bubble Tea's renderer barrier flushes the latest managed View before
 		// insertAbove. Sequence ensures completion is observed only after this
 		// chunk has been inserted.

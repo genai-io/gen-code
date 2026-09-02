@@ -15,11 +15,12 @@ row in `vendor_table.go`, not a package.
 
 ## Purpose
 
-The agent loop talks to LLMs through `core.LLM` (see
-[`packages/core.md`](../3-core/core.md)). This package owns the *machinery around*
-that contract — discovering providers, persisting the user's chosen
-provider/model, switching between them at runtime, and tracking cost and
-streaming details for each call.
+The agent loop streams through the SDK's own client (see
+[`packages/core.md`](../3-core/core.md)). This package owns *reaching an
+endpoint and choosing one* — discovering providers, persisting the user's
+chosen provider/model, switching between them at runtime, handing the loop the
+client for a turn along with the settings that turn runs under, and tracking
+cost for each call.
 
 ## Contract
 
@@ -58,11 +59,10 @@ effort.go      which reasoning rung applies to a model, and cycling between them
 registry.go    every provider/auth pair San can open, and its connection status
 auth.go        interactive (OAuth) sign-in, as the registry sees it
 conn.go        the package-level *Conn, provider resolution, the cross-vendor pool
-client.go      Client: a Provider plus a model, as core.LLM
+client.go      Client: a Provider plus a model; hands the loop a per-turn *ai.Client
 store.go       providers.json — what the user connected and chose
 modelcache.go  the cached listings, and the context window resolved from them
 cost.go        Money, the multi-currency total, and per-vendor pricing
-errors.go      a provider failure, tagged for the agent loop
 logging.go     CompletionOptions, as the log package reads it
 vendor*.go     every vendor, over genai-io/sdk-go
 ```
@@ -76,11 +76,11 @@ Worth knowing beyond the names:
   `"vendor:auth_method"` form that the registry keys entries by, the store keys
   cached listings by, and a `Provider` reports as its own `Name()`. One
   function, so the three cannot drift.
-- **`errors.go` translates rather than classifies.** The SDK decides a
-  failure's kind from the provider's typed error, which is the only place that
-  decision is reliable; San maps that kind onto `core.RetryableError` and
-  `core.ContextExceededError`, the two things the agent loop reads. San keeps
-  no second copy of the SDK's tables.
+- **Classification lives in `core`, not here.** The failure the loop has to
+  read is the one leaving its own stream, so `core/classify.go` tags it there —
+  a package boundary in between is a place for it to arrive untagged. The SDK
+  still makes the decision, from the provider's typed error; San keeps no
+  second copy of its tables.
 - **`modelcache.go` owns the window.** The status bar's percentage and the
   agent's auto-compaction trigger are the same number, so both resolve it
   through `EffectiveInputLimit` — env override, then the user's `/tokenlimit`,

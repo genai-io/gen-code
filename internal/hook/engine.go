@@ -37,6 +37,12 @@ type AuditCallback func(HookFiredAudit)
 // defaultTimeout is the default timeout for hook commands in seconds.
 const defaultTimeout = 600
 
+// defaultStdinIdle is how long a hook has to produce its first line before its
+// stdin is closed. A hook that reads to EOF — `input=$(cat)`, which most of
+// them do — cannot proceed until that happens, so this is a cost every hook
+// pays and the reason it is short.
+const defaultStdinIdle = 500 * time.Millisecond
+
 // Engine executes hooks from settings, plugins, and runtime/session registration.
 type Engine struct {
 	settings       *setting.Data
@@ -52,6 +58,11 @@ type Engine struct {
 	asyncCallback  AsyncHookCallback
 	auditCallback  AuditCallback
 	envProvider    func(context.Context) []string
+	// stdinIdle is how long an interactive hook has to say something before
+	// its stdin is closed. See the timer in executors_command.go for what it
+	// is guarding against; a test sets it because it cannot control how loaded
+	// the machine is, and racing a wall clock is how a test becomes flaky.
+	stdinIdle time.Duration
 
 	mu         sync.RWMutex
 	store      *hookStore
@@ -70,6 +81,7 @@ func NewEngine(settings *setting.Data, sessionID, cwd, transcriptPath string) *E
 		httpClient:     http.DefaultClient,
 		store:          newHookStore(),
 		status:         newStatusTracker(),
+		stdinIdle:      defaultStdinIdle,
 	}
 }
 
@@ -291,4 +303,12 @@ func (e *Engine) getAsyncHookCallback() AsyncHookCallback {
 // CurrentStatusMessage returns the most recently-started active hook status.
 func (e *Engine) CurrentStatusMessage() string {
 	return e.status.CurrentMessage()
+}
+
+// stdinIdleOrDefault is the grace period, tolerating a zero-value Engine.
+func (e *Engine) stdinIdleOrDefault() time.Duration {
+	if e.stdinIdle <= 0 {
+		return defaultStdinIdle
+	}
+	return e.stdinIdle
 }

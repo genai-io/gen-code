@@ -1,6 +1,8 @@
 package core
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"fmt"
@@ -20,7 +22,9 @@ type agent struct {
 	system            System
 	tools             Tools
 	compactFunc       func(ctx context.Context, msgs []Message) (string, error)
-	llm               LLM
+	client            func(msgs []Message) (*ai.Client, error)
+	callOptions       func() []ai.Option
+	inputLimit        func() int
 	cwd               string
 	maxSteps          int
 	maxOutputRecovery int
@@ -371,7 +375,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			// InputLimit resolves through the provider on first use, so it stays
 			// behind the compactFunc guard — without a compactFunc the result
 			// could not be acted on anyway.
-			if limit := a.llm.InputLimit(); limit > 0 &&
+			if limit := a.promptBudget(); limit > 0 &&
 				NeedsCompaction(a.promptTokensOrEstimate(), limit) && a.compact(ctx) {
 				continue
 			}
@@ -721,69 +725,84 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 		MessageIDs:   messageIDs(msgs),
 	}))
 
-	// Per-inference child ctx so an idle stall can be torn down without
-	// cancelling the whole turn. The provider and bridge goroutines are
-	// ctx-aware, so cancelling inferCtx unwinds them cleanly.
-	inferCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	chunks, err := a.llm.Infer(inferCtx, InferRequest{
-		System:   sys,
-		Messages: msgs,
-		Tools:    tools,
-	})
+	// Which client answers this turn depends on what the turn sends, so it is
+	// asked for here rather than held on the agent.
+	client, err := a.client(msgs)
 	if err != nil {
-		return nil, fmt.Errorf("infer: %w", err)
+		return nil, fmt.Errorf("reaching the model: %w", err)
 	}
 
-	// First chunk gets the generous TTFT budget (a reasoning model may emit
-	// nothing while it thinks); every chunk thereafter rearms the timer with
-	// the tighter inter-chunk idle budget.
-	idle := time.NewTimer(a.firstChunkTimeout)
-	defer idle.Stop()
+	// The stream gets a context of its own so a stall can be torn down without
+	// touching the turn. Why it ended is read back off that context rather
+	// than inferred from a flag beside it: cancelling is what destroys the
+	// reason, and the cause is what carries it through.
+	streamCtx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
 
-	var resp *InferResponse
-	for {
-		select {
-		case chunk, ok := <-chunks:
-			if !ok {
-				// ctx-cancellation racing the bridge's defer close(ch)
-				// produces both ok==false and ctx.Done() ready at the
-				// same time — select picks randomly. Check the caller
-				// ctx first so a user interrupt is always reported as
-				// context.Canceled, never as a (retryable) truncation.
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
-				if resp == nil {
-					// Closed without a Done chunk: the provider always
-					// emits Done on success, so this is an abnormal
-					// truncation — retryable.
-					return nil, errStreamTruncated
-				}
-				return resp, nil
+	// The first chunk gets the generous budget — a reasoning model may say
+	// nothing while it thinks — and every chunk after it rearms the timer with
+	// the tighter inter-chunk one.
+	quiet := time.AfterFunc(a.firstChunkTimeout, func() { stop(errStreamStalled) })
+	defer quiet.Stop()
+
+	var resp *ai.Response
+	for event, err := range client.Stream(streamCtx, ToAIMessages(msgs, client.Model()),
+		a.streamOptions(sys, tools)...) {
+		quiet.Reset(a.idleTimeout)
+		if err != nil {
+			if errors.Is(context.Cause(streamCtx), errStreamStalled) {
+				return nil, errStreamStalled
 			}
-			idle.Reset(a.idleTimeout)
-			if chunk.Err != nil {
-				return nil, fmt.Errorf("infer: %w", chunk.Err)
+			if cerr := ctx.Err(); cerr != nil {
+				return nil, cerr
 			}
-			if chunk.Text != "" || chunk.Thinking != "" || chunk.Done {
-				a.emit(ctx, ChunkEvent(a.id, chunk))
+			// Classified here, where the failure leaves the stream: the turn
+			// loop reads the answer off the error, and nothing between here
+			// and there knows any more about it than this does.
+			return nil, fmt.Errorf("infer: %w", ClassifyStream(err))
+		}
+		switch event.Type {
+		case ai.EventBlockDelta:
+			if event.Block.Text != "" {
+				a.emit(ctx, ChunkEvent(a.id, event))
 			}
-			if chunk.Done {
-				resp = chunk.Response
-			}
-		case <-idle.C:
-			// The stream went silent (connection alive but no bytes —
-			// half-open socket, stalled provider). Tear it down and let
-			// the turn loop retry. Caller ctx is still live, so this is
-			// classified retryable, not a cancel.
-			cancel()
-			return nil, errStreamStalled
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case ai.EventDone:
+			resp = event.Response
+			a.emit(ctx, ChunkEvent(a.id, event))
 		}
 	}
+
+	switch {
+	case errors.Is(context.Cause(streamCtx), errStreamStalled):
+		return nil, errStreamStalled
+	case ctx.Err() != nil:
+		return nil, ctx.Err()
+	case resp == nil:
+		// Ended without ever finishing: the provider always says so on
+		// success, which makes this an abnormal truncation — retryable.
+		return nil, errStreamTruncated
+	}
+	return FromAIResponse(resp), nil
+}
+
+// streamOptions are the options for one inference: what this turn carries,
+// then the settings the application keeps — which come last so a person's
+// choice of reasoning rung wins over any default.
+func (a *agent) streamOptions(sys string, tools []ToolSchema) []ai.Option {
+	opts := []ai.Option{ai.WithSystem(sys), ai.WithTools(ToAITools(tools)...)}
+	if a.callOptions == nil {
+		return opts
+	}
+	return append(opts, a.callOptions()...)
+}
+
+// promptBudget is what auto-compaction measures against, or zero when the
+// application did not say.
+func (a *agent) promptBudget() int {
+	if a.inputLimit == nil {
+		return 0
+	}
+	return a.inputLimit()
 }
 
 // emit sends an event to the outbox for external observation.

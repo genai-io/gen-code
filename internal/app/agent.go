@@ -617,8 +617,25 @@ func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
 			Mode:           m.env.SessionMode(),
 		})
 	}
+	if len(m.flush.pendingPrints) != 0 {
+		m.deferredApproval = permReq
+		return nil
+	}
 	m.userInput.Approval.Show(permReq, m.env.Width, m.env.Height)
 	return nil
+}
+
+// showDeferredApproval opens a permission panel only after every queued
+// insertAbove has finished. Its contents are ephemeral UI, never transcript
+// output, so it must not be present in the managed frame Bubble Tea preserves
+// around a scrollback print.
+func (m *model) showDeferredApproval() {
+	if m.deferredApproval == nil || len(m.flush.pendingPrints) != 0 {
+		return
+	}
+	request := m.deferredApproval
+	m.deferredApproval = nil
+	m.userInput.Approval.Show(request, m.env.Width, m.env.Height)
 }
 
 // permDetail serializes the *derived* permission context — fields the

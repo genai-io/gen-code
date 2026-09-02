@@ -2,6 +2,14 @@
 // terminal output and emit them via tea.Println. The bubbletea alt-screen
 // only paints the bottom input area; rendered messages live in the
 // terminal's native scrollback above.
+//
+// The frame rule everything here obeys: insertAbove prints above the managed
+// frame and Bubble Tea's inline renderer only ever redraws the frame's current
+// extent, so whatever the frame holds at that moment stays on screen and any
+// row it stops holding is left behind. Both are permanent — native scrollback
+// cannot be rewritten. Hence a chunk no taller than the room above the frame,
+// a queue that waits for a panel to close, and a handoff copy that keeps the
+// frame from shrinking mid-print.
 package app
 
 import (
@@ -70,10 +78,13 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering        bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer         *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width            int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID      uint64                   // monotonic identity for queued scrollback prints
+	rendering   bool             // one render in flight at a time, so Printlns stay ordered
+	renderer    *conv.MDRenderer // background renderer, off the live-view MDRenderer's mutex
+	width       int              // width the renderer was built for; rebuild when it changes
+	nextPrintID uint64           // monotonic identity for queued scrollback prints
+	// handoffRows is how tall the chat section stood while the live tail still
+	// held the blocks the queued print carries; the copy is padded to it.
+	handoffRows      int
 	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
 	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
 	frameForPrint    *tea.View                // freeze insertAbove geometry until the print completes
@@ -239,6 +250,10 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
 	lastIdx := len(m.conv.Messages) - 1
 	params := m.messageRenderParams()
+	// Measured before the loop below empties the live tail: the rows the handoff
+	// copy has to stand in for. The composer and status bar are left out because
+	// a commit does not touch them, and counting them would overshoot.
+	preCommitRows := viewRows(conv.RenderActiveContent(params))
 
 	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
 		msg := m.conv.Messages[i]
@@ -265,6 +280,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
+	m.flush.handoffRows = preCommitRows
 	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"))}
 }
 
@@ -275,6 +291,20 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 // history.
 func (m *model) queueScrollbackPrint(content string) tea.Cmd {
 	return m.flush.queueScrollbackPrint(content)
+}
+
+// resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.
+//
+// Update calls it on the overlay-closed edge rather than on the three prompt
+// replies: the queue is single-flight, so a head nobody restarts stalls every
+// block behind it for the session, and renderAndCommit advances CommittedCount
+// before the print runs — the live tail has already stopped drawing what the
+// queue is still holding, which makes a stall a disappearance.
+func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
+	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" {
+		return nil
+	}
+	return printScrollback(m.flush.pendingPrints[0].id)
 }
 
 func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
@@ -297,7 +327,11 @@ func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
 // out-of-order done message is ignored; the next chunk or queued print cannot
 // start until the current Println has been processed.
 func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
-	return m.flush.finishScrollbackPrint(id)
+	next := m.flush.finishScrollbackPrint(id)
+	if len(m.flush.pendingPrints) == 0 {
+		m.showDeferredApproval()
+	}
+	return next
 }
 
 func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
@@ -319,10 +353,10 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 
 func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	frame := m.View()
-	frameHeight := 0
-	if frame.Content != "" {
-		frameHeight = strings.Count(frame.Content, "\n") + 1
-	}
+	// Physical rows, like the chunk this is subtracted from: a frame line wider
+	// than the terminal occupies more rows than it has newlines, and counting
+	// the two differently overstates the room above the frame.
+	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
 	content, ok := m.flush.prepareScrollbackPrint(
 		id,
 		m.env.Width,
@@ -443,4 +477,37 @@ func (m model) welcomeBannerText() string {
 		Model: m.env.GetModelDisplayName(),
 		CWD:   m.env.CWD,
 	})
+}
+
+// pendingScrollbackView is the handoff copy: the queued chunk stays drawn in the
+// managed view until its Println has been processed, so committing — which
+// empties the live tail first — cannot shrink the frame mid-print and leave the
+// plain streaming tail on screen for insertAbove to print underneath.
+//
+// Restored from e02ed422, which 74ac1647 dropped as redundant beside the FIFO
+// and the renderer's flush barrier. It is not: the barrier fixes *when*
+// insertAbove sees the frame, this fixes *what* the frame is.
+func (m model) pendingScrollbackView() string {
+	if len(m.flush.pendingPrints) == 0 {
+		return ""
+	}
+	head := m.flush.pendingPrints[0]
+	handoff := head.current
+	if handoff == "" {
+		handoff = head.remaining
+	}
+	// The rendered block is usually shorter than the plain wrapped tail it
+	// replaces, and every row of that difference is one the frame would vacate.
+	for rows := viewRows(handoff); rows < m.flush.handoffRows; rows++ {
+		handoff += "\n"
+	}
+	return handoff
+}
+
+// viewRows counts the rows a rendered section occupies.
+func viewRows(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
 }

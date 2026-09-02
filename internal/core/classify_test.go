@@ -1,4 +1,4 @@
-package llm
+package core
 
 import (
 	"context"
@@ -9,13 +9,11 @@ import (
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
-
-	"github.com/genai-io/san/internal/core"
 )
 
 // retryInfo reports whether err was tagged retryable and, if so, its hint.
 func retryInfo(err error) (after time.Duration, retryable bool) {
-	var re core.RetryableError
+	var re RetryableError
 	if errors.As(err, &re) {
 		return re.RetryAfter(), true
 	}
@@ -32,8 +30,8 @@ func TestClassifyNilIsNil(t *testing.T) {
 	if got := Classify(nil); got != nil {
 		t.Fatalf("Classify(nil) = %v, want nil", got)
 	}
-	if got := classifyStream(nil); got != nil {
-		t.Fatalf("classifyStream(nil) = %v, want nil", got)
+	if got := ClassifyStream(nil); got != nil {
+		t.Fatalf("ClassifyStream(nil) = %v, want nil", got)
 	}
 }
 
@@ -80,14 +78,14 @@ func TestClassify(t *testing.T) {
 				wantRetry bool
 			}{
 				{name: "Classify", got: Classify(tc.err), wantRetry: tc.wantRetry},
-				{name: "classifyStream", got: classifyStream(tc.err), wantRetry: tc.wantStreamRetry},
+				{name: "classifyStream", got: ClassifyStream(tc.err), wantRetry: tc.wantStreamRetry},
 			} {
 				t.Run(variant.name, func(t *testing.T) {
 					_, gotRetry := retryInfo(variant.got)
 					if gotRetry != variant.wantRetry {
 						t.Fatalf("retryable = %v, want %v", gotRetry, variant.wantRetry)
 					}
-					var exceeded core.ContextExceededError
+					var exceeded ContextExceededError
 					if errors.As(variant.got, &exceeded) != tc.wantContext {
 						t.Fatalf("context exceeded = %v, want %v", !tc.wantContext, tc.wantContext)
 					}
@@ -140,7 +138,7 @@ func TestContextExceededIsNotAlsoRetryable(t *testing.T) {
 func TestAThrottleIsNotAnOverflow(t *testing.T) {
 	err := errors.New("ThrottlingException: Too many tokens, please wait before trying again.")
 
-	var exceeded core.ContextExceededError
+	var exceeded ContextExceededError
 	if errors.As(Classify(err), &exceeded) {
 		t.Fatal("a throttle was classified as a context overflow")
 	}
@@ -149,7 +147,7 @@ func TestAThrottleIsNotAnOverflow(t *testing.T) {
 // Nothing unrelated may be mistaken for an overflow either.
 func TestOrdinaryFailuresAreNotOverflows(t *testing.T) {
 	for _, msg := range []string{"dial tcp: connection refused", "invalid api key", ""} {
-		var exceeded core.ContextExceededError
+		var exceeded ContextExceededError
 		if errors.As(Classify(errors.New(msg)), &exceeded) {
 			t.Errorf("%q was classified as a context overflow", msg)
 		}
@@ -160,7 +158,7 @@ func TestOrdinaryFailuresAreNotOverflows(t *testing.T) {
 // The second pass must leave the first pass's answer alone, hint included.
 func TestClassifyingTwiceChangesNothing(t *testing.T) {
 	once := Classify(&ai.Error{Driver: "test", Kind: ai.KindRateLimit, Status: 429, RetryAfter: 5 * time.Second})
-	twice := classifyStream(once)
+	twice := ClassifyStream(once)
 
 	if twice != once {
 		t.Fatalf("re-classifying rewrapped the error: %T", twice)

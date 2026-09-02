@@ -1,6 +1,10 @@
 package core
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +22,7 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
@@ -90,7 +94,7 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
@@ -208,7 +212,7 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 	t.Helper()
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    newBlockingLLM(1),
+		Client: testClient(newBlockingLLM(1)),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -246,7 +250,7 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:      "test",
-		LLM:     newBlockingLLM(1),
+		Client:  testClient(newBlockingLLM(1)),
 		System:  NewSystem(),
 		Tools:   NewTools(),
 		OnEvent: func(e Event) { captured = append(captured, e) },
@@ -307,33 +311,28 @@ func newBlockingLLM(capacity int) *blockingLLM {
 	return &blockingLLM{release: make(chan struct{}, capacity)}
 }
 
-func (b *blockingLLM) InputLimit() int { return 0 }
+func (b *blockingLLM) Name() string { return "blocking" }
 
-func (b *blockingLLM) Infer(ctx context.Context, _ InferRequest) (<-chan Chunk, error) {
-	ch := make(chan Chunk, 1)
-	go func() {
-		defer close(ch)
+func (b *blockingLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
+	return func(yield func(ai.Delta, error) bool) {
 		select {
 		case <-ctx.Done():
-			ch <- Chunk{Err: ctx.Err()}
+			yield(ai.Delta{}, ctx.Err())
 		case <-b.release:
-			ch <- Chunk{
-				Done: true,
-				Response: &InferResponse{
-					Content:    "released",
-					StopReason: StopEndTurn,
-				},
+			for _, d := range deltas(InferResponse{Content: "released", StopReason: StopEndTurn}) {
+				if !yield(d, nil) {
+					return
+				}
 			}
 		}
-	}()
-	return ch, nil
+	}
 }
 
 func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	llm := newBlockingLLM(4)
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -405,7 +404,7 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 	llm := newBlockingLLM(4)
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	}).(*agent)
@@ -446,7 +445,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	llm.release <- struct{}{}
 	ag := NewAgent(Config{
 		ID:     "test",
-		LLM:    llm,
+		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -583,19 +582,17 @@ func (c cancelOnRunTool) Execute(ctx context.Context, _ map[string]any) (string,
 // batch sequentially.
 type batchLLM struct{}
 
-func (batchLLM) InputLimit() int { return 0 }
-func (batchLLM) Infer(context.Context, InferRequest) (<-chan Chunk, error) {
-	ch := make(chan Chunk, 1)
-	ch <- Chunk{Done: true, Response: &InferResponse{
+func (batchLLM) Name() string { return "batch" }
+
+func (batchLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
+	return yieldAll(deltas(InferResponse{
 		StopReason: StopToolUse,
 		ToolCalls: []ToolCall{
 			{ID: "c1", Name: "first", Input: "{}"},
 			{ID: "c2", Name: "second", Input: "{}"},
 			{ID: "c3", Name: "third", Input: "{}"},
 		},
-	}}
-	close(ch)
-	return ch, nil
+	}))
 }
 
 // A cancel landing mid-batch must stop the rest of the batch, not just the
@@ -606,7 +603,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	defer cancel()
 
 	ag := NewAgent(Config{
-		ID: "test", LLM: batchLLM{}, System: NewSystem(),
+		ID: "test", Client: testClient(batchLLM{}), System: NewSystem(),
 		Tools: NewTools(
 			cancelOnRunTool{name: "first", ran: &ran, ranOnDead: &ranOnDead, onRun: cancel},
 			cancelOnRunTool{name: "second", ran: &ran, ranOnDead: &ranOnDead},
@@ -628,5 +625,121 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	}
 	if n := ranOnDead.Load(); n != 0 {
 		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
+	}
+}
+
+// --- what the application keeps saying about every call ---
+
+// requestRecordingDriver keeps the request it was handed, which is the only
+// place the settings above it can be observed.
+type requestRecordingDriver struct{ req *ai.Request }
+
+func (requestRecordingDriver) Name() string { return "recording" }
+
+func (d *requestRecordingDriver) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	d.req = req
+	return yieldAll(deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}))
+}
+
+// The reasoning rung and the output cap are the application's, not the
+// client's: a person changes the rung mid-session and it has to be on the next
+// call. Without this the /model picker, its shortcut and its stored value were
+// all decoration — nothing put them on the wire.
+func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
+	driver := &requestRecordingDriver{}
+	effort := ai.EffortLow
+	ag := NewAgent(Config{
+		ID:          "test",
+		Client:      testClient(driver),
+		CallOptions: func() []ai.Option { return []ai.Option{ai.WithMaxTokens(1234), ai.WithEffort(effort)} },
+		System:      NewSystem(),
+		Tools:       NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if driver.req.MaxTokens != 1234 {
+		t.Errorf("MaxTokens = %d, want 1234", driver.req.MaxTokens)
+	}
+	if driver.req.Effort != ai.EffortLow {
+		t.Errorf("Effort = %q, want low", driver.req.Effort)
+	}
+
+	// Asked for again on the next call, so a mid-session change lands.
+	effort = ai.EffortHigh
+	ag.append(Message{Role: RoleUser, Content: "again"})
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if driver.req.Effort != ai.EffortHigh {
+		t.Errorf("Effort after the change = %q, want high", driver.req.Effort)
+	}
+}
+
+// Which client answers is a per-turn question — Copilot's headers depend on
+// what the turn sends — so the loop asks with the conversation in hand.
+func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
+	driver := &requestRecordingDriver{}
+	client := ai.NewClientWithDriver(driver, ai.Model{ID: "stub", API: "stub"})
+	var asked [][]Message
+	ag := NewAgent(Config{
+		ID: "test",
+		Client: func(msgs []Message) (*ai.Client, error) {
+			asked = append(asked, msgs)
+			return client, nil
+		},
+		System: NewSystem(),
+		Tools:  NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if len(asked) != 1 || len(asked[0]) != 1 || asked[0][0].Content != "go" {
+		t.Fatalf("client asked with %v, want this turn's conversation", asked)
+	}
+}
+
+// A turn that cannot reach the endpoint at all is the turn's failure, not the
+// build's: it is reported like any other inference failure.
+func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
+	ag := NewAgent(Config{
+		ID:     "test",
+		Client: func([]Message) (*ai.Client, error) { return nil, errors.New("no provider") },
+		System: NewSystem(),
+		Tools:  NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := ag.ThinkAct(ctx)
+	if err == nil {
+		t.Fatal("ThinkAct returned nil error for an unreachable model")
+	}
+	if result == nil || result.StopReason != StopError {
+		t.Fatalf("result = %+v, want a turn reported as StopError", result)
 	}
 }

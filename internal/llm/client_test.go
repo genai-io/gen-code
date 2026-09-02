@@ -1,6 +1,10 @@
 package llm
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"testing"
@@ -19,23 +23,26 @@ type mockLLMProvider struct {
 	listCalls int
 }
 
-func (m *mockLLMProvider) Stream(_ context.Context, opts CompletionOptions) <-chan StreamChunk {
-	m.lastOpts = opts
-	ch := make(chan StreamChunk, 1)
-	go func() {
-		defer close(ch)
-		if m.callIdx >= len(m.responses) {
-			ch <- StreamChunk{Type: ChunkTypeDone, Response: &CompletionResponse{
-				Content:    "no more responses",
-				StopReason: "end_turn",
-			}}
-			return
-		}
-		resp := m.responses[m.callIdx]
+func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(m, ai.Model{ID: "mock", API: "mock"}), nil
+}
+
+func (m *mockLLMProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	m.lastOpts = CompletionOptions{SystemPrompt: req.System}
+	resp := CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+	if m.callIdx < len(m.responses) {
+		resp = m.responses[m.callIdx]
 		m.callIdx++
-		ch <- StreamChunk{Type: ChunkTypeDone, Response: &resp}
-	}()
-	return ch
+	}
+	return func(yield func(ai.Delta, error) bool) {
+		if resp.Content != "" {
+			yield(ai.Delta{Block: ai.TextBlock(resp.Content)}, nil)
+			yield(ai.Delta{EndBlock: true}, nil)
+		}
+		yield(ai.Delta{StopReason: ai.StopEndTurn, Usage: &ai.Usage{
+			Input: resp.Usage.InputTokens, Output: resp.Usage.OutputTokens,
+		}}, nil)
+	}
 }
 
 func (m *mockLLMProvider) ListModels(_ context.Context) ([]ModelInfo, error) {
@@ -73,31 +80,6 @@ func TestCompleteCollectsTheStream(t *testing.T) {
 	}
 	if resp.Content != "hello" {
 		t.Errorf("expected 'hello', got '%s'", resp.Content)
-	}
-}
-
-func TestLLMStream(t *testing.T) {
-	mp := &mockLLMProvider{
-		responses: []CompletionResponse{
-			{Content: "streamed", StopReason: "end_turn"},
-		},
-	}
-	l := &Client{provider: mp, model: "test-model"}
-
-	msgs := []core.Message{{Role: core.RoleUser, Content: "hi"}}
-	ch := l.Stream(context.Background(), msgs, nil, "")
-
-	var resp *CompletionResponse
-	for chunk := range ch {
-		if chunk.Type == ChunkTypeDone {
-			resp = chunk.Response
-		}
-	}
-	if resp == nil {
-		t.Fatal("expected response from stream")
-	}
-	if resp.Content != "streamed" {
-		t.Errorf("expected 'streamed', got '%s'", resp.Content)
 	}
 }
 
@@ -370,41 +352,27 @@ type retryThenSuccessProvider struct {
 	calls int
 }
 
-func (p *retryThenSuccessProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk {
+func (p *retryThenSuccessProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
+}
+
+func (p *retryThenSuccessProvider) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
 	p.calls++
-	ch := make(chan StreamChunk, 1)
-	if p.calls == 1 {
-		ch <- StreamChunk{Type: ChunkTypeError, Error: errors.New("opaque terminal stream error")}
-	} else {
-		ch <- StreamChunk{Type: ChunkTypeDone, Response: &CompletionResponse{Content: "recovered"}}
+	first := p.calls == 1
+	return func(yield func(ai.Delta, error) bool) {
+		if first {
+			// An overloaded endpoint: retryable, so the next attempt runs.
+			yield(ai.Delta{}, &ai.Error{Kind: ai.KindOverloaded, Message: "overloaded"})
+			return
+		}
+		yield(ai.Delta{Block: ai.TextBlock("recovered")}, nil)
+		yield(ai.Delta{EndBlock: true}, nil)
+		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
 	}
-	close(ch)
-	return ch
 }
 
 func (*retryThenSuccessProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
 func (*retryThenSuccessProvider) Name() string                                    { return "retry-stream" }
-
-func TestInferWrapsOpaqueStreamErrorAsRetryable(t *testing.T) {
-	original := errors.New("opaque terminal stream error")
-	client := NewClient(streamErrorProvider{err: original}, "test-model", 1)
-
-	chunks, err := client.Infer(context.Background(), core.InferRequest{})
-	if err != nil {
-		t.Fatalf("Infer() error = %v", err)
-	}
-	chunk, ok := <-chunks
-	if !ok {
-		t.Fatal("Infer() returned no error chunk")
-	}
-	var retryable core.RetryableError
-	if !errors.As(chunk.Err, &retryable) {
-		t.Fatalf("chunk error %v is not retryable", chunk.Err)
-	}
-	if !errors.Is(chunk.Err, original) {
-		t.Fatal("chunk error does not preserve the provider error")
-	}
-}
 
 func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	provider := &retryThenSuccessProvider{}
@@ -419,5 +387,87 @@ func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	}
 	if provider.calls != 2 {
 		t.Fatalf("Stream() calls = %d, want 2", provider.calls)
+	}
+}
+
+// --- the seam the agent loop reaches the endpoint through ---
+
+// headerRecordingProvider is an endpoint whose headers depend on the turn, and
+// which remembers what it was handed. Copilot is the real one.
+type headerRecordingProvider struct {
+	mockLLMProvider
+	got map[string]string
+}
+
+func (p *headerRecordingProvider) TurnHeaders(msgs []core.Message) map[string]string {
+	for _, msg := range msgs {
+		if len(msg.Images) > 0 {
+			return map[string]string{"X-Initiator": "user", "Copilot-Vision-Request": "true"}
+		}
+	}
+	return map[string]string{"X-Initiator": "user"}
+}
+
+func (p *headerRecordingProvider) Client(model string, headers map[string]string) (*ai.Client, error) {
+	p.got = headers
+	return p.mockLLMProvider.Client(model, headers)
+}
+
+// A turn's headers have to reach the endpoint that asked for them. Copilot
+// rejects image content outright unless the request opts into vision, so a
+// client built without them cannot send a picture at all.
+func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
+	p := &headerRecordingProvider{}
+	client := NewClient(p, "mock", 0)
+
+	if _, err := client.TurnClient([]core.Message{
+		{Role: core.RoleUser, Content: "look", Images: []core.Image{{MediaType: "image/png", Data: "x"}}},
+	}); err != nil {
+		t.Fatalf("TurnClient: %v", err)
+	}
+	if p.got["Copilot-Vision-Request"] != "true" {
+		t.Fatalf("headers = %v, want the turn's vision opt-in", p.got)
+	}
+
+	if _, err := client.TurnClient([]core.Message{{Role: core.RoleUser, Content: "hi"}}); err != nil {
+		t.Fatalf("TurnClient: %v", err)
+	}
+	if _, asked := p.got["Copilot-Vision-Request"]; asked {
+		t.Fatalf("headers = %v, want no vision opt-in on a text-only turn", p.got)
+	}
+}
+
+// A provider whose headers never vary gets none, rather than an empty map that
+// would key its client cache differently from a nil one.
+func TestTurnClientSendsNoHeadersForAPlainProvider(t *testing.T) {
+	if got := TurnHeaders(&mockLLMProvider{}, []core.Message{{Role: core.RoleUser, Content: "hi"}}); got != nil {
+		t.Fatalf("TurnHeaders = %v, want nil", got)
+	}
+}
+
+// The rung a person picked has to be on every call, and it changes mid-session
+// — so it is read when the call is made, not when the client was built.
+func TestCallOptionsCarryTheCurrentThinkingEffort(t *testing.T) {
+	client := NewClient(&mockLLMProvider{}, "mock", 4096)
+	client.SetThinkingEffort("high")
+
+	req := &ai.Request{}
+	for _, opt := range client.CallOptions() {
+		opt(req)
+	}
+	if req.Effort != ai.EffortHigh {
+		t.Errorf("Effort = %q, want high", req.Effort)
+	}
+	if req.MaxTokens != 4096 {
+		t.Errorf("MaxTokens = %d, want 4096", req.MaxTokens)
+	}
+
+	client.SetThinkingEffort("low")
+	req = &ai.Request{}
+	for _, opt := range client.CallOptions() {
+		opt(req)
+	}
+	if req.Effort != ai.EffortLow {
+		t.Errorf("Effort after the change = %q, want low", req.Effort)
 	}
 }

@@ -63,9 +63,11 @@ func (p *QuestionPrompt) Hide() {
 	p.customAnswers = make(map[int]string)
 }
 
-// IsActive returns whether the prompt is visible
+// IsActive returns whether the prompt is visible. Nil-receiver safe: Modal
+// holds the prompt as a pointer that only a question creates, and every frame
+// asks the overlay set whether one is up.
 func (p *QuestionPrompt) IsActive() bool {
-	return p.active
+	return p != nil && p.active
 }
 
 func (p *QuestionPrompt) isAnswered(questionIdx int) bool {

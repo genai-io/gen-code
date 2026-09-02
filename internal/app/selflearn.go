@@ -166,13 +166,14 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			forkSessionID = rec.SessionID()
 		}
 		fc := selflearn.ForkConfig{
-			LLM:      client,
-			System:   sys,
-			CWD:      m.env.CWD,
-			Memory:   memStore,
-			Skills:   skillMgr,
-			Strategy: cfg.Strategy,
-			OnEvent:  forkOnEvent,
+			Client:      client.TurnClient,
+			CallOptions: client.CallOptions,
+			System:      sys,
+			CWD:         m.env.CWD,
+			Memory:      memStore,
+			Skills:      skillMgr,
+			Strategy:    cfg.Strategy,
+			OnEvent:     forkOnEvent,
 		}
 		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		// Re-check live AFTER the RunReview return. This is the macro

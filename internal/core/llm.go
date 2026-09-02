@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -23,13 +22,6 @@ const (
 	// reason rather than vanishing. StopDetail carries the underlying error.
 	StopError StopReason = "error"
 )
-
-// InferRequest is sent to the LLM for inference.
-type InferRequest struct {
-	System   string       // assembled system prompt
-	Messages []Message    // conversation history
-	Tools    []ToolSchema // available tools
-}
 
 // Usage is the token accounting for one LLM call. Field names use the project's
 // domain vocabulary; the json tags preserve each provider's wire format (e.g.
@@ -84,27 +76,4 @@ func (r InferResponse) LogToolCallSummary(escaper func(string) string) string {
 		fmt.Fprintf(&sb, "      [%s] %s(%s)\n", tc.ID, tc.Name, escaper(tc.Input))
 	}
 	return sb.String()
-}
-
-// Chunk is one piece of a streaming LLM response.
-type Chunk struct {
-	Text     string // incremental text
-	Thinking string // incremental thinking
-	Done     bool   // true on final chunk
-
-	Response *InferResponse // non-nil only when Done=true
-	Err      error          // non-nil on stream error
-}
-
-// LLM is the inference abstraction — call a language model.
-//
-// Infer sends a request and returns a channel of streaming chunks.
-// The channel is closed when the response is complete or on error.
-// The final chunk has Done=true and carries the aggregated InferResponse.
-//
-// InputLimit returns the model's max input token capacity (context window).
-// Returns 0 if unknown — auto compaction is disabled in that case.
-type LLM interface {
-	Infer(ctx context.Context, req InferRequest) (<-chan Chunk, error)
-	InputLimit() int
 }

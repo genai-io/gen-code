@@ -1,6 +1,10 @@
 package app
 
 import (
+	"errors"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"strings"
 	"testing"
@@ -94,8 +98,8 @@ func TestToolSchemaWireCoversTheWholeDefinition(t *testing.T) {
 // llm.PromptPrefixCacheProvider.
 type automaticCachingProvider struct{}
 
-func (automaticCachingProvider) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk {
-	return nil
+func (automaticCachingProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
 }
 func (automaticCachingProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (automaticCachingProvider) Name() string                                        { return "stub" }

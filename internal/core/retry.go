@@ -24,10 +24,9 @@ const (
 	retryMaxDelay  = 30 * time.Second
 )
 
-// RetryableError marks a stream error that the turn loop may retry. The llm
-// layer attaches it via classification (429/5xx/network), so core can decide
-// to retry without importing llm; core's own stall/truncation sentinels
-// implement it directly.
+// RetryableError marks a stream error that the turn loop may retry. Classify
+// attaches it (429/5xx/network) as a provider failure leaves the stream, and
+// core's own stall/truncation sentinels implement it directly.
 //
 // RetryAfter is a server-provided floor (e.g. a 429 Retry-After header), or 0
 // when there is no hint.
@@ -37,11 +36,10 @@ type RetryableError interface {
 }
 
 // ContextExceededError marks a failure caused by the prompt outgrowing the
-// model's context window. Like RetryableError, the llm layer attaches it via
-// classification, so core can compact and retry without carrying any
-// provider's error vocabulary — the phrasings differ per vendor ("prompt is
-// too long", "maximum context length", "input token count exceeds…") and
-// belong with the code that already knows which provider it is talking to.
+// model's context window. Like RetryableError, Classify attaches it, so the
+// loop can compact and retry without carrying any provider's error vocabulary
+// — the phrasings differ per vendor ("prompt is too long", "maximum context
+// length", "input token count exceeds…") and the SDK is what holds the table.
 //
 // Deliberately distinct from RetryableError: retrying an oversized prompt
 // unchanged just fails again. The turn loop has to shrink the conversation

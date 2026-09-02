@@ -451,7 +451,9 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	ag = core.NewAgent(core.Config{
-		LLM:         llmClient,
+		Client:      llmClient.TurnClient,
+		CallOptions: llmClient.CallOptions,
+		InputLimit:  llmClient.InputLimit,
 		System:      sys,
 		Tools:       coreTools,
 		CompactFunc: subagentCompactFunc(llmClient),

@@ -81,15 +81,26 @@ type Tools interface {
 }
 ```
 
-### LLM
+### Reaching the model
+
+There is no inference interface. The loop holds the SDK's own client and
+ranges its stream, and what the application still owns is supplied as three
+narrow functions on `Config`:
 
 ```go
-// LLM — inference. Streams Chunk; final chunk carries the aggregated InferResponse.
-type LLM interface {
-    Infer(ctx context.Context, req InferRequest) (<-chan Chunk, error)
-    InputLimit() int
-}
+// Which client answers this turn — a function of the conversation, because one
+// endpoint's headers depend on what the turn sends (Copilot's vision opt-in).
+Client func(msgs []Message) (*ai.Client, error)
+// The settings a person can change mid-session — the reasoning rung, the
+// output cap — asked for fresh on every inference.
+CallOptions func() []ai.Option
+// The prompt budget auto-compaction measures against. Zero turns it off.
+InputLimit func() int
 ```
+
+`aiconv.go` translates between San's parallel-field messages and the SDK's
+ordered blocks; `classify.go` tags a provider failure as retryable or
+context-exceeded as it leaves the stream.
 
 ### Known Violations
 

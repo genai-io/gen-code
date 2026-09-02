@@ -1,6 +1,10 @@
 package core
 
 import (
+	"iter"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 	"time"
@@ -34,9 +38,9 @@ type talkingLLM struct {
 	onInfer         func(call int)
 }
 
-func (t *talkingLLM) InputLimit() int { return 0 }
+func (t *talkingLLM) Name() string { return "talking" }
 
-func (t *talkingLLM) Infer(_ context.Context, _ InferRequest) (<-chan Chunk, error) {
+func (t *talkingLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
 	t.calls++
 	if t.onInfer != nil {
 		t.onInfer(t.calls)
@@ -45,24 +49,19 @@ func (t *talkingLLM) Infer(_ context.Context, _ InferRequest) (<-chan Chunk, err
 	if t.quietAfterFirst && t.calls > 1 {
 		text = ""
 	}
-	ch := make(chan Chunk, 1)
-	go func() {
-		defer close(ch)
-		ch <- Chunk{Done: true, Response: &InferResponse{
-			Content:    text,
-			StopReason: StopToolUse,
-			ToolCalls:  []ToolCall{{ID: "call-1", Name: "noop", Input: "{}"}},
-		}}
-	}()
-	return ch, nil
+	return yieldAll(deltas(InferResponse{
+		Content:    text,
+		StopReason: StopToolUse,
+		ToolCalls:  []ToolCall{{ID: "call-1", Name: "noop", Input: "{}"}},
+	}))
 }
 
 // newContentAgent mirrors newRetryAgent in retry_test.go: build, seed a user
 // message, and drain the outbox, which emit() blocks on once the buffer fills.
-func newContentAgent(llm LLM, maxSteps int) *agent {
+func newContentAgent(d ai.Driver, maxSteps int) *agent {
 	ag := NewAgent(Config{
 		ID:       "test",
-		LLM:      llm,
+		Client:   testClient(d),
 		System:   NewSystem(),
 		Tools:    NewTools(noopTool{}),
 		MaxSteps: maxSteps,

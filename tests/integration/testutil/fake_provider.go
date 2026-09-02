@@ -1,6 +1,12 @@
 package testutil
 
 import (
+	"iter"
+
+	"github.com/genai-io/san/internal/core"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"sync"
 
@@ -44,23 +50,40 @@ type FakeProvider struct {
 }
 
 // Stream answers the next queued response as a single done chunk.
-func (f *FakeProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	f.mu.Lock()
-	f.Calls = append(f.Calls, opts)
+func (f *FakeProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return ai.NewClientWithDriver(f, ai.Model{ID: "stub", API: "stub"}), nil
+}
 
-	var chunk llm.StreamChunk
-	if f.injectError() {
-		chunk = llm.StreamChunk{Type: llm.ChunkTypeError, Error: f.ErrorValue}
-	} else {
-		resp := f.next()
-		chunk = llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &resp}
+// Stream is the ai.Driver method: this double fakes the protocol now, which is
+// the seam pkg/ai already has and the one five real drivers sit behind.
+func (f *FakeProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	f.mu.Lock()
+	msgs := make([]core.Message, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		msgs = append(msgs, core.Message{Role: core.Role(m.Role), Content: m.Content.Text()})
+	}
+	f.Calls = append(f.Calls, llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs})
+	fail := f.injectError()
+	errValue := f.ErrorValue
+	// An injected failure leaves the queue where it was: the response it would
+	// have answered with is still owed to the next call.
+	var resp llm.CompletionResponse
+	if !fail {
+		resp = f.next()
 	}
 	f.mu.Unlock()
 
-	ch := make(chan llm.StreamChunk, 1)
-	ch <- chunk
-	close(ch)
-	return ch
+	return func(yield func(ai.Delta, error) bool) {
+		if fail {
+			yield(ai.Delta{}, errValue)
+			return
+		}
+		for _, d := range FakeDeltas(resp) {
+			if !yield(d, nil) {
+				return
+			}
+		}
+	}
 }
 
 // ListModels reports nothing: a queue serves whatever model it is asked for.

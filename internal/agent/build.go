@@ -156,7 +156,9 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 
 	ag = core.NewAgent(core.Config{
 		ID:          "main",
-		LLM:         client,
+		Client:      client.TurnClient,
+		CallOptions: client.CallOptions,
+		InputLimit:  client.InputLimit,
 		System:      sys,
 		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
 		CompactFunc: compactFunc,

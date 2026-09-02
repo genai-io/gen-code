@@ -1,6 +1,10 @@
 package input
 
 import (
+	"errors"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"fmt"
 	"strings"
@@ -37,10 +41,8 @@ func connectResultFromCmd(cmd tea.Cmd) (providerConnectResultMsg, bool) {
 
 type connectFailProvider struct{}
 
-func (p *connectFailProvider) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk)
-	close(ch)
-	return ch
+func (p *connectFailProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
 }
 
 func (p *connectFailProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
@@ -54,10 +56,8 @@ type staticListProvider struct {
 	models []llm.ModelInfo
 }
 
-func (p *staticListProvider) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk {
-	ch := make(chan llm.StreamChunk)
-	close(ch)
-	return ch
+func (p *staticListProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return nil, errors.New("no client: this double never streams")
 }
 
 func (p *staticListProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {

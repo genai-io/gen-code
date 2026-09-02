@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"errors"
 	"sync"
@@ -109,47 +111,24 @@ func NewClient(p Provider, model string, maxTokens int) *Client {
 	return &Client{provider: p, model: model, maxTokens: maxTokens}
 }
 
-func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.Chunk, error) {
-	srcCh := l.provider.Stream(ctx, l.completionOpts(toProviderMessages(req.Messages), req.Tools, req.System))
+// TurnClient hands over the SDK client that answers one turn. Streaming is the
+// SDK's job; what this package owns is reaching the endpoint — credentials,
+// headers, which model — and choosing one. The messages are a parameter
+// because the headers can depend on them: see TurnHeaders.
+func (l *Client) TurnClient(msgs []core.Message) (*ai.Client, error) {
+	l.mu.RLock()
+	p, model := l.provider, l.model
+	l.mu.RUnlock()
+	if p == nil {
+		return nil, errors.New("llm: no provider")
+	}
+	return p.Client(model, TurnHeaders(p, msgs))
+}
 
-	ch := make(chan core.Chunk, 8)
-	go func() {
-		defer close(ch)
-		// send forwards a chunk, aborting on ctx cancellation so this bridge
-		// goroutine doesn't wedge when streamInfer exits via its ctx.Done.
-		send := func(chunk core.Chunk) bool {
-			select {
-			case ch <- chunk:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		}
-		for sc := range srcCh {
-			switch sc.Type {
-			case ChunkTypeText:
-				if !send(core.Chunk{Text: sc.Text}) {
-					return
-				}
-			case ChunkTypeThinking:
-				if !send(core.Chunk{Thinking: sc.Text}) {
-					return
-				}
-			case ChunkTypeDone:
-				if !send(core.Chunk{Done: true, Response: sc.Response}) {
-					return
-				}
-			case ChunkTypeError:
-				// The vendor seam already tagged what it recognised; this is
-				// the last chance to tag a terminal error that arrived with
-				// its type lost, which is routine on a broken stream.
-				send(core.Chunk{Err: classifyStream(sc.Error)})
-				return
-			}
-		}
-	}()
-
-	return ch, nil
+// CallOptions are the settings this client carries into every inference: the
+// output cap, and the reasoning rung a person may change mid-session.
+func (l *Client) CallOptions() []ai.Option {
+	return callOptions(l.effectiveMaxTokens(), l.ThinkingEffort(), 0)
 }
 
 func (l *Client) SetThinkingEffort(effort string) {
@@ -162,12 +141,6 @@ func (l *Client) ThinkingEffort() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.thinkingEffort
-}
-
-func (l *Client) Stream(ctx context.Context, msgs []core.Message,
-	tools []ToolSchema, sysPrompt string,
-) <-chan StreamChunk {
-	return l.provider.Stream(ctx, l.completionOpts(msgs, tools, sysPrompt))
 }
 
 // Complete sends a one-shot completion, for utility calls like compaction.
@@ -189,7 +162,7 @@ func (l *Client) Complete(ctx context.Context,
 		// leaving this package is always classified, so a caller cannot get a
 		// different answer about the same failure by reaching for a different
 		// helper.
-		err = classifyStream(err)
+		err = core.ClassifyStream(err)
 		var re core.RetryableError
 		if !errors.As(err, &re) || attempt == completeMaxAttempts {
 			return resp, err

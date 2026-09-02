@@ -151,7 +151,7 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 	// Hooks using `cat` (reads until EOF) will deadlock without this.
 	// Interactive hooks (prompt-response) produce output before needing
 	// more stdin, so the timer is cancelled in time.
-	stdinTimer := time.AfterFunc(500*time.Millisecond, func() {
+	stdinTimer := time.AfterFunc(e.stdinIdleOrDefault(), func() {
 		stdinPipe.Close()
 	})
 	defer stdinTimer.Stop()
