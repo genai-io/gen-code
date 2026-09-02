@@ -1,4 +1,4 @@
-package llm
+package core
 
 import (
 	"context"
@@ -6,16 +6,18 @@ import (
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
-
-	"github.com/genai-io/san/internal/core"
 )
 
 // A provider failure, in the vocabulary the agent loop reads: retry it
-// (core.RetryableError), or compact and retry (core.ContextExceededError).
+// (RetryableError), or compact and retry (ContextExceededError).
 //
 // Deciding which belongs to the SDK, where the provider's typed error still
-// exists. This file only translates that answer, so core carries no provider
-// vocabulary and San keeps no second copy of the SDK's tables.
+// exists. This file only translates that answer, so the loop carries no
+// provider vocabulary and San keeps no second copy of the SDK's tables.
+//
+// It sits in core rather than a layer above because core is what reads the
+// answer: the streaming call is core's own, so the error never crosses a
+// package boundary where anyone else could tag it first.
 
 // Classify tags a provider failure with what the agent loop needs to know
 // about it. A failure of no recognized kind is returned unchanged, which
@@ -24,15 +26,15 @@ func Classify(err error) error {
 	return tag(err, ai.Classify("", 0, nil, "", "", err))
 }
 
-// classifyStream is Classify for an error that terminated a stream, where a
+// ClassifyStream is Classify for an error that terminated a stream, where a
 // transport routinely loses the typed error. The SDK owns that rule —
 // ai.StreamError is ai.Classify plus "an unrecognized terminal failure is a
 // transport failure" — so San does not keep a second copy of it.
-func classifyStream(err error) error {
+func ClassifyStream(err error) error {
 	return tag(err, ai.StreamError("", 0, nil, "", "", err))
 }
 
-// tag translates the SDK's reading of err onto the two interfaces core
+// tag translates the SDK's reading of err onto the two interfaces the loop
 // understands, wrapping the original rather than the *ai.Error so the
 // provider's own message and error chain stay intact.
 //
@@ -58,8 +60,8 @@ func tag(err error, classified *ai.Error) error {
 
 // tagged reports whether err already carries one of the two answers.
 func tagged(err error) bool {
-	var retry core.RetryableError
-	var exceeded core.ContextExceededError
+	var retry RetryableError
+	var exceeded ContextExceededError
 	return errors.As(err, &retry) || errors.As(err, &exceeded)
 }
 
@@ -85,6 +87,6 @@ func (e contextExceeded) Unwrap() error    { return e.err }
 func (e contextExceeded) ContextExceeded() {}
 
 var (
-	_ core.RetryableError       = retryable{}
-	_ core.ContextExceededError = contextExceeded{}
+	_ RetryableError       = retryable{}
+	_ ContextExceededError = contextExceeded{}
 )

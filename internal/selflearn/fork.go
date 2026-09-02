@@ -26,11 +26,12 @@ const forkDeadline = 5 * time.Minute
 // skill actions this pass may take are read from Skills.Perms() — the prompt is
 // tailored to them and the manager enforces them at dispatch.
 type ForkConfig struct {
-	Client *ai.Client
-	System core.System // parent's system — read for its prompt only
-	CWD    string
-	Memory *MemoryStore
-	Skills *SkillManager
+	Client      func(msgs []core.Message) (*ai.Client, error)
+	CallOptions func() []ai.Option
+	System      core.System // parent's system — read for its prompt only
+	CWD         string
+	Memory      *MemoryStore
+	Skills      *SkillManager
 	// Strategy is the user's optional learning-strategy override; non-empty
 	// replaces the built-in guidance for both arms.
 	Strategy string
@@ -70,13 +71,14 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	restricted := tool.WithPermission(tools, allowOnly(tools))
 
 	ag := core.NewAgent(core.Config{
-		Client:    fc.Client,
-		System:    sys,
-		Tools:     restricted,
-		CWD:       fc.CWD,
-		MaxSteps:  forkMaxSteps,
-		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
-		OnEvent:   fc.OnEvent,
+		Client:      fc.Client,
+		CallOptions: fc.CallOptions,
+		System:      sys,
+		Tools:       restricted,
+		CWD:         fc.CWD,
+		MaxSteps:    forkMaxSteps,
+		OutboxBuf:   -1, // no outbox: this fork is headless, driven via ThinkAct
+		OnEvent:     fc.OnEvent,
 	})
 
 	// Trim trailing user-role messages (user-typed turns and tool results, both

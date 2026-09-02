@@ -63,7 +63,7 @@ func TestThinkingIsReplayedOnlyWhereItCanBe(t *testing.T) {
 	}
 
 	// The whole conversion agrees with the rule.
-	messages := toMessages([]Message{unsigned}, claudeModel)
+	messages := ToAIMessages([]Message{unsigned}, claudeModel)
 	if len(messages) != 1 || messages[0].Content.Has(ai.BlockThinking) {
 		t.Errorf("unsigned thinking reached an Anthropic request: %+v", messages)
 	}

@@ -107,8 +107,21 @@ type Agent interface {
 // Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
 // before passing them to NewAgent. See docs/concepts/permission-model.md.
 type Config struct {
-	ID     string
-	Client *ai.Client // required: the model to talk to
+	ID string
+	// Client hands over the model to talk to for one turn. Required.
+	//
+	// A function of the conversation, not a fixed handle, because one
+	// endpoint's headers depend on what the turn sends: Copilot meters an
+	// agent's follow-up differently from a turn the user typed, and rejects
+	// image content unless the request opts into vision. Which client answers
+	// a turn is therefore a per-turn question, and only the application knows
+	// how to answer it.
+	Client func(msgs []Message) (*ai.Client, error)
+	// CallOptions are the per-call settings — the output cap, the reasoning
+	// rung — asked for fresh on every inference, because a person can change
+	// the rung mid-session and it has to take effect on the next call. Nil
+	// leaves every setting at the model's own default.
+	CallOptions func() []ai.Option
 	// InputLimit is the prompt budget auto-compaction measures against, as a
 	// function because the application may let a person change it. Nil, or a
 	// zero return, turns auto-compaction off. It is not read off the client:
@@ -172,6 +185,7 @@ func NewAgent(cfg Config) Agent {
 		tools:             cfg.Tools,
 		compactFunc:       cfg.CompactFunc,
 		client:            cfg.Client,
+		callOptions:       cfg.CallOptions,
 		inputLimit:        cfg.InputLimit,
 		cwd:               cfg.CWD,
 		maxSteps:          cfg.MaxSteps,

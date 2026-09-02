@@ -203,7 +203,7 @@ func runPrint(userMessage, personaName string) error {
 		Tools:        schemas,
 	}
 
-	client, err := llmProvider.Client(modelID, nil)
+	client, err := llmProvider.Client(modelID, llm.TurnHeaders(llmProvider, completionOpts.Messages))
 	if err != nil {
 		return err
 	}

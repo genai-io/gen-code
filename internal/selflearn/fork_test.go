@@ -58,6 +58,12 @@ func (s *scriptedLLM) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.De
 // alternate" provider rejection: when the snapshot ends with a tool_result
 // (a RoleUser message with a ToolResult) or any trailing user turn, the fork's
 // own UserMessage(prompt) would put two consecutive user-role messages on the wire.
+// stubClient wraps a fake driver as the per-turn client the fork is built on.
+func stubClient(d ai.Driver) func([]core.Message) (*ai.Client, error) {
+	client := ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub"})
+	return func([]core.Message) (*ai.Client, error) { return client, nil }
+}
+
 func TestTrimTrailingPendingMessages(t *testing.T) {
 	asst := core.Message{Role: core.RoleAssistant, Content: "ok"}
 	usr := core.Message{Role: core.RoleUser, Content: "ask"}
@@ -161,7 +167,7 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	}, "test")
 
 	fc := ForkConfig{
-		Client: ai.NewClientWithDriver(llm, ai.Model{ID: "stub", API: "stub"}),
+		Client: stubClient(llm),
 		System: parentSys,
 		CWD:    "/work/project-x",
 		Memory: store,

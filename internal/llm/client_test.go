@@ -389,3 +389,85 @@ func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 		t.Fatalf("Stream() calls = %d, want 2", provider.calls)
 	}
 }
+
+// --- the seam the agent loop reaches the endpoint through ---
+
+// headerRecordingProvider is an endpoint whose headers depend on the turn, and
+// which remembers what it was handed. Copilot is the real one.
+type headerRecordingProvider struct {
+	mockLLMProvider
+	got map[string]string
+}
+
+func (p *headerRecordingProvider) TurnHeaders(msgs []core.Message) map[string]string {
+	for _, msg := range msgs {
+		if len(msg.Images) > 0 {
+			return map[string]string{"X-Initiator": "user", "Copilot-Vision-Request": "true"}
+		}
+	}
+	return map[string]string{"X-Initiator": "user"}
+}
+
+func (p *headerRecordingProvider) Client(model string, headers map[string]string) (*ai.Client, error) {
+	p.got = headers
+	return p.mockLLMProvider.Client(model, headers)
+}
+
+// A turn's headers have to reach the endpoint that asked for them. Copilot
+// rejects image content outright unless the request opts into vision, so a
+// client built without them cannot send a picture at all.
+func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
+	p := &headerRecordingProvider{}
+	client := NewClient(p, "mock", 0)
+
+	if _, err := client.TurnClient([]core.Message{
+		{Role: core.RoleUser, Content: "look", Images: []core.Image{{MediaType: "image/png", Data: "x"}}},
+	}); err != nil {
+		t.Fatalf("TurnClient: %v", err)
+	}
+	if p.got["Copilot-Vision-Request"] != "true" {
+		t.Fatalf("headers = %v, want the turn's vision opt-in", p.got)
+	}
+
+	if _, err := client.TurnClient([]core.Message{{Role: core.RoleUser, Content: "hi"}}); err != nil {
+		t.Fatalf("TurnClient: %v", err)
+	}
+	if _, asked := p.got["Copilot-Vision-Request"]; asked {
+		t.Fatalf("headers = %v, want no vision opt-in on a text-only turn", p.got)
+	}
+}
+
+// A provider whose headers never vary gets none, rather than an empty map that
+// would key its client cache differently from a nil one.
+func TestTurnClientSendsNoHeadersForAPlainProvider(t *testing.T) {
+	if got := TurnHeaders(&mockLLMProvider{}, []core.Message{{Role: core.RoleUser, Content: "hi"}}); got != nil {
+		t.Fatalf("TurnHeaders = %v, want nil", got)
+	}
+}
+
+// The rung a person picked has to be on every call, and it changes mid-session
+// — so it is read when the call is made, not when the client was built.
+func TestCallOptionsCarryTheCurrentThinkingEffort(t *testing.T) {
+	client := NewClient(&mockLLMProvider{}, "mock", 4096)
+	client.SetThinkingEffort("high")
+
+	req := &ai.Request{}
+	for _, opt := range client.CallOptions() {
+		opt(req)
+	}
+	if req.Effort != ai.EffortHigh {
+		t.Errorf("Effort = %q, want high", req.Effort)
+	}
+	if req.MaxTokens != 4096 {
+		t.Errorf("MaxTokens = %d, want 4096", req.MaxTokens)
+	}
+
+	client.SetThinkingEffort("low")
+	req = &ai.Request{}
+	for _, opt := range client.CallOptions() {
+		opt(req)
+	}
+	if req.Effort != ai.EffortLow {
+		t.Errorf("Effort after the change = %q, want low", req.Effort)
+	}
+}

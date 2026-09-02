@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -50,9 +49,10 @@ func yieldAll(script []ai.Delta) iter.Seq2[ai.Delta, error] {
 	}
 }
 
-// testClient wraps a driver as the client an agent is built on.
-func testClient(d ai.Driver) *ai.Client {
-	return ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub", ContextWindow: 200_000})
+// testClient wraps a driver as the per-turn client an agent is built on. The
+// same client answers every turn: only a real endpoint varies its headers with
+// what the turn sends.
+func testClient(d ai.Driver) func([]Message) (*ai.Client, error) {
+	client := ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub", ContextWindow: 200_000})
+	return func([]Message) (*ai.Client, error) { return client, nil }
 }
-
-var _ = context.Background

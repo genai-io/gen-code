@@ -159,7 +159,7 @@ type ModelInfo struct {
 // Complete sends one non-streaming call and returns the whole answer. The
 // collection it used to do by hand is ai.Client.Complete.
 func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (CompletionResponse, error) {
-	client, err := provider.Client(opts.Model, nil)
+	client, err := provider.Client(opts.Model, TurnHeaders(provider, opts.Messages))
 	if err != nil {
 		return CompletionResponse{}, err
 	}
@@ -167,14 +167,29 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 	if len(opts.Tools) > 0 {
 		callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
 	}
-	if opts.MaxTokens > 0 {
-		callOpts = append(callOpts, ai.WithMaxTokens(opts.MaxTokens))
-	}
+	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 	resp, err := client.Complete(ctx, core.ToAIMessages(opts.Messages, client.Model()), callOpts...)
 	if err != nil {
 		return CompletionResponse{}, err
 	}
 	return *core.FromAIResponse(resp), nil
+}
+
+// callOptions turns San's per-call settings into the SDK's options.
+//
+// A setting is only passed when San actually set it: passing an option is what
+// marks it explicit, so sending a zero would override the model's own default
+// rather than inherit it. Effort is the exception — an empty rung *is*
+// ai.EffortDefault, which says the same thing.
+func callOptions(maxTokens int, effort string, temperature float64) []ai.Option {
+	var out []ai.Option
+	if maxTokens > 0 {
+		out = append(out, ai.WithMaxTokens(maxTokens))
+	}
+	if temperature > 0 {
+		out = append(out, ai.WithTemperature(temperature))
+	}
+	return append(out, ai.WithEffort(ai.Effort(effort)))
 }
 
 // The optional extensions. Each has a default that suits most providers, so it
@@ -217,4 +232,22 @@ func CachesToolsAndSystemPrompt(p Provider) bool {
 // without one.
 type ModelLimitsFetcher interface {
 	FetchModelLimits(ctx context.Context, modelID string) (inputLimit, outputLimit int, err error)
+}
+
+// TurnHeaderProvider is implemented by an endpoint whose headers depend on
+// what the turn sends. Copilot is the only one: it meters an agent's follow-up
+// differently from a turn the user typed, and it rejects image content unless
+// the request opts into vision.
+type TurnHeaderProvider interface {
+	TurnHeaders(msgs []core.Message) map[string]string
+}
+
+// TurnHeaders returns the headers this turn needs beyond the endpoint's fixed
+// ones. Nil for every provider whose headers never vary, which is all but one.
+func TurnHeaders(p Provider, msgs []core.Message) map[string]string {
+	th, ok := p.(TurnHeaderProvider)
+	if !ok {
+		return nil
+	}
+	return th.TurnHeaders(msgs)
 }

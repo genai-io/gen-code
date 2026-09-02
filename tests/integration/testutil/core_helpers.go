@@ -86,6 +86,14 @@ func FakeDeltas(r llm.CompletionResponse) []ai.Delta {
 	}})
 }
 
+// stubClient wraps a fake driver as the per-turn client an agent is built on.
+// The same client answers every turn: only a real endpoint varies its headers
+// with what the turn sends.
+func stubClient(d ai.Driver) func([]core.Message) (*ai.Client, error) {
+	client := ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub"})
+	return func([]core.Message) (*ai.Client, error) { return client, nil }
+}
+
 // NewTestAgent creates a core.Agent backed by a FakeLLM with queued responses.
 // All globally registered tools (including dynamically registered fakes) are included.
 func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
@@ -94,7 +102,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",
-		Client: ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
+		Client: stubClient(fakeLLM),
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 
@@ -127,7 +135,7 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 	tools := tool.WithPermission(buildAllRegisteredTools(cwd), permFn)
 	return core.NewAgent(core.Config{
 		ID:       "test-agent",
-		Client:   ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
+		Client:   stubClient(fakeLLM),
 		System:   core.NewSystem(),
 		Tools:    tools,
 		CWD:      cwd,
@@ -142,7 +150,7 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",
-		Client: ai.NewClientWithDriver(fakeLLM, ai.Model{ID: "stub", API: "stub"}),
+		Client: stubClient(fakeLLM),
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 

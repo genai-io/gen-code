@@ -150,7 +150,12 @@ func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
 }
 
 func TestThinkActDoesNotRetryFatalError(t *testing.T) {
-	llm := &scriptedLLM{failErr: errors.New("400 bad request"), failures: 99}
+	// A 400 as the driver hands it over — typed, so classification leaves it
+	// fatal. An *untyped* terminal failure is deliberately the other way: a
+	// transport routinely loses the type, and ClassifyStream gives that the
+	// benefit of the doubt (see TestThinkActRetriesAnOpaqueStreamFailure).
+	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindInvalidRequest, Status: 400,
+		Message: "bad request"}, failures: 99}
 	a := newRetryAgent(t, llm, 3, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -161,6 +166,87 @@ func TestThinkActDoesNotRetryFatalError(t *testing.T) {
 	}
 	if llm.calls != 1 {
 		t.Fatalf("Infer calls = %d, want 1 (no retry on fatal)", llm.calls)
+	}
+}
+
+// The loop's retry budget is spent on the failures the SDK typed as transient.
+// Nothing between the driver and the loop tags them, so streamInfer classifies
+// as the failure leaves the stream — without that, a provider's 429 read as
+// fatal and the turn died on a blip it was built to ride out.
+func TestThinkActRetriesAProviderRateLimit(t *testing.T) {
+	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindRateLimit, Status: 429,
+		Message: "slow down"}, failures: 2}
+	a := newRetryAgent(t, llm, 2, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := a.ThinkAct(ctx)
+	if err != nil {
+		t.Fatalf("ThinkAct returned error after retries: %v", err)
+	}
+	if result.Content != "ok" {
+		t.Fatalf("content = %q, want ok", result.Content)
+	}
+	if llm.calls != 3 {
+		t.Fatalf("Infer calls = %d, want 3 (2 rate limits + 1 success)", llm.calls)
+	}
+}
+
+// A terminal failure the SDK could not type is a transport failure, which is
+// the one place the stream rule differs from the completed-call rule.
+func TestThinkActRetriesAnOpaqueStreamFailure(t *testing.T) {
+	llm := &scriptedLLM{failErr: errors.New("unexpected EOF"), failures: 1}
+	a := newRetryAgent(t, llm, 2, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := a.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct returned error after retries: %v", err)
+	}
+	if llm.calls != 2 {
+		t.Fatalf("Infer calls = %d, want 2 (1 failure + 1 success)", llm.calls)
+	}
+}
+
+// The reactive half: an overflow the provider reported has to reach
+// isPromptTooLong, or the loop retries a prompt that cannot fit instead of
+// shrinking it. Deliberately not also retryable — one compaction, then the
+// call goes out again.
+func TestThinkActCompactsOnProviderContextOverflow(t *testing.T) {
+	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindContextExceeded, Status: 400,
+		Message: "prompt is too long"}, failures: 1}
+	compacted := 0
+	ag := NewAgent(Config{
+		ID:     "test",
+		Client: testClient(llm),
+		System: NewSystem(),
+		Tools:  NewTools(),
+		CompactFunc: func(context.Context, []Message) (string, error) {
+			compacted++
+			return "the story so far", nil
+		},
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.SetMessages([]Message{
+		UserMessage("one", nil), AssistantMessage("two", "", nil), UserMessage("three", nil),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct returned error: %v", err)
+	}
+	if compacted != 1 {
+		t.Fatalf("compactions = %d, want 1", compacted)
+	}
+	if llm.calls != 2 {
+		t.Fatalf("Infer calls = %d, want 2 (overflow, compact, retry)", llm.calls)
 	}
 }
 

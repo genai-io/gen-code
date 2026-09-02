@@ -65,7 +65,21 @@ func (p *vendorProvider) Name() string { return p.name }
 // Inference
 // ---------------------------------------------------------------------------
 
-// Client returns the SDK client for one model, building and caching it.
+// TurnHeaders returns the headers this turn needs beyond the fixed ones, for
+// the one vendor whose headers vary with what the turn sends.
+func (p *vendorProvider) TurnHeaders(msgs []core.Message) map[string]string {
+	if p.turnHeaders == nil {
+		return nil
+	}
+	return p.turnHeaders(msgs)
+}
+
+// Client returns the SDK client for one model and header set, building and
+// caching it.
+//
+// A client is a request template, not a connection — the transport underneath
+// is shared — so keying the cache by the headers too costs an entry per
+// distinct header set rather than a new connection pool.
 func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.Client, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

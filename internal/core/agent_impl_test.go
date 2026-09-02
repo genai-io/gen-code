@@ -627,3 +627,119 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
 	}
 }
+
+// --- what the application keeps saying about every call ---
+
+// requestRecordingDriver keeps the request it was handed, which is the only
+// place the settings above it can be observed.
+type requestRecordingDriver struct{ req *ai.Request }
+
+func (requestRecordingDriver) Name() string { return "recording" }
+
+func (d *requestRecordingDriver) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	d.req = req
+	return yieldAll(deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}))
+}
+
+// The reasoning rung and the output cap are the application's, not the
+// client's: a person changes the rung mid-session and it has to be on the next
+// call. Without this the /model picker, its shortcut and its stored value were
+// all decoration — nothing put them on the wire.
+func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
+	driver := &requestRecordingDriver{}
+	effort := ai.EffortLow
+	ag := NewAgent(Config{
+		ID:          "test",
+		Client:      testClient(driver),
+		CallOptions: func() []ai.Option { return []ai.Option{ai.WithMaxTokens(1234), ai.WithEffort(effort)} },
+		System:      NewSystem(),
+		Tools:       NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if driver.req.MaxTokens != 1234 {
+		t.Errorf("MaxTokens = %d, want 1234", driver.req.MaxTokens)
+	}
+	if driver.req.Effort != ai.EffortLow {
+		t.Errorf("Effort = %q, want low", driver.req.Effort)
+	}
+
+	// Asked for again on the next call, so a mid-session change lands.
+	effort = ai.EffortHigh
+	ag.append(Message{Role: RoleUser, Content: "again"})
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if driver.req.Effort != ai.EffortHigh {
+		t.Errorf("Effort after the change = %q, want high", driver.req.Effort)
+	}
+}
+
+// Which client answers is a per-turn question — Copilot's headers depend on
+// what the turn sends — so the loop asks with the conversation in hand.
+func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
+	driver := &requestRecordingDriver{}
+	client := ai.NewClientWithDriver(driver, ai.Model{ID: "stub", API: "stub"})
+	var asked [][]Message
+	ag := NewAgent(Config{
+		ID: "test",
+		Client: func(msgs []Message) (*ai.Client, error) {
+			asked = append(asked, msgs)
+			return client, nil
+		},
+		System: NewSystem(),
+		Tools:  NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if _, err := ag.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if len(asked) != 1 || len(asked[0]) != 1 || asked[0][0].Content != "go" {
+		t.Fatalf("client asked with %v, want this turn's conversation", asked)
+	}
+}
+
+// A turn that cannot reach the endpoint at all is the turn's failure, not the
+// build's: it is reported like any other inference failure.
+func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
+	ag := NewAgent(Config{
+		ID:     "test",
+		Client: func([]Message) (*ai.Client, error) { return nil, errors.New("no provider") },
+		System: NewSystem(),
+		Tools:  NewTools(),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.append(Message{Role: RoleUser, Content: "go"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := ag.ThinkAct(ctx)
+	if err == nil {
+		t.Fatal("ThinkAct returned nil error for an unreachable model")
+	}
+	if result == nil || result.StopReason != StopError {
+		t.Fatalf("result = %+v, want a turn reported as StopError", result)
+	}
+}

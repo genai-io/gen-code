@@ -107,13 +107,14 @@ func (r *Reviewer) Observe(result core.Result, skillUsed, evolveRequested bool)
 func DefaultStrategy() string // built-in guidance the /evolve Strategy editor seeds with
 
 type ForkConfig struct {
-    LLM      core.LLM
-    System   *system.System
-    CWD      string
-    Memory   *MemoryStore
-    Skills   *SkillManager // its Perms() also scope the review prompt
-    Strategy string
-    OnEvent  func(core.Event)
+    Client      func(msgs []core.Message) (*ai.Client, error)
+    CallOptions func() []ai.Option
+    System      *system.System
+    CWD         string
+    Memory      *MemoryStore
+    Skills      *SkillManager // its Perms() also scope the review prompt
+    Strategy    string
+    OnEvent     func(core.Event)
 }
 
 func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error)

@@ -10,8 +10,12 @@ import "github.com/genai-io/sdk-go/pkg/ai"
 // Going out, the fields are laid down in the order every protocol wants them
 // replayed: reasoning first, then the answer, then the calls it asked for.
 // Coming back, the blocks are projected onto the fields San's UI reads.
+//
+// Exported because the packages above core build calls of their own — llm's
+// one-shot Complete, print mode. One copy, in the foundation layer, which llm
+// imports rather than the other way round.
 
-// toMessages converts San's history into the SDK's, for the model it is about
+// ToAIMessages converts San's history into the SDK's, for the model it is about
 // to be sent to.
 //
 // The model is a parameter because one thing in a turn is not portable: a
@@ -22,7 +26,7 @@ import "github.com/genai-io/sdk-go/pkg/ai"
 // Tool-call/result pairing is not repaired here: ai.Client.prepare runs
 // RepairHistory on every request, which is the same repair San's providers do
 // themselves today.
-func toMessages(msgs []Message, model ai.Model) []ai.Message {
+func ToAIMessages(msgs []Message, model ai.Model) []ai.Message {
 	out := make([]ai.Message, 0, len(msgs))
 	for _, msg := range msgs {
 		switch {
@@ -147,10 +151,10 @@ func toImage(img Image) ai.Image {
 	return ai.Image{MediaType: img.MediaType, Data: img.Data, FileName: img.FileName}
 }
 
-// toTools converts San's tool schemas. Run stays nil: San executes tools
+// ToAITools converts San's tool schemas. Run stays nil: San executes tools
 // itself and hands the results back as history, so the SDK is never asked to
 // run one.
-func toTools(schemas []ToolSchema) []ai.Tool {
+func ToAITools(schemas []ToolSchema) []ai.Tool {
 	if len(schemas) == 0 {
 		return nil
 	}
@@ -165,8 +169,8 @@ func toTools(schemas []ToolSchema) []ai.Tool {
 	return out
 }
 
-// toResponse projects a finished SDK response onto San's response fields.
-func toResponse(resp *ai.Response) *InferResponse {
+// FromAIResponse projects a finished SDK response onto San's response fields.
+func FromAIResponse(resp *ai.Response) *InferResponse {
 	if resp == nil {
 		return nil
 	}
@@ -229,14 +233,3 @@ func toStopReason(reason ai.StopReason) StopReason {
 		return StopEndTurn
 	}
 }
-
-// ToAIMessages, ToAITools and FromAIResponse are the conversion, for the
-// packages above core that build a call themselves. One copy: this is the
-// foundation layer, and llm imports it rather than the other way round.
-func ToAIMessages(msgs []Message, model ai.Model) []ai.Message { return toMessages(msgs, model) }
-
-// ToAITools converts San's schemas into the SDK's tools.
-func ToAITools(schemas []ToolSchema) []ai.Tool { return toTools(schemas) }
-
-// FromAIResponse projects one finished call onto San's response.
-func FromAIResponse(r *ai.Response) *InferResponse { return toResponse(r) }

@@ -22,7 +22,8 @@ type agent struct {
 	system            System
 	tools             Tools
 	compactFunc       func(ctx context.Context, msgs []Message) (string, error)
-	client            *ai.Client
+	client            func(msgs []Message) (*ai.Client, error)
+	callOptions       func() []ai.Option
 	inputLimit        func() int
 	cwd               string
 	maxSteps          int
@@ -724,6 +725,13 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 		MessageIDs:   messageIDs(msgs),
 	}))
 
+	// Which client answers this turn depends on what the turn sends, so it is
+	// asked for here rather than held on the agent.
+	client, err := a.client(msgs)
+	if err != nil {
+		return nil, fmt.Errorf("reaching the model: %w", err)
+	}
+
 	// The stream gets a context of its own so a stall can be torn down without
 	// touching the turn. Why it ended is read back off that context rather
 	// than inferred from a flag beside it: cancelling is what destroys the
@@ -738,8 +746,8 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 	defer quiet.Stop()
 
 	var resp *ai.Response
-	for event, err := range a.client.Stream(streamCtx, ToAIMessages(msgs, a.client.Model()),
-		ai.WithSystem(sys), ai.WithTools(ToAITools(tools)...)) {
+	for event, err := range client.Stream(streamCtx, ToAIMessages(msgs, client.Model()),
+		a.streamOptions(sys, tools)...) {
 		quiet.Reset(a.idleTimeout)
 		if err != nil {
 			if errors.Is(context.Cause(streamCtx), errStreamStalled) {
@@ -748,7 +756,10 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 			if cerr := ctx.Err(); cerr != nil {
 				return nil, cerr
 			}
-			return nil, fmt.Errorf("infer: %w", err)
+			// Classified here, where the failure leaves the stream: the turn
+			// loop reads the answer off the error, and nothing between here
+			// and there knows any more about it than this does.
+			return nil, fmt.Errorf("infer: %w", ClassifyStream(err))
 		}
 		switch event.Type {
 		case ai.EventBlockDelta:
@@ -772,6 +783,17 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 		return nil, errStreamTruncated
 	}
 	return FromAIResponse(resp), nil
+}
+
+// streamOptions are the options for one inference: what this turn carries,
+// then the settings the application keeps — which come last so a person's
+// choice of reasoning rung wins over any default.
+func (a *agent) streamOptions(sys string, tools []ToolSchema) []ai.Option {
+	opts := []ai.Option{ai.WithSystem(sys), ai.WithTools(ToAITools(tools)...)}
+	if a.callOptions == nil {
+		return opts
+	}
+	return append(opts, a.callOptions()...)
 }
 
 // promptBudget is what auto-compaction measures against, or zero when the

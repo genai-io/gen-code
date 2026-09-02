@@ -111,17 +111,29 @@ func NewClient(p Provider, model string, maxTokens int) *Client {
 	return &Client{provider: p, model: model, maxTokens: maxTokens}
 }
 
-// AI hands over the SDK client for this client's model. Streaming is the SDK's
-// job; what this package owns is reaching the endpoint — credentials, headers,
-// which model — and choosing one.
-func (l *Client) AI(headers map[string]string) (*ai.Client, error) {
+// TurnClient hands over the SDK client that answers one turn. Streaming is the
+// SDK's job; what this package owns is reaching the endpoint — credentials,
+// headers, which model — and choosing one.
+//
+// The messages are a parameter because one endpoint's headers depend on what
+// the turn sends: Copilot meters an agent's follow-up differently from a turn
+// the user typed, and rejects image content unless the request opts into
+// vision. A provider whose headers never vary ignores them.
+func (l *Client) TurnClient(msgs []core.Message) (*ai.Client, error) {
 	l.mu.RLock()
 	p, model := l.provider, l.model
 	l.mu.RUnlock()
 	if p == nil {
 		return nil, errors.New("llm: no provider")
 	}
-	return p.Client(model, headers)
+	return p.Client(model, TurnHeaders(p, msgs))
+}
+
+// CallOptions are the settings this client carries into every inference: the
+// output cap, and the reasoning rung a person may change mid-session. Read
+// fresh on each call, which is what makes a change take effect on the next one.
+func (l *Client) CallOptions() []ai.Option {
+	return callOptions(l.effectiveMaxTokens(), l.ThinkingEffort(), 0)
 }
 
 func (l *Client) SetThinkingEffort(effort string) {
@@ -155,7 +167,7 @@ func (l *Client) Complete(ctx context.Context,
 		// leaving this package is always classified, so a caller cannot get a
 		// different answer about the same failure by reaching for a different
 		// helper.
-		err = classifyStream(err)
+		err = core.ClassifyStream(err)
 		var re core.RetryableError
 		if !errors.As(err, &re) || attempt == completeMaxAttempts {
 			return resp, err

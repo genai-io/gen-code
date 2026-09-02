@@ -65,7 +65,12 @@ func (f *FakeProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.D
 	f.Calls = append(f.Calls, llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs})
 	fail := f.injectError()
 	errValue := f.ErrorValue
-	resp := f.next()
+	// An injected failure leaves the queue where it was: the response it would
+	// have answered with is still owed to the next call.
+	var resp llm.CompletionResponse
+	if !fail {
+		resp = f.next()
+	}
 	f.mu.Unlock()
 
 	return func(yield func(ai.Delta, error) bool) {

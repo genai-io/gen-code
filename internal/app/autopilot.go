@@ -739,7 +739,7 @@ func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse f
 			}
 		} else {
 			var retryable core.RetryableError
-			if !errors.As(llm.Classify(err), &retryable) {
+			if !errors.As(core.Classify(err), &retryable) {
 				return zero, err
 			}
 			retryFloor = retryable.RetryAfter() // a 429's Retry-After outranks our own spacing

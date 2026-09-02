@@ -94,11 +94,15 @@ func collect(t *testing.T, p *vendorProvider, opts CompletionOptions) (text, thi
 // legacyStream reproduces, for tests only, the chunk stream San used to keep
 // between the SDK and its agent loop. Production ranges the SDK's own stream;
 // these tests are about what a vendor sends, not the shape it arrives in.
+//
+// It reaches the endpoint the way production does — the same turn headers, the
+// same call options — so a setting that stops being sent fails a test here
+// rather than going quiet on the wire.
 func legacyStream(ctx context.Context, p Provider, opts CompletionOptions) <-chan StreamChunk {
 	ch := make(chan StreamChunk)
 	go func() {
 		defer close(ch)
-		client, err := p.Client(opts.Model, nil)
+		client, err := p.Client(opts.Model, TurnHeaders(p, opts.Messages))
 		if err != nil {
 			ch <- StreamChunk{Type: ChunkTypeError, Error: err}
 			return
@@ -107,9 +111,7 @@ func legacyStream(ctx context.Context, p Provider, opts CompletionOptions) <-cha
 		if len(opts.Tools) > 0 {
 			callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
 		}
-		if opts.MaxTokens > 0 {
-			callOpts = append(callOpts, ai.WithMaxTokens(opts.MaxTokens))
-		}
+		callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 		for event, err := range client.Stream(ctx, core.ToAIMessages(opts.Messages, client.Model()), callOpts...) {
 			if err != nil {
 				ch <- StreamChunk{Type: ChunkTypeError, Error: err}
