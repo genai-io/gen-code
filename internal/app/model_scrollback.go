@@ -421,6 +421,22 @@ func (m *model) useMinimalScrollbackFrame() {
 	m.flush.minimizeForPrint = true
 }
 
+// trimTrailingBlanks drops the empty cells a full-width buffer leaves at the end
+// of a row.
+//
+// They cost nothing at the width they were printed at, and native scrollback is
+// immutable, so they are still there when the window narrows — where the
+// terminal rewraps a row of visible text plus padding into two, the second all
+// spaces. That is the blank line a resize inserts between committed blocks.
+// Styled trailing cells are kept: a background color is content, not padding.
+func trimTrailingBlanks(line uv.Line) uv.Line {
+	end := len(line)
+	for end > 0 && (line[end-1].IsZero() || line[end-1].Equal(&uv.EmptyCell)) {
+		end--
+	}
+	return line[:end]
+}
+
 // scrollbackPhysicalLines decomposes content exactly as Bubble Tea's
 // insertAbove accounts for it: ANSI escapes are zero-width, grapheme clusters
 // retain their terminal width, soft wraps consume rows, and a trailing newline
@@ -456,7 +472,11 @@ func renderScrollbackLines(lines []uv.Line) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	if rendered := uv.Lines(lines).Render(); rendered != "" {
+	trimmed := make(uv.Lines, len(lines))
+	for i, line := range lines {
+		trimmed[i] = trimTrailingBlanks(line)
+	}
+	if rendered := trimmed.Render(); rendered != "" {
 		return rendered
 	}
 	// insertAbove ignores an empty string. A reset sequence represents one

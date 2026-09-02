@@ -661,3 +661,22 @@ func TestHandoffCopyDropsTheRemainderOncePrintingStarts(t *testing.T) {
 		t.Fatalf("handoff copy between chunks = %q, want none", view)
 	}
 }
+
+// Committed rows must carry no trailing padding. Native scrollback is
+// immutable, so a row of text padded out to the terminal's width is still that
+// wide when the window narrows — where the terminal rewraps it into two, the
+// second all spaces. That is the blank line a resize inserts between blocks.
+func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
+	rendered := renderScrollbackLines(scrollbackPhysicalLines("short\nalso short\n", 40))
+
+	for _, line := range strings.Split(rendered, "\n") {
+		if plain := ansi.Strip(line); plain != strings.TrimRight(plain, " ") {
+			t.Errorf("line padded to the buffer width: %q", plain)
+		}
+	}
+	for _, want := range []string{"short", "also short"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered lost %q: %q", want, rendered)
+		}
+	}
+}
