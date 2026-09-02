@@ -282,6 +282,16 @@ func TestDockedModalDropsDeadExpandHint(t *testing.T) {
 	}
 }
 
+// A docked prompt must never enter terminal history as part of inline redraw.
+// The primary buffer remains reserved for the committed conversation; the prompt
+// lives in the alternate screen until the user answers it.
+func TestDockedModalUsesAlternateScreen(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	if view := m.View(); !view.AltScreen {
+		t.Fatal("docked approval modal must render in the alternate screen")
+	}
+}
+
 func TestTailLines(t *testing.T) {
 	five := "L0\nL1\nL2\nL3\nL4"
 

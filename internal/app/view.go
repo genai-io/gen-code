@@ -33,6 +33,13 @@ func (m *model) View() tea.View {
 	content, cursor := m.viewString()
 	v := tea.NewView(content)
 	v.Cursor = cursor
+	// Approval and question panels are transient interaction, not transcript.
+	// In inline mode a tall docked frame can scroll through the terminal's primary
+	// buffer before any scrollback handoff sees it. The alternate screen keeps
+	// that frame out of history and restores the conversation when it closes.
+	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
+		v.AltScreen = true
+	}
 	return v
 }
 
