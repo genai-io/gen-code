@@ -277,6 +277,17 @@ func (m *model) queueScrollbackPrint(content string) tea.Cmd {
 	return m.flush.queueScrollbackPrint(content)
 }
 
+// resumeDeferredScrollbackPrint restarts the queue after a docked prompt closes.
+// A Println while an approval/question/secret panel owns the frame makes Bubble
+// Tea's insertAbove capture that transient panel in native history. Leave the
+// head untouched until the panel is gone, then re-emit its ready message.
+func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
+	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" {
+		return nil
+	}
+	return printScrollback(m.flush.pendingPrints[0].id)
+}
+
 func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
 	if content == "" {
 		return nil

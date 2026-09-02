@@ -201,6 +201,42 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	}
 }
 
+// A queued Println must not run while a docked approval prompt owns the
+// managed frame. insertAbove otherwise promotes that temporary prompt into
+// terminal history together with the actual conversation output.
+func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the approval modal is visible")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	if m.flush.frameForPrint != nil {
+		t.Fatal("a deferred print must not freeze the approval frame")
+	}
+
+	m.userInput.Approval.Hide()
+	resume := m.resumeDeferredScrollbackPrint()
+	if resume == nil {
+		t.Fatal("closing the modal must restart the deferred print")
+	}
+	resumed := resume().(scrollbackPrintReadyMsg)
+	if resumed.id != ready.id {
+		t.Fatalf("resumed print id = %d, want %d", resumed.id, ready.id)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height, 0)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
 func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	firstCmd := m.queueScrollbackPrint("A")

@@ -323,6 +323,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:
+		// insertAbove preserves the managed frame around a Println. If that frame
+		// is a docked prompt, preserving it also leaves the transient approval UI
+		// in native scrollback. Keep the queued payload intact and restart it when
+		// the prompt response hides the overlay.
+		if _, active := m.activeOverlay(); active {
+			return m, nil
+		}
 		// Bubble Tea's renderer barrier flushes the latest managed View before
 		// insertAbove. Sequence ensures completion is observed only after this
 		// chunk has been inserted.
@@ -337,13 +344,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scrollbackPrintDoneMsg:
 		return m, m.finishScrollbackPrint(msg.id)
 	case conv.QuestionResponseMsg:
-		return m, m.handleQuestionResponse(msg)
+		return m, tea.Batch(m.handleQuestionResponse(msg), m.resumeDeferredScrollbackPrint())
 	case input.SecretPromptResponseMsg:
-		return m, m.handleSecretPromptResponse(msg)
+		return m, tea.Batch(m.handleSecretPromptResponse(msg), m.resumeDeferredScrollbackPrint())
 	case input.ApprovalResponseMsg:
-		return m, m.handlePermGateDecision(permissionDecision{
+		return m, tea.Batch(m.handlePermGateDecision(permissionDecision{
 			Approved: msg.Approved, AllowAll: msg.AllowAll, Persist: msg.Persist, Request: msg.Request,
-		})
+		}), m.resumeDeferredScrollbackPrint())
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:
