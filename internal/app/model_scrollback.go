@@ -308,7 +308,11 @@ func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
 // out-of-order done message is ignored; the next chunk or queued print cannot
 // start until the current Println has been processed.
 func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
-	return m.flush.finishScrollbackPrint(id)
+	next := m.flush.finishScrollbackPrint(id)
+	if len(m.flush.pendingPrints) == 0 {
+		m.showDeferredApproval()
+	}
+	return next
 }
 
 func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {

@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -234,6 +235,35 @@ func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height, 0)
 	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
 		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// A permission prompt opened after a print has been queued has the inverse race:
+// the prompt's frame could be captured by insertAbove after it appears. Hold the
+// prompt until the final Println completes, then open it on the clean live frame.
+func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.userInput.Approval.Hide()
+	m.deferredApproval = &perm.PermissionRequest{
+		ToolName: "Bash",
+		BashMeta: &perm.BashMetadata{Command: "git status"},
+	}
+	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL")
+	if cmd == nil {
+		t.Fatal("the queued print must start")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+		t.Fatal("the print should prepare before the approval opens")
+	}
+	if m.userInput.Approval.IsActive() {
+		t.Fatal("approval opened before the scrollback handoff completed")
+	}
+	if next := m.finishScrollbackPrint(ready.id); next != nil {
+		t.Fatal("the one-line print should finish in one chunk")
+	}
+	if !m.userInput.Approval.IsActive() {
+		t.Fatal("approval did not open after the scrollback handoff completed")
 	}
 }
 
