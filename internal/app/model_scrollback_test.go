@@ -623,7 +623,11 @@ func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 // Committed rows carry no trailing padding: scrollback is immutable, so a
 // padded row rewraps into two when the window narrows — the second all spaces.
 func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
-	rendered := renderScrollbackLines(scrollbackPhysicalLines("short\nalso short\n", 40))
+	// Real trailing spaces under an open foreground colour — how the markdown
+	// renderer pads a block. They are cells, not gaps, so "is it empty" misses
+	// them; nothing of a foreground shows on a space, only a background would.
+	styled := "\x1b[38;2;24;24;27mshort" + strings.Repeat(" ", 30) + "\nalso short\n"
+	rendered := renderScrollbackLines(scrollbackPhysicalLines(styled, 40))
 
 	for _, line := range strings.Split(rendered, "\n") {
 		if plain := ansi.Strip(line); plain != strings.TrimRight(plain, " ") {

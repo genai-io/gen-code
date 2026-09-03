@@ -415,13 +415,24 @@ func (m *model) useMinimalScrollbackFrame() {
 // trimPadding drops the padding a full-width buffer leaves on a row.
 // Free at the width it was printed at, but scrollback is immutable: narrow the
 // window and text-plus-padding rewraps into two rows, the second all spaces.
-// Styled cells stay — a background colour is content.
+//
+// A trailing space counts as padding whatever foreground or bold it inherited —
+// none of that shows on a space. Only a background or an underline does, and
+// those are content.
 func trimPadding(line uv.Line) uv.Line {
 	end := len(line)
-	for end > 0 && (line[end-1].IsZero() || line[end-1].Equal(&uv.EmptyCell)) {
+	for end > 0 && isPadding(&line[end-1]) {
 		end--
 	}
 	return line[:end]
+}
+
+func isPadding(c *uv.Cell) bool {
+	if c.IsZero() || c.Equal(&uv.EmptyCell) {
+		return true
+	}
+	return c.Content == " " && c.Link.IsZero() &&
+		c.Style.Bg == nil && c.Style.UnderlineColor == nil && c.Style.Underline == uv.UnderlineNone
 }
 
 // scrollbackPhysicalLines decomposes content exactly as Bubble Tea's
