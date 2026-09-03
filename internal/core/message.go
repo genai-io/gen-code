@@ -1,6 +1,8 @@
 package core
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -200,16 +202,10 @@ type Image struct {
 	// Path is the absolute source path on disk, when the image came from a
 	// file. Empty for images that have no backing file (e.g. clipboard pastes).
 	Path string `json:"path,omitempty"`
-	Size int    `json:"size"`
 }
 
 // ToolCall represents a tool call from the model.
-type ToolCall struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Input            string `json:"input"`
-	ThoughtSignature []byte `json:"thought_signature,omitempty"` // Google Gemini: opaque signature to echo back
-}
+type ToolCall = ai.ToolCall
 
 // ReasoningItem is an opaque reasoning block emitted by a model and echoed back
 // on the next request. Used by OpenAI's stateless (store=false) ChatGPT

@@ -77,7 +77,6 @@ func newImage(mediaType, fileName, path string, data []byte) core.Image {
 		Data:      base64.StdEncoding.EncodeToString(data),
 		FileName:  fileName,
 		Path:      path,
-		Size:      len(data),
 	}
 }
 

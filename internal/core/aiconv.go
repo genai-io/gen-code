@@ -98,12 +98,7 @@ func assistantContent(msg Message, model ai.Model) ai.Content {
 		content = append(content, ai.TextBlock(msg.Content))
 	}
 	for _, call := range msg.ToolCalls {
-		content = append(content, ai.ToolCallBlock(ai.ToolCall{
-			ID:        call.ID,
-			Name:      call.Name,
-			Input:     call.Input,
-			Signature: call.ThoughtSignature,
-		}))
+		content = append(content, ai.ToolCallBlock(call))
 	}
 	return content
 }
@@ -194,12 +189,7 @@ func FromAIResponse(resp *ai.Response) *InferResponse {
 		})
 	}
 	for _, call := range resp.ToolCalls() {
-		out.ToolCalls = append(out.ToolCalls, ToolCall{
-			ID:               call.ID,
-			Name:             call.Name,
-			Input:            call.Input,
-			ThoughtSignature: call.Signature,
-		})
+		out.ToolCalls = append(out.ToolCalls, call)
 	}
 	return out
 }

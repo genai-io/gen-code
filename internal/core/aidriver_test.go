@@ -21,9 +21,7 @@ func deltas(r InferResponse) []ai.Delta {
 		out = append(out, ai.Delta{Block: ai.TextBlock(r.Content)}, ai.Delta{EndBlock: true})
 	}
 	for _, c := range r.ToolCalls {
-		out = append(out, ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{
-			ID: c.ID, Name: c.Name, Input: c.Input, Signature: c.ThoughtSignature,
-		})})
+		out = append(out, ai.Delta{Block: ai.ToolCallBlock(c)})
 	}
 	stop := ai.StopEndTurn
 	switch {
