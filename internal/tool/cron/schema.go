@@ -12,7 +12,7 @@ Actions:
 - create: schedule a prompt (requires cron + prompt). Recurring jobs (default) auto-expire after 7 days; one-shot jobs (recurring=false) fire once then auto-delete. Returns a job ID.
 - delete: cancel a job by id.
 - list: show all jobs with status, next fire time, and prompt.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"action": map[string]any{

@@ -87,10 +87,14 @@ func TestToolSchemaWireCoversTheWholeDefinition(t *testing.T) {
 	wire := toolSchemaWire(core.ToolSchema{
 		Name:        "Bash",
 		Description: "run a command",
-		Parameters:  map[string]any{"type": "object"},
+		Definition:  map[string]any{"type": "object"},
 	})
 
-	for _, want := range []string{"Bash", "run a command", "input_schema"} {
+	// What the estimate has to cover is the whole definition, not just the
+	// prose: a dozen schemas can outweigh the conversation. The JSON key the
+	// definition lands under is the encoder's business — no provider ever sees
+	// this string, and each driver builds its own payload from Schema fields.
+	for _, want := range []string{"Bash", "run a command", `"type":"object"`} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("schema text is missing %q: %q", want, wire)
 		}

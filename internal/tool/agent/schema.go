@@ -46,7 +46,7 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	return core.ToolSchema{
 		Name:        "Agent",
 		Description: sb.String(),
-		Parameters:  agentToolParameters,
+		Definition:  agentToolParameters,
 	}
 }
 
@@ -89,7 +89,7 @@ func (t *AgentStopTool) Schema() core.ToolSchema {
 		Description: `Stops a running background agent.
 
 Only use the exact task_id returned when that agent was started. This tool cannot stop background Bash commands; use the process-group command reported by Bash instead.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"task_id": map[string]any{
@@ -119,7 +119,7 @@ Recipients (to):
 Notes:
 - Delivery is best-effort: a subagent that has finished (or never takes another step) will not see the message. A subagent's final result comes back on its own when it completes — do not use SendMessage for it.
 - The recipient sees the message as a user turn — make it self-contained.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"to": map[string]any{

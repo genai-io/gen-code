@@ -158,7 +158,7 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 		Model:        "claude-opus-5",
 		SystemPrompt: "be brief",
 		Messages:     []core.Message{core.UserMessage("read main.go", nil)},
-		Tools:        []ToolSchema{{Name: "Read", Description: "Read a file", Parameters: map[string]any{"type": "object"}}},
+		Tools:        []ToolSchema{{Name: "Read", Description: "Read a file", Definition: map[string]any{"type": "object"}}},
 		MaxTokens:    2048,
 	})
 	if err != nil {

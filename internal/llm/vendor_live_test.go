@@ -111,7 +111,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 	weather := []ToolSchema{{
 		Name:        "get_weather",
 		Description: "Report the current weather in a city.",
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type":                 "object",
 			"properties":           map[string]any{"city": map[string]any{"type": "string"}},
 			"required":             []string{"city"},

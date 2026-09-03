@@ -101,7 +101,7 @@ func TestAgentSchemaOmitsModelOverride(t *testing.T) {
 }
 
 func TestAgentStopSchemaRequiresOnlyTaskID(t *testing.T) {
-	params := (&AgentStopTool{}).Schema().Parameters.(map[string]any)
+	params := (&AgentStopTool{}).Schema().Definition.(map[string]any)
 	required := params["required"].([]string)
 	if len(required) != 1 || required[0] != "task_id" {
 		t.Fatalf("AgentStop required fields = %#v, want [task_id]", required)

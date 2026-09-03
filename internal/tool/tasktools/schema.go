@@ -25,7 +25,7 @@ Tips:
 - Provide activeForm for spinner display ("Fixing bug", "Adding tests")
 - Check TaskGet first to avoid duplicates
 - Task IDs are sequential integers starting from 1. Use addBlockedBy to set dependencies (e.g. addBlockedBy=["1"])`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"subject": map[string]any{
@@ -69,7 +69,7 @@ List mode (no taskId):
 Detail mode (taskId):
 - Before starting a task — read its full requirements, status, and dependencies
 - Verify "Blocked by (open)" is empty before beginning work`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"taskId": map[string]any{
@@ -96,7 +96,7 @@ Status: pending → in_progress → completed. Use "deleted" to remove.
   shown as stalled, since nothing is executing it any more
 - When a <task-reminder> block appears in the conversation, review and update
   stale tasks immediately`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"taskId": map[string]any{

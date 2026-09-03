@@ -20,7 +20,7 @@ func ToAITools(schemas []ToolSchema) []ai.Tool {
 		out[i] = ai.Tool{Schema: ai.Schema{
 			Name:        schema.Name,
 			Description: schema.Description,
-			Definition:  schema.Parameters,
+			Definition:  schema.Definition,
 		}}
 	}
 	return out

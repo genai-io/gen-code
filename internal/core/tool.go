@@ -1,6 +1,10 @@
 package core
 
-import "context"
+import (
+	"context"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+)
 
 // Tool is a single capability an agent can execute.
 //
@@ -20,12 +24,10 @@ type Tool interface {
 	Execute(ctx context.Context, input map[string]any) (string, error)
 }
 
-// ToolSchema is a typed tool definition sent to the LLM.
-type ToolSchema struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  any    `json:"input_schema,omitempty"` // JSON Schema object
-}
+// ToolSchema is what the model is told a tool takes. It is ai.Schema: the
+// same three things — a name, a description, and the JSON Schema itself —
+// which is what the SDK sends and what it validates arguments against.
+type ToolSchema = ai.Schema
 
 // Tools is a mutable, queryable collection of tools.
 //

@@ -267,8 +267,8 @@ func toolSchemaView(s core.ToolSchema) *transcript.ToolSchemaView {
 		Name:        s.Name,
 		Description: s.Description,
 	}
-	if s.Parameters != nil {
-		if data, err := json.Marshal(s.Parameters); err == nil {
+	if s.Definition != nil {
+		if data, err := json.Marshal(s.Definition); err == nil {
 			view.Parameters = data
 		}
 	}

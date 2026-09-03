@@ -15,7 +15,7 @@ Single question (most common):
 
 Multiple questions (rare):
   {"questions": [{"question": "Q1?", "options": ["A","B"]}, {"question": "Q2?", "options": ["X","Y"]}]}`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"question": map[string]any{

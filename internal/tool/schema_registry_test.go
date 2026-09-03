@@ -126,7 +126,7 @@ func TestAgentDirectoryReevaluatedPerCall(t *testing.T) {
 
 func TestBuiltInToolSchemasAreOpenAICompatibleObjects(t *testing.T) {
 	for _, schema := range tool.GetToolSchemas() {
-		params, ok := schema.Parameters.(map[string]any)
+		params, ok := schema.Definition.(map[string]any)
 		if !ok {
 			t.Fatalf("%s parameters must be a JSON schema object map", schema.Name)
 		}
@@ -146,7 +146,7 @@ func TestAskUserQuestionSchemaRejectsEmptyQuestionsShape(t *testing.T) {
 	if !ok {
 		t.Fatal("AskUserQuestion schema not found")
 	}
-	params := schema.Parameters.(map[string]any)
+	params := schema.Definition.(map[string]any)
 	if got, ok := params["minProperties"].(int); !ok || got != 1 {
 		t.Fatalf("AskUserQuestion must require at least one input property, got %#v", params["minProperties"])
 	}

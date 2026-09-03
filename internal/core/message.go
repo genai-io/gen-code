@@ -307,16 +307,9 @@ type Attachment struct {
 // ToolCall represents a tool call from the model.
 type ToolCall = ai.ToolCall
 
-// ReasoningItem is an opaque reasoning block emitted by a model and echoed back
-// on the next request. Used by OpenAI's stateless (store=false) ChatGPT
-// subscription backend, where a reasoning model's function_call must be preceded
-// by its reasoning item; EncryptedContent lets the model restore the reasoning
-// without server-side state.
-type ReasoningItem struct {
-	ID               string `json:"id"`
-	EncryptedContent string `json:"encrypted_content,omitempty"`
-	Summary          string `json:"summary,omitempty"`
-}
+// ReasoningItem is the SDK's: opaque provider reasoning state, replayed
+// untouched or a reasoning model starts over.
+type ReasoningItem = ai.ReasoningItem
 
 // ToolResult is the outcome of a tool execution.
 type ToolResult struct {

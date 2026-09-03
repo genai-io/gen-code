@@ -73,7 +73,7 @@ func Schema(caps Capabilities) core.ToolSchema {
 	return core.ToolSchema{
 		Name:        tool.ToolEvolve,
 		Description: desc,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"reason": map[string]any{

@@ -88,7 +88,7 @@ func (f *fakeTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name:        f.name,
 		Description: "fake tool for testing",
-		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Definition:  map[string]any{"type": "object", "properties": map[string]any{}},
 	}
 }
 func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolresult.ToolResult {

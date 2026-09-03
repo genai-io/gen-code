@@ -181,7 +181,7 @@ func getTokenLimitAgentTools() []llm.ToolSchema {
 		{
 			Name:        "WebSearch",
 			Description: "Search the web for information about model token limits",
-			Parameters: map[string]any{
+			Definition: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string", "description": "The search query"},
@@ -192,7 +192,7 @@ func getTokenLimitAgentTools() []llm.ToolSchema {
 		{
 			Name:        "WebFetch",
 			Description: "Fetch content from a URL to read documentation",
-			Parameters: map[string]any{
+			Definition: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"url": map[string]any{"type": "string", "description": "The URL to fetch"},

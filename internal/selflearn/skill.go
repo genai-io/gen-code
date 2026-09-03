@@ -563,7 +563,7 @@ func (t *skillManageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name:        t.Name(),
 		Description: t.Description(),
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"action": map[string]any{

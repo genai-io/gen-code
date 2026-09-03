@@ -10,7 +10,7 @@ func (t *WebFetchTool) Schema() core.ToolSchema {
 
 - HTTP is upgraded to HTTPS; very large content may be truncated.
 - For GitHub URLs prefer the gh CLI via Bash (gh pr view, gh issue view, gh api).`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"url": map[string]any{
@@ -33,7 +33,7 @@ func (t *WebSearchTool) Schema() core.ToolSchema {
 		Name: "WebSearch",
 		Description: `Search the web for up-to-date information. Returns a list of relevant results with titles, URLs, and snippets.
 When searching for current information, always use the present year rather than previous years.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{

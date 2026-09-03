@@ -11,7 +11,7 @@ func (t *SkillTool) Schema() core.ToolSchema {
 - Available skills are listed in <system-reminder> messages; only invoke one that appears there. A "/name" (slash command) in a user message refers to a skill — but not built-in CLI commands like /help or /clear.
 - When a skill matches the task, invoke it BEFORE generating any other response about the task.
 - Don't invoke a skill that is already running. If the user message carries a <command-name> tag, the skill body is already inlined — follow it instead of calling this tool again.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"skill": map[string]any{
