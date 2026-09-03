@@ -746,7 +746,7 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 	defer quiet.Stop()
 
 	var resp *ai.Response
-	for event, err := range client.Stream(streamCtx, ToAIMessages(msgs, client.Model()),
+	for event, err := range client.Stream(streamCtx, ToAIMessages(msgs),
 		a.streamOptions(sys, tools)...) {
 		quiet.Reset(a.idleTimeout)
 		if err != nil {

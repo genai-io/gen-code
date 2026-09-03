@@ -15,18 +15,17 @@ import "github.com/genai-io/sdk-go/pkg/ai"
 // one-shot Complete, print mode. One copy, in the foundation layer, which llm
 // imports rather than the other way round.
 
-// ToAIMessages converts San's history into the SDK's, for the model it is about
-// to be sent to.
+// ToAIMessages converts San's history into the SDK's.
 //
-// The model is a parameter because one thing in a turn is not portable: a
-// model's own thinking goes back only where that endpoint takes it back, and
-// San's history is cross-provider — a session can switch models mid-run, so
-// the thinking in it may have come from somewhere else entirely.
+// It takes no model. A session can switch models mid-run, so the reasoning
+// state in the history may have come from somewhere else entirely — and since
+// sdk-go v0.4.0 the client drops what the endpoint being asked cannot replay,
+// which is the one thing that used to need deciding here.
 //
 // Tool-call/result pairing is not repaired here: ai.Client.prepare runs
 // RepairHistory on every request, which is the same repair San's providers do
 // themselves today.
-func ToAIMessages(msgs []Message, model ai.Model) []ai.Message {
+func ToAIMessages(msgs []Message) []ai.Message {
 	out := make([]ai.Message, 0, len(msgs))
 	for _, msg := range msgs {
 		switch {
@@ -42,7 +41,7 @@ func ToAIMessages(msgs []Message, model ai.Model) []ai.Message {
 				out = append(out, ai.Message{Role: ai.RoleUser, Content: content})
 			}
 		case msg.Role == ai.RoleAssistant:
-			if content := assistantContent(msg, model); len(content) > 0 {
+			if content := assistantContent(msg); len(content) > 0 {
 				out = append(out, ai.Message{Role: ai.RoleAssistant, Content: content})
 			}
 		}
@@ -82,10 +81,15 @@ func userContent(msg Message) ai.Content {
 // first — Anthropic rejects a thinking block that does not lead, and OpenAI's
 // stateless backend rejects a call whose reasoning item does not precede it —
 // then the answer, then the calls.
-func assistantContent(msg Message, model ai.Model) ai.Content {
+//
+// Everything the model left behind goes in. Which of it the endpoint about to
+// be asked can actually replay is the SDK's to decide: ai drops the reasoning
+// state a model cannot take, so a history that came from another provider
+// costs nothing here and needs no model to lay out.
+func assistantContent(msg Message) ai.Content {
 	content := make(ai.Content, 0, 2+len(msg.Reasoning)+len(msg.ToolCalls))
-	if thinking, ok := replayableThinking(msg, model); ok {
-		content = append(content, thinking)
+	if msg.Thinking != "" {
+		content = append(content, ai.ThinkingBlock(msg.Thinking, msg.ThinkingSignature))
 	}
 	for _, item := range msg.Reasoning {
 		content = append(content, ai.ReasoningBlock(ai.ReasoningItem{
@@ -101,45 +105,6 @@ func assistantContent(msg Message, model ai.Model) ai.Content {
 		content = append(content, ai.ToolCallBlock(call))
 	}
 	return content
-}
-
-// replayableThinking returns the thinking block to send back with this turn,
-// and whether the endpoint takes one at all.
-//
-// Each protocol wants its own thing, and none of them tolerates another's.
-// Anthropic replays a thinking block only with the signature that proves the
-// text was not edited, and rejects one without it. An OpenAI-compatible
-// endpoint carries it as reasoning_content, which only some of them accept,
-// and every one of them rejects a signature. The Responses protocol replays
-// reasoning as the opaque items above instead, and Gemini takes the text as a
-// thought part.
-//
-// Where none of that applies the thinking San recorded is display-only: it was
-// shown to the user and stays out of the request. That is what each of San's
-// own provider packages does today, decided once here rather than per vendor.
-func replayableThinking(msg Message, model ai.Model) (ai.Block, bool) {
-	if msg.Thinking == "" {
-		return ai.Block{}, false
-	}
-	switch model.API {
-	case ai.APIAnthropicMessages, ai.APIAnthropicVertex:
-		if msg.ThinkingSignature == "" {
-			return ai.Block{}, false
-		}
-		return ai.ThinkingBlock(msg.Thinking, msg.ThinkingSignature), true
-	case ai.APIOpenAIChat:
-		if !ai.CompatOf[ai.OpenAIChatCompat](model).ReasoningContent {
-			return ai.Block{}, false
-		}
-		return ai.ThinkingBlock(msg.Thinking, ""), true
-	case ai.APIGoogleGenAI:
-		return ai.ThinkingBlock(msg.Thinking, ""), true
-	default:
-		// The Responses protocol carries reasoning as opaque items, which
-		// assistantContent already replays; its readable summary is not a
-		// second copy to send back.
-		return ai.Block{}, false
-	}
 }
 
 // ToAITools converts San's tool schemas. Run stays nil: San executes tools

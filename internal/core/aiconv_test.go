@@ -4,67 +4,48 @@ import (
 	"testing"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
-	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 )
 
-// Moved here with the function it tests: replayableThinking decides whether a
-// model's own thinking may go back to the endpoint it came from, and that
-// decision belongs with the conversion.
-
-func TestThinkingIsReplayedOnlyWhereItCanBe(t *testing.T) {
-	claudeModel, err := catalog.Model("anthropic/claude-opus-5")
-	if err != nil {
-		t.Fatal(err)
-	}
-	deepseekModel, err := catalog.Model("deepseek/deepseek-v4-flash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sensenovaModel, err := catalog.Model("sensenova/deepseek-v4-flash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	codexModel, err := catalog.Model("openai/gpt-5.6-luna")
-	if err != nil {
-		t.Fatal(err)
+// What this conversion owes the SDK is everything the model left behind: the
+// per-endpoint decision about which of it can go back moved to ai.Model, which
+// drops or trims it on the way out. So what is checked here is that nothing is
+// lost on the way in — the test that used to sit here, a table of protocols
+// and their answers, now lives once in the SDK instead of once per application.
+func TestAModelsOwnStateSurvivesTheConversion(t *testing.T) {
+	msgs := []Message{
+		{
+			Role: ai.RoleAssistant, Content: "done",
+			Thinking: "weighing it", ThinkingSignature: "sig-1",
+			Reasoning: []ReasoningItem{{ID: "r1", EncryptedContent: "opaque"}},
+			ToolCalls: []ToolCall{{ID: "c1", Name: "Read", Input: "{}"}},
+		},
 	}
 
-	signed := Message{Role: ai.RoleAssistant, Content: "done", Thinking: "weighing it", ThinkingSignature: "sig-1"}
-	unsigned := Message{Role: ai.RoleAssistant, Content: "done", Thinking: "weighing it"}
-
-	cases := []struct {
-		name      string
-		msg       Message
-		model     ai.Model
-		want      bool
-		signature string
-	}{
-		{"anthropic keeps its own signed thinking", signed, claudeModel, true, "sig-1"},
-		// A session that switched models: the thinking came from somewhere
-		// with no signature, and Anthropic rejects one without.
-		{"anthropic drops unsigned thinking", unsigned, claudeModel, false, ""},
-		// The signature belongs to another protocol and must not travel with it.
-		{"chat completions strips a foreign signature", signed, deepseekModel, true, ""},
-		{"an endpoint that cannot take it back drops it", signed, sensenovaModel, false, ""},
-		// Responses replays reasoning as opaque items instead.
-		{"responses drops the readable summary", signed, codexModel, false, ""},
+	out := ToAIMessages(msgs)
+	if len(out) != 1 {
+		t.Fatalf("converted to %d messages, want 1", len(out))
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			block, ok := replayableThinking(tc.msg, tc.model)
-			if ok != tc.want {
-				t.Fatalf("replayed = %v, want %v", ok, tc.want)
-			}
-			if ok && block.Signature != tc.signature {
-				t.Errorf("signature = %q, want %q", block.Signature, tc.signature)
-			}
-		})
+	// Replay order: reasoning first — Anthropic rejects a thinking block that
+	// does not lead, and a Responses call whose reasoning item does not
+	// precede it — then the answer, then the calls.
+	var kinds []ai.BlockType
+	for _, b := range out[0].Content {
+		kinds = append(kinds, b.Type)
+	}
+	want := []ai.BlockType{ai.BlockThinking, ai.BlockReasoning, ai.BlockText, ai.BlockToolCall}
+	if len(kinds) != len(want) {
+		t.Fatalf("blocks = %v, want %v", kinds, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("blocks = %v, want %v", kinds, want)
+		}
 	}
 
-	// The whole conversion agrees with the rule.
-	messages := ToAIMessages([]Message{unsigned}, claudeModel)
-	if len(messages) != 1 || messages[0].Content.Has(ai.BlockThinking) {
-		t.Errorf("unsigned thinking reached an Anthropic request: %+v", messages)
+	// And the signature travels with the thinking it proves. Whether the
+	// endpoint being asked can take it is ai.Model's to answer, not this.
+	if got := out[0].Content[0].Signature; got != "sig-1" {
+		t.Errorf("signature = %q, want it carried through", got)
 	}
 }

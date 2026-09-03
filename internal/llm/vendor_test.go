@@ -112,7 +112,7 @@ func legacyStream(ctx context.Context, p Provider, opts CompletionOptions) <-cha
 			callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
 		}
 		callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
-		for event, err := range client.Stream(ctx, core.ToAIMessages(opts.Messages, client.Model()), callOpts...) {
+		for event, err := range client.Stream(ctx, core.ToAIMessages(opts.Messages), callOpts...) {
 			if err != nil {
 				ch <- StreamChunk{Type: ChunkTypeError, Error: err}
 				return
