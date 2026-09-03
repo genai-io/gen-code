@@ -11,7 +11,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/creack/pty v1.1.24
-	github.com/genai-io/sdk-go v0.2.0
+	github.com/genai-io/sdk-go v0.3.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-runewidth v0.0.28
@@ -101,7 +101,3 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-// TODO(pr1): 开发期指向本地 sdk-go —— ai.Message.ID 尚未发布。
-// 合并前必须删掉这一行，改成 bump 到含该字段的 sdk-go release。
-replace github.com/genai-io/sdk-go => ../sdk-go
