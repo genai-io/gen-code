@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -112,7 +114,7 @@ func MessageToBlocks(msg core.Message) []ContentBlock {
 	}
 }
 
-func userContentToBlocks(content, displayContent string, images []core.Image) []ContentBlock {
+func userContentToBlocks(content, displayContent string, images []core.Attachment) []ContentBlock {
 	if len(images) > 0 && displayContent != "" && core.InlineImageTokenRe.MatchString(displayContent) {
 		return interleavedUserContentToBlocks(content, displayContent, images)
 	}
@@ -128,7 +130,7 @@ func userContentToBlocks(content, displayContent string, images []core.Image) []
 	return blocks
 }
 
-func interleavedUserContentToBlocks(content, displayContent string, images []core.Image) []ContentBlock {
+func interleavedUserContentToBlocks(content, displayContent string, images []core.Attachment) []ContentBlock {
 	var blocks []ContentBlock
 	last := 0
 
@@ -227,7 +229,7 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 			}
 		case "image":
 			if block.ImageSource != nil {
-				msg.Images = append(msg.Images, core.Image{MediaType: block.ImageSource.MediaType, Data: block.ImageSource.Data})
+				msg.Images = append(msg.Images, core.Attachment{Image: ai.Image{MediaType: block.ImageSource.MediaType, Data: block.ImageSource.Data}})
 				imageCount++
 				display.WriteString(fmt.Sprintf("[Image #%d]", imageCount))
 			}

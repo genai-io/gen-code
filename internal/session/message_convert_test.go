@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"strings"
 	"testing"
 	"time"
@@ -205,7 +207,7 @@ func Test_userContentToBlocks_preserveInlineImageOrder(t *testing.T) {
 	blocks := userContentToBlocks(
 		"这个图片说了什么 请说一下",
 		"[Image #1] 这个图片说了什么 请说一下",
-		[]core.Image{{MediaType: "image/png", Data: "abc"}},
+		[]core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "abc"}}},
 	)
 
 	if len(blocks) != 2 {

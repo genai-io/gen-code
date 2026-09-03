@@ -53,11 +53,11 @@ const (
 // agent run loop exchange, append to history, and persist. It holds no
 // UI/display state — for the rendered TUI view-model, see ChatMessage.
 type Message struct {
-	ID             string  `json:"id,omitempty"`
-	Role           Role    `json:"role"`
-	Content        string  `json:"content,omitempty"`
-	DisplayContent string  `json:"display_content,omitempty"`
-	Images         []Image `json:"images,omitempty"`
+	ID             string       `json:"id,omitempty"`
+	Role           Role         `json:"role"`
+	Content        string       `json:"content,omitempty"`
+	DisplayContent string       `json:"display_content,omitempty"`
+	Images         []Attachment `json:"images,omitempty"`
 	// Reasoning is carried in one of two provider shapes; they are mutually
 	// exclusive on a given message.
 	//
@@ -108,7 +108,7 @@ type ChatMessage struct {
 	DisplayContent    string
 	Thinking          string
 	ThinkingSignature string
-	Images            []Image
+	Images            []Attachment
 	ToolCalls         []ToolCall
 	ToolResult        *ToolResult
 	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
@@ -194,13 +194,18 @@ func (m Message) ToChat() ChatMessage {
 	}
 }
 
-// Image represents an image attachment.
-type Image struct {
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-	FileName  string `json:"file_name"`
-	// Path is the absolute source path on disk, when the image came from a
-	// file. Empty for images that have no backing file (e.g. clipboard pastes).
+// Attachment is a picture a person attached, and where it came from.
+//
+// The picture itself is ai.Image — bytes and a media type — and that is all the
+// model is ever sent. Path is San's: the absolute source path when the file
+// came from disk, empty for a clipboard paste. It is provenance, a fact about
+// the act of attaching rather than about the image, which is why it lives out
+// here and not on the conversation.
+//
+// It buys two things. A model that cannot see pictures is handed a path to
+// open instead, and a pasted image is not written to a temp file twice.
+type Attachment struct {
+	ai.Image
 	Path string `json:"path,omitempty"`
 }
 
@@ -231,7 +236,7 @@ type ToolResult struct {
 // --- Constructors ---
 
 // UserMessage creates a user message with optional images.
-func UserMessage(text string, images []Image) Message {
+func UserMessage(text string, images []Attachment) Message {
 	return Message{
 		Role:           RoleUser,
 		Content:        text,
@@ -451,7 +456,7 @@ const (
 type ContentPart struct {
 	Type  ContentPartType
 	Text  string
-	Image *Image
+	Image *Attachment
 }
 
 // InlineImageTokenRe matches the "[Image #N]" placeholder tokens that stand in

@@ -1,6 +1,8 @@
 package input
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"os"
 	"strings"
 	"testing"
@@ -459,8 +461,8 @@ func TestLeadingImagePath(t *testing.T) {
 
 func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
 	m := New("", 80, nil, SelectorDeps{})
-	first := m.AddPendingImage(core.Image{FileName: "a.png"})
-	second := m.AddPendingImage(core.Image{FileName: "b.png"})
+	first := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "a.png"}})
+	second := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "b.png"}})
 
 	m.Textarea.SetValue(second + " alpha " + first + " omega")
 
@@ -486,7 +488,7 @@ func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
 
 func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
 	m := New("", 80, nil, SelectorDeps{})
-	label := m.AddPendingImage(core.Image{FileName: "a.png"})
+	label := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "a.png"}})
 
 	raw := "  " + label + " hi"
 	m.Textarea.SetValue(raw)
@@ -502,7 +504,7 @@ func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
 
 func TestRemoveImageToken(t *testing.T) {
 	m := New("", 80, nil, SelectorDeps{})
-	label := m.AddPendingImage(core.Image{FileName: "clip.png"})
+	label := m.AddPendingImage(core.Attachment{Image: ai.Image{FileName: "clip.png"}})
 	m.Textarea.SetValue("hello " + label + " world")
 
 	match, ok := m.MatchAdjacentToCursor(len([]rune("hello "+label)), false)

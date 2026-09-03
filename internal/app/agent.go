@@ -488,7 +488,7 @@ func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Messa
 	return stripped
 }
 
-func (m *model) sendToAgent(content string, images []core.Image) tea.Cmd {
+func (m *model) sendToAgent(content string, images []core.Attachment) tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}

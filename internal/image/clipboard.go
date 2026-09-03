@@ -12,9 +12,9 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// newClipboardImage builds a core.Image from clipboard PNG data.
+// newClipboardImage builds a core.Attachment from clipboard PNG data.
 // Returns nil, nil if data is empty.
-func newClipboardImage(data []byte) (*core.Image, error) {
+func newClipboardImage(data []byte) (*core.Attachment, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
@@ -27,7 +27,7 @@ func newClipboardImage(data []byte) (*core.Image, error) {
 }
 
 // readClipboardMacOS reads image from macOS clipboard using osascript.
-func readClipboardMacOS() (*core.Image, error) {
+func readClipboardMacOS() (*core.Attachment, error) {
 	tmp, err := os.CreateTemp("", "clipboard_*.png")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
@@ -70,7 +70,7 @@ func readClipboardMacOS() (*core.Image, error) {
 }
 
 // readClipboardLinux reads image from Linux clipboard using xclip or xsel.
-func readClipboardLinux() (*core.Image, error) {
+func readClipboardLinux() (*core.Attachment, error) {
 	cmd := exec.Command("xclip", "-selection", "clipboard", "-t", "image/png", "-o")
 	data, err := cmd.Output()
 	if err != nil {
@@ -84,7 +84,7 @@ func readClipboardLinux() (*core.Image, error) {
 }
 
 // readClipboardWindows reads image from the Windows clipboard using PowerShell.
-func readClipboardWindows() (*core.Image, error) {
+func readClipboardWindows() (*core.Attachment, error) {
 	tmp, err := os.CreateTemp("", "clipboard_*.png")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
@@ -122,9 +122,9 @@ func readClipboardWindows() (*core.Image, error) {
 	return newClipboardImage(data)
 }
 
-// ReadClipboard reads an image from the clipboard as a core.Image.
+// ReadClipboard reads an image from the clipboard as a core.Attachment.
 // Returns nil, nil if no image is available (not an error).
-func ReadClipboard() (*core.Image, error) {
+func ReadClipboard() (*core.Attachment, error) {
 	switch runtime.GOOS {
 	case "darwin":
 		return readClipboardMacOS()

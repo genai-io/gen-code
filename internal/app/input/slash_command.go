@@ -77,7 +77,7 @@ type SlashCommandEnv struct {
 	// Model-level action callbacks. These compose multiple services or
 	// touch UI state on `m`, so commands invoke them via the model.
 	CommitMessages          func() []tea.Cmd
-	SubmitToAgent           func(content string, images []core.Image) tea.Cmd
+	SubmitToAgent           func(content string, images []core.Attachment) tea.Cmd
 	HandleSkillInvocation   func() tea.Cmd
 	StartExternalEditor     func(path string) tea.Cmd
 	ReloadAfterPluginChange func() error

@@ -1,6 +1,8 @@
 package conv
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"strings"
 	"testing"
 
@@ -11,7 +13,7 @@ func TestRenderUserMessagePreservesInlineImagePosition(t *testing.T) {
 	rendered := RenderUserMessage(
 		"这个图片说了什么 请说一下",
 		"[Image #1] 这个图片说了什么 请说一下",
-		[]core.Image{{FileName: "clip.png"}},
+		[]core.Attachment{{Image: ai.Image{FileName: "clip.png"}}},
 		nil,
 		80,
 	)

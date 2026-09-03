@@ -67,7 +67,7 @@ func imageLabel(id int) string {
 }
 
 // AddPendingImage appends a new inline image token and returns its label.
-func (m *Model) AddPendingImage(img core.Image) string {
+func (m *Model) AddPendingImage(img core.Attachment) string {
 	m.Images.NextID++
 	m.Images.Pending = append(m.Images.Pending, PendingImage{
 		ID:   m.Images.NextID,
@@ -194,13 +194,13 @@ func (m *Model) RemoveImageToken(match ImageTokenMatch, cursor int) {
 
 // ExtractInlineImages removes inline image tokens from content and returns the
 // ordered images based on their appearance in the text.
-func (m *Model) ExtractInlineImages(input string) (string, []core.Image) {
+func (m *Model) ExtractInlineImages(input string) (string, []core.Attachment) {
 	matches := m.PendingImageMatchesIn(input)
 	if len(matches) == 0 {
 		return strings.TrimSpace(input), nil
 	}
 
-	var images []core.Image
+	var images []core.Attachment
 	valueRunes := []rune(input)
 	var sb strings.Builder
 	last := 0
@@ -320,9 +320,9 @@ func LeadingImagePath(cwd, input string) string {
 // what survived the failure. A caller with somewhere to hand the turn back to
 // can ignore both and abort; one that has to send something anyway sends what
 // resolved instead of the raw text.
-func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
+func ProcessImageRefs(cwd, input string) (string, []core.Attachment, error) {
 	content := input
-	var images []core.Image
+	var images []core.Attachment
 
 	// Step 1: Process @-prefixed image references — remove from text,
 	// abort on load failure.
@@ -447,7 +447,7 @@ func (m *Model) RecordSubmission(cwd, input string) {
 	history.Save(cwd, m.History.Items)
 }
 
-func (m *Model) RestoreImages(images []core.Image) {
+func (m *Model) RestoreImages(images []core.Attachment) {
 	m.Images.Pending = nil
 	m.Images.Selection = ImageSelection{}
 	for i, img := range images {
@@ -461,8 +461,8 @@ func (m *Model) HasContent() bool {
 	return strings.TrimSpace(m.Textarea.Value()) != "" || len(m.Images.Pending) > 0
 }
 
-func (m *Model) PendingImages() []core.Image {
-	images := make([]core.Image, len(m.Images.Pending))
+func (m *Model) PendingImages() []core.Attachment {
+	images := make([]core.Attachment, len(m.Images.Pending))
 	for i, p := range m.Images.Pending {
 		images[i] = p.Data
 	}

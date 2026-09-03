@@ -383,7 +383,7 @@ func TestCopilotOptsIntoVisionOnlyWhenSendingImages(t *testing.T) {
 	}
 
 	followUp := headers([]core.Message{
-		{Role: core.RoleUser, Content: "look", Images: []core.Image{{MediaType: "image/png", Data: "x"}}},
+		{Role: core.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
 		{Role: core.RoleAssistant, Content: "looking"},
 	})
 	if followUp["X-Initiator"] != "agent" {

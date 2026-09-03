@@ -421,7 +421,7 @@ func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
 	client := NewClient(p, "mock", 0)
 
 	if _, err := client.TurnClient([]core.Message{
-		{Role: core.RoleUser, Content: "look", Images: []core.Image{{MediaType: "image/png", Data: "x"}}},
+		{Role: core.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
 	}); err != nil {
 		t.Fatalf("TurnClient: %v", err)
 	}

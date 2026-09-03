@@ -57,7 +57,7 @@ func userContent(msg Message) ai.Content {
 	if parts == nil {
 		content := ai.TextContent(msg.Content)
 		for _, img := range msg.Images {
-			content = append(content, ai.ImageBlock(toImage(img)))
+			content = append(content, ai.ImageBlock(img.Image))
 		}
 		return content
 	}
@@ -71,7 +71,7 @@ func userContent(msg Message) ai.Content {
 			}
 		case ContentPartImage:
 			if part.Image != nil {
-				content = append(content, ai.ImageBlock(toImage(*part.Image)))
+				content = append(content, ai.ImageBlock(part.Image.Image))
 			}
 		}
 	}
@@ -140,10 +140,6 @@ func replayableThinking(msg Message, model ai.Model) (ai.Block, bool) {
 		// second copy to send back.
 		return ai.Block{}, false
 	}
-}
-
-func toImage(img Image) ai.Image {
-	return ai.Image{MediaType: img.MediaType, Data: img.Data, FileName: img.FileName}
 }
 
 // ToAITools converts San's tool schemas. Run stays nil: San executes tools

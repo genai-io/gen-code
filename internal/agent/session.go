@@ -91,7 +91,7 @@ func (s *Session) Messages() []core.Message {
 	return ag.Messages()
 }
 
-func (s *Session) Send(content string, images []core.Image) {
+func (s *Session) Send(content string, images []core.Attachment) {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()

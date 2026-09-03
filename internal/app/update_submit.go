@@ -145,7 +145,7 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	}
 	displayContent := content
 	content, inlineImages := m.userInput.ExtractInlineImages(content)
-	allImages := make([]core.Image, 0, len(inlineImages)+len(fileImages))
+	allImages := make([]core.Attachment, 0, len(inlineImages)+len(fileImages))
 	allImages = append(allImages, inlineImages...)
 	allImages = append(allImages, fileImages...)
 	return core.ChatMessage{
@@ -170,7 +170,7 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 // seedAgentMessages drops the pending message from the chain, and an already
 // active session skips seeding altogether — which is why the images must not
 // reach Send in the first place.
-func (m *model) adaptTurnForProvider(content string, images []core.Image) (string, []core.Image) {
+func (m *model) adaptTurnForProvider(content string, images []core.Attachment) (string, []core.Attachment) {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
 		return content, images
 	}
@@ -229,7 +229,7 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // pushes content+images onto its inbox, returns the outbox-poll cmd.
 // On no-provider or ensureAgentSession failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
-func (m *model) SubmitToAgent(content string, images []core.Image) tea.Cmd {
+func (m *model) SubmitToAgent(content string, images []core.Attachment) tea.Cmd {
 	log.QueueLog("SubmitToAgent: %q", truncate(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()

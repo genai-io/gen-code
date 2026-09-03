@@ -169,7 +169,7 @@ func chainWithImage() []core.Message {
 			ID:      "u1",
 			Role:    core.RoleUser,
 			Content: "what is in this screenshot?",
-			Images:  []core.Image{{MediaType: "image/png", Data: "aW1n", FileName: "shot.png"}},
+			Images:  []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n", FileName: "shot.png"}}},
 		},
 		{ID: "a1", Role: core.RoleAssistant, Content: "a terminal"},
 	}

@@ -79,7 +79,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	// Images the user attached travel on the item — they were moved off the
 	// textarea when it was queued. Anything pending in the textarea now belongs
 	// to the next message, so it must not be picked up here.
-	images := make([]core.Image, 0, len(item.Images)+len(fileImages))
+	images := make([]core.Attachment, 0, len(item.Images)+len(fileImages))
 	images = append(images, item.Images...)
 	images = append(images, fileImages...)
 	// Split display from content the way buildUserMessage does: the queued text

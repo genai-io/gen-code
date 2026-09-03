@@ -1,6 +1,8 @@
 package input
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"testing"
 
 	"github.com/genai-io/san/internal/app/conv"
@@ -15,7 +17,7 @@ func TestRecentSuggestionMessagesCarryNoImages(t *testing.T) {
 		Messages: []core.ChatMessage{{
 			Role:    core.RoleUser,
 			Content: "what does this show",
-			Images:  []core.Image{{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "chart.png"}},
+			Images:  []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "chart.png"}}},
 		}},
 	}
 
