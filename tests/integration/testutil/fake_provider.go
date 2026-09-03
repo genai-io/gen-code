@@ -60,7 +60,7 @@ func (f *FakeProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.D
 	f.mu.Lock()
 	msgs := make([]core.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		msgs = append(msgs, core.Message{Role: ai.Role(m.Role), Content: m.Content.Text()})
+		msgs = append(msgs, core.Message{Role: m.Role, Content: m.Content})
 	}
 	f.Calls = append(f.Calls, llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs})
 	fail := f.injectError()

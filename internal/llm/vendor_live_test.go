@@ -58,7 +58,7 @@ func TestLiveTurn(t *testing.T) {
 			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
-				Messages:     []core.Message{{Role: ai.RoleUser, Content: "What is the capital of France?"}},
+				Messages:     []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("What is the capital of France?")}},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {
@@ -156,7 +156,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 				return resp
 			}
 
-			history := []core.Message{{Role: ai.RoleUser, Content: "What is the weather in Paris right now?"}}
+			history := []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("What is the weather in Paris right now?")}}
 			asked := turn(history)
 			if len(asked.ToolCalls) == 0 {
 				// Whether a model reaches for a tool is its own decision, not
@@ -167,21 +167,20 @@ func TestLiveToolRoundTrip(t *testing.T) {
 			call := asked.ToolCalls[0]
 			t.Logf("call %s(%s)", call.Name, call.Input)
 
-			history = append(history,
-				core.Message{
-					Role:              ai.RoleAssistant,
-					Content:           asked.Content,
-					Thinking:          asked.Thinking,
-					ThinkingSignature: asked.ThinkingSignature,
-					Reasoning:         asked.Reasoning,
-					ToolCalls:         asked.ToolCalls,
-				},
-				core.Message{Role: ai.RoleUser, ToolResult: &core.ToolResult{
-					ToolCallID: call.ID,
-					ToolName:   call.Name,
-					Content:    "18C and raining",
-				}},
-			)
+			row := core.ChatMessage{
+				Role:              core.ChatAssistant,
+				Content:           asked.Content,
+				Thinking:          asked.Thinking,
+				ThinkingSignature: asked.ThinkingSignature,
+				Reasoning:         asked.Reasoning,
+				ToolCalls:         asked.ToolCalls,
+			}
+			replay, _ := row.ToMessage()
+			history = append(history, replay, core.ToolResultMessage(core.ToolResult{
+				ToolCallID: call.ID,
+				ToolName:   call.Name,
+				Content:    "18C and raining",
+			}))
 
 			answered := turn(history)
 			t.Logf("answer=%q stop=%s", answered.Content, answered.StopReason)
@@ -233,7 +232,7 @@ func TestLiveSubscription(t *testing.T) {
 			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
-				Messages:     []core.Message{{Role: ai.RoleUser, Content: "What is the capital of France?"}},
+				Messages:     []core.Message{core.UserMessage("What is the capital of France?", nil)},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {

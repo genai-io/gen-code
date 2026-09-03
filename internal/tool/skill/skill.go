@@ -219,10 +219,10 @@ func alreadyInlined(ctx context.Context, fullName string) bool {
 
 		// Want the most recent user-typed turn; a tool result is also RoleUser
 		// (it carries a ToolResult), so skip those to avoid stopping on one.
-		if m.Role != ai.RoleUser || m.ToolResult != nil {
+		if m.Role != ai.RoleUser || len(m.ToolResults()) > 0 {
 			continue
 		}
-		return strings.HasPrefix(strings.TrimSpace(m.Content), tag)
+		return strings.HasPrefix(strings.TrimSpace(m.Text()), tag)
 	}
 	return false
 }

@@ -177,10 +177,10 @@ func turnHeadersFor(vendorID string) func([]core.Message) map[string]string {
 		initiator := "user"
 		vision := false
 		for _, msg := range msgs {
-			if msg.Role == ai.RoleAssistant || msg.ToolResult != nil {
+			if msg.Role == ai.RoleAssistant || len(msg.ToolResults()) > 0 {
 				initiator = "agent"
 			}
-			if len(msg.Images) > 0 {
+			if msg.Content.HasImages() {
 				vision = true
 			}
 		}

@@ -31,7 +31,7 @@ type agent struct {
 	maxTurnRetries    int
 	firstChunkTimeout time.Duration
 	idleTimeout       time.Duration
-	inbox             chan Message
+	inbox             chan Inbound
 	outbox            chan Event
 	onEvent           func(Event)
 
@@ -91,7 +91,7 @@ type toolTaskOutput struct {
 func (a *agent) ID() string            { return a.id }
 func (a *agent) System() System        { return a.system }
 func (a *agent) Tools() Tools          { return a.tools }
-func (a *agent) Inbox() chan<- Message { return a.inbox }
+func (a *agent) Inbox() chan<- Inbound { return a.inbox }
 func (a *agent) Outbox() <-chan Event  { return a.outbox }
 func (a *agent) Messages() []Message   { return a.snapshot() }
 
@@ -104,7 +104,7 @@ func (a *agent) SetMessages(msgs []Message) {
 
 // Append adds a message to the conversation and fires the OnMessage hook.
 func (a *agent) Append(ctx context.Context, msg Message) {
-	a.ingest(ctx, msg)
+	a.ingest(ctx, Inbound{Msg: msg})
 }
 
 // Run is the agent's main loop: wait for input → think+act → repeat.
@@ -285,16 +285,16 @@ func (a *agent) waitForInput(ctx context.Context) error {
 // ingestBatch processes the just-received message plus any others already
 // queued (non-blocking), and reports whether any of them starts a turn. A
 // closed inbox or SigStop yields errStopped.
-func (a *agent) ingestBatch(ctx context.Context, msg Message, ok bool) (startsTurn bool, err error) {
+func (a *agent) ingestBatch(ctx context.Context, in Inbound, ok bool) (startsTurn bool, err error) {
 	for {
-		if !ok || msg.Signal == SigStop {
+		if !ok || in.Signal == SigStop {
 			return false, errStopped
 		}
-		if a.ingest(ctx, msg) {
+		if a.ingest(ctx, in) {
 			startsTurn = true
 		}
 		select {
-		case msg, ok = <-a.inbox:
+		case in, ok = <-a.inbox:
 			// another message was already queued — loop to process it
 		default:
 			return startsTurn, nil
@@ -306,17 +306,17 @@ func (a *agent) ingestBatch(ctx context.Context, msg Message, ok bool) (startsTu
 // (i.e. a real message was appended to the conversation). SigCompact applies
 // an in-place compaction with the precomputed summary it carries; signals
 // never start a turn.
-func (a *agent) ingest(ctx context.Context, msg Message) bool {
-	if msg.Signal == SigCompact {
-		a.applyCompaction(ctx, msg.Content, len(a.snapshot()), "manual")
+func (a *agent) ingest(ctx context.Context, in Inbound) bool {
+	if in.Signal == SigCompact {
+		a.applyCompaction(ctx, in.Summary, len(a.snapshot()), "manual")
 		return false
 	}
-	a.emit(ctx, MessageEvent(a.id, msg))
-	if msg.Signal == "" {
-		a.append(msg)
-		return true
+	if in.Signal != "" {
+		return false
 	}
-	return false
+	a.emit(ctx, MessageEvent(a.id, in.Msg))
+	a.append(in.Msg)
+	return true
 }
 
 // ThinkAct runs one full inference-action cycle until end_turn.
@@ -431,13 +431,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 		tokensOut += resp.OutputTokens
 
 		a.emit(ctx, PostInferEvent(a.id, resp))
-		a.append(Message{
-			Role:    ai.RoleAssistant,
-			Content: resp.Content, Thinking: resp.Thinking,
-			ThinkingSignature: resp.ThinkingSignature,
-			Reasoning:         resp.Reasoning,
-			ToolCalls:         resp.ToolCalls,
-		})
+		a.append(assistantTurn(resp))
 		// Unconditional: a tool-only step carries no text, and reporting that
 		// honestly beats resurrecting an earlier step's narration as the outcome.
 		lastContent = resp.Content
@@ -452,7 +446,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 				return makeResult(StopMaxOutputRecoveryExhausted), nil
 			}
 			maxOutputRecoveryCount++
-			a.append(Message{Role: ai.RoleUser, Content: TruncatedResumePrompt})
+			a.append(UserMessage(TruncatedResumePrompt, nil))
 			continue
 		}
 
@@ -746,7 +740,7 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 	defer quiet.Stop()
 
 	var resp *ai.Response
-	for event, err := range client.Stream(streamCtx, ToAIMessages(msgs),
+	for event, err := range client.Stream(streamCtx, msgs,
 		a.streamOptions(sys, tools)...) {
 		quiet.Reset(a.idleTimeout)
 		if err != nil {
@@ -864,11 +858,11 @@ func (a *agent) emitFinal(event Event) {
 // ThinkAct cycle so the TUI can pair each user message with its response.
 func (a *agent) drainInbox(ctx context.Context) (int, error) {
 	select {
-	case msg, ok := <-a.inbox:
-		if !ok || msg.Signal == SigStop {
+	case in, ok := <-a.inbox:
+		if !ok || in.Signal == SigStop {
 			return 0, errStopped
 		}
-		if a.ingest(ctx, msg) {
+		if a.ingest(ctx, in) {
 			return 1, nil
 		}
 		return 0, nil
@@ -922,8 +916,27 @@ func (a *agent) snapshot() []Message {
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	// A tool result rides on a ai.RoleUser message — its content lives on
 	// ToolResult.Content, not on Message.Content. See the Role doc.
-	a.append(Message{
-		Role:       ai.RoleUser,
-		ToolResult: &ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError},
-	})
+	a.append(ToolResultMessage(ToolResult{
+		ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError,
+	}))
+}
+
+// assistantTurn is the model's answer as the conversation holds it, in the
+// order every protocol wants it replayed. InferResponse is San's flat view of
+// a response; this is the one place it becomes blocks again.
+func assistantTurn(resp *InferResponse) Message {
+	content := make(ai.Content, 0, 2+len(resp.Reasoning)+len(resp.ToolCalls))
+	if resp.Thinking != "" {
+		content = append(content, ai.ThinkingBlock(resp.Thinking, resp.ThinkingSignature))
+	}
+	for _, item := range resp.Reasoning {
+		content = append(content, ai.ReasoningBlock(ai.ReasoningItem(item)))
+	}
+	if resp.Content != "" {
+		content = append(content, ai.TextBlock(resp.Content))
+	}
+	for _, call := range resp.ToolCalls {
+		content = append(content, ai.ToolCallBlock(call))
+	}
+	return Message{Role: ai.RoleAssistant, Content: content}
 }

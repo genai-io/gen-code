@@ -37,7 +37,7 @@ func TestRecorderWritesMessageBeforeInference(t *testing.T) {
 	})
 
 	// Simulate one turn: user message appends, then PreInfer fires referencing it.
-	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: "hello"}
+	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: userMsg})
 
 	rec.OnAgentEvent(core.Event{Type: core.PreInfer, Source: "main", Data: core.InferenceContext{
@@ -48,7 +48,7 @@ func TestRecorderWritesMessageBeforeInference(t *testing.T) {
 	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &core.InferResponse{
 		StopReason: core.StopEndTurn, Usage: core.Usage{InputTokens: 10, OutputTokens: 5},
 	}})
-	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: "hi"}
+	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: assistantMsg})
 
 	records := readAllRecords(t, dir, "sess-order")
@@ -123,10 +123,10 @@ func TestRecorderAndSaveDoNotDoubleWrite(t *testing.T) {
 
 	// Recorder writes the two messages (agent-side path).
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
-		ID: "agent-m1", Role: ai.RoleUser, Content: "hi",
+		ID: "agent-m1", Role: ai.RoleUser, Content: ai.TextContent("hi"),
 	}})
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
-		ID: "agent-m2", Role: ai.RoleAssistant, Content: "hello",
+		ID: "agent-m2", Role: ai.RoleAssistant, Content: ai.TextContent("hello"),
 	}})
 
 	// TUI then calls Save with its own ChatMessage IDs. Without OmitMessageWrites,
@@ -223,10 +223,10 @@ func TestRecorderSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 		FileStore: fs, SessionID: "sess-seed", AgentID: "main",
 	})
 	rec0.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
-		ID: "old-m1", Role: ai.RoleUser, Content: "first turn",
+		ID: "old-m1", Role: ai.RoleUser, Content: ai.TextContent("first turn"),
 	}})
 	rec0.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
-		ID: "old-m2", Role: ai.RoleAssistant, Content: "first reply",
+		ID: "old-m2", Role: ai.RoleAssistant, Content: ai.TextContent("first reply"),
 	}})
 
 	// Simulate process restart with a fresh recorder; without seeding it
@@ -237,7 +237,7 @@ func TestRecorderSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	rec.seedLastMessageID("old-m2")
 
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
-		ID: "new-m3", Role: ai.RoleUser, Content: "second turn",
+		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
 	}})
 
 	var newMsg transcript.Record

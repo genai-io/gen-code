@@ -93,7 +93,13 @@ func RecentSuggestionMessages(c *conv.ConversationModel) []core.Message {
 	// attachments buy it nothing, and a text-only provider rejects them
 	// outright. The conversion returns copies, so conv keeps its own.
 	for i := range msgs {
-		msgs[i].Images = nil
+		content := make(ai.Content, 0, len(msgs[i].Content))
+		for _, block := range msgs[i].Content {
+			if block.Type != ai.BlockImage {
+				content = append(content, block)
+			}
+		}
+		msgs[i].Content = content
 	}
 	return msgs
 }
@@ -141,7 +147,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 		return PromptSuggestionRequest{}, false
 	}
 	msgs := RecentSuggestionMessages(deps.Conversation)
-	msgs = append(msgs, core.Message{Role: ai.RoleUser, Content: SuggestionUserPrompt})
+	msgs = append(msgs, core.UserMessage(SuggestionUserPrompt, nil))
 
 	return PromptSuggestionRequest{
 		Client:       deps.BuildClient(),

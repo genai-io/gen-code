@@ -334,7 +334,7 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 
 	result := executor.buildUnfinishedAgentResult(run, &core.Result{
 		Content:    "partial",
-		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: "partial"}},
+		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: ai.TextContent("partial")}},
 		Steps:      2,
 		ToolUses:   1,
 		StopReason: core.StopCancelled,
@@ -958,7 +958,7 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	}
 
 	sessionID, transcriptPath := executor.persistSubagentSession("General", "test-model", "Inspect code", []core.Message{
-		{Role: ai.RoleUser, Content: "hello"},
+		{Role: ai.RoleUser, Content: ai.TextContent("hello")},
 	})
 
 	if sessionID != "agent-1" {
@@ -970,7 +970,7 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	if store.saveParentID != "parent-1" || store.saveTitle != "Inspect code" || store.saveModelID != "test-model" || store.saveCwd != "/tmp/project" {
 		t.Fatalf("unexpected save args: %+v", store)
 	}
-	if len(store.saveMessages) != 1 || store.saveMessages[0].Content != "hello" {
+	if len(store.saveMessages) != 1 || store.saveMessages[0].Text() != "hello" {
 		t.Fatalf("unexpected saved messages: %+v", store.saveMessages)
 	}
 }
@@ -1009,7 +1009,7 @@ func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 
 	result := executor.buildUnfinishedAgentResult(run, &core.Result{
 		Content:    "partial",
-		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: "partial"}},
+		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: ai.TextContent("partial")}},
 		Steps:      8,
 		StopReason: core.StopError,
 		StopDetail: "provider unavailable",

@@ -59,13 +59,17 @@ func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
 }
 
 func TestMessageWireCoversEveryFieldSentToTheProvider(t *testing.T) {
+	// Every block kind that goes out, in one message: the conversation is one
+	// ordered sequence now, so a field that is not in it cannot be sent — and
+	// DisplayContent, which this used to include, is not in it any more.
 	msg := core.Message{
-		Role:           ai.RoleAssistant,
-		Content:        "visible answer",
-		DisplayContent: "rendered for the TUI only",
-		Thinking:       "reasoning text",
-		ToolCalls:      []core.ToolCall{{ID: "1", Name: "Bash", Input: `{"command":"ls"}`}},
-		ToolResult:     &core.ToolResult{ToolCallID: "1", Content: "tool output"},
+		Role: ai.RoleAssistant,
+		Content: ai.Content{
+			ai.ThinkingBlock("reasoning text", ""),
+			ai.TextBlock("visible answer"),
+			ai.ToolCallBlock(core.ToolCall{ID: "1", Name: "Bash", Input: `{"command":"ls"}`}),
+			ai.ToolResultBlock(ai.ToolResult{ToolCallID: "1", Content: ai.TextContent("tool output")}),
+		},
 	}
 
 	wire := messageWire(msg)

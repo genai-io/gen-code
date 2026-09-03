@@ -4,8 +4,6 @@
 package app
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"context"
 	"encoding/json"
 	"errors"
@@ -245,7 +243,7 @@ func (m *model) missionRefine(ctx context.Context, draft string) (string, error)
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        modelID,
 		SystemPrompt: missionRefinePrompt,
-		Messages:     []core.Message{{Role: ai.RoleUser, Content: "Mission draft payload (JSON; rewrite only the draft value):\n" + string(payload)}},
+		Messages:     []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
 		MaxTokens:    600,
 	})
 	if err != nil {
@@ -781,7 +779,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	resp, err := llm.Complete(ctx, call.provider, llm.CompletionOptions{
 		Model:        call.model,
 		SystemPrompt: call.system,
-		Messages:     []core.Message{{Role: ai.RoleUser, Content: call.user}},
+		Messages:     []core.Message{core.UserMessage(call.user, nil)},
 		MaxTokens:    call.maxTokens,
 	})
 	if err != nil {

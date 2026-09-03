@@ -12,16 +12,18 @@ import (
 // lost on the way in — the test that used to sit here, a table of protocols
 // and their answers, now lives once in the SDK instead of once per application.
 func TestAModelsOwnStateSurvivesTheConversion(t *testing.T) {
-	msgs := []Message{
-		{
-			Role: ai.RoleAssistant, Content: "done",
-			Thinking: "weighing it", ThinkingSignature: "sig-1",
-			Reasoning: []ReasoningItem{{ID: "r1", EncryptedContent: "opaque"}},
-			ToolCalls: []ToolCall{{ID: "c1", Name: "Read", Input: "{}"}},
-		},
+	chat := ChatMessage{
+		Role: ChatAssistant, Content: "done",
+		Thinking: "weighing it", ThinkingSignature: "sig-1",
+		Reasoning: []ReasoningItem{{ID: "r1", EncryptedContent: "opaque"}},
+		ToolCalls: []ToolCall{{ID: "c1", Name: "Read", Input: "{}"}},
 	}
 
-	out := ToAIMessages(msgs)
+	msg, ok := chat.ToMessage()
+	if !ok {
+		t.Fatal("an assistant row converted to nothing")
+	}
+	out := []Message{msg}
 	if len(out) != 1 {
 		t.Fatalf("converted to %d messages, want 1", len(out))
 	}

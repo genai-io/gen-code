@@ -131,7 +131,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	if run.req.TaskID != "" {
 		broker.Register(run.req.TaskID, func(m broker.Message) bool {
 			select {
-			case ag.Inbox() <- core.UserMessage(m.Content, nil):
+			case ag.Inbox() <- core.Inbound{Msg: core.UserMessage(m.Content, nil)}:
 				return true
 			default:
 				log.Logger().Warn("subagent inbox full; dropped message",

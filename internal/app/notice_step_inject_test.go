@@ -80,7 +80,7 @@ func assertAgentRead(t *testing.T, provider *restartStubProvider) {
 	select {
 	case chain := <-provider.requests:
 		for _, msg := range chain {
-			if strings.Contains(msg.Content, "task-notification") {
+			if strings.Contains(msg.Text(), "task-notification") {
 				return
 			}
 		}

@@ -33,7 +33,7 @@ func (s *autopilotStubProvider) Client(string, map[string]string) (*ai.Client, e
 func (s *autopilotStubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	msgs := make([]core.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		msgs = append(msgs, core.Message{Role: ai.Role(m.Role), Content: m.Content.Text()})
+		msgs = append(msgs, core.Message{Role: m.Role, Content: m.Content})
 	}
 	s.lastOptions = llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs}
 	content := s.content
@@ -157,7 +157,7 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 		"the previous turn hit its step limit"); err != nil {
 		t.Fatalf("autopilotDecideContinue() err = %v", err)
 	}
-	sent := provider.lastOptions.Messages[0].Content
+	sent := provider.lastOptions.Messages[0].Text()
 	if !strings.Contains(sent, "the previous turn hit its step limit") {
 		t.Errorf("prompt missing the stop situation:\n%s", sent)
 	}

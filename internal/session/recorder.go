@@ -211,7 +211,7 @@ func (r *Recorder) onAppend(ev core.Event) {
 	// The agent's message is the conversation; the transcript is the view of
 	// it. ToChat is that view with nothing drawn on it yet, which is exactly
 	// what an agent-side message is.
-	chat := msg.ToChat()
+	chat := core.ChatOf(msg)
 	content := MessageToBlocks(chat)
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible

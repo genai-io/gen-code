@@ -26,10 +26,20 @@ func TestRecentSuggestionMessagesCarryNoImages(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("messages = %d, want the one user turn", len(msgs))
 	}
-	if len(msgs[0].Images) != 0 {
-		t.Errorf("hint request carries %d image(s), want none", len(msgs[0].Images))
+	if imageCount(msgs[0]) != 0 {
+		t.Errorf("hint request carries %d image(s), want none", imageCount(msgs[0]))
 	}
 	if len(c.Messages[0].Images) != 1 {
 		t.Error("stripping mutated the conversation's own copy")
 	}
+}
+
+func imageCount(m core.Message) int {
+	n := 0
+	for _, b := range m.Content {
+		if b.Type == ai.BlockImage {
+			n++
+		}
+	}
+	return n
 }

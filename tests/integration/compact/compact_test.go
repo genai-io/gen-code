@@ -58,7 +58,7 @@ func TestCompact_WithFocus(t *testing.T) {
 	if len(fake.Calls) != 1 {
 		t.Fatalf("expected 1 call, got %d", len(fake.Calls))
 	}
-	if !strings.Contains(fake.Calls[0].Messages[0].Content, "testing") {
+	if !strings.Contains(fake.Calls[0].Messages[0].Text(), "testing") {
 		t.Error("expected focus string 'testing' in sent messages")
 	}
 }
@@ -99,7 +99,7 @@ func TestCompact_WithoutOptionalSections_LeavesPromptPlain(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d", len(fake.Calls))
 	}
 
-	sent := fake.Calls[0].Messages[0].Content
+	sent := fake.Calls[0].Messages[0].Content.Text()
 	if strings.Contains(sent, "**Important**: Focus the summary on:") {
 		t.Fatal("did not expect focus directive without focus override")
 	}

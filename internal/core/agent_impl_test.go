@@ -82,8 +82,8 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	if len(msgs) != 1 || msgs[0].ID != summaryAppend.ID {
 		t.Fatalf("post-compact chain must be the single summary, got %d messages", len(msgs))
 	}
-	if !strings.Contains(msgs[0].Content, "the summary") {
-		t.Fatalf("summary content missing from chain: %q", msgs[0].Content)
+	if !strings.Contains(msgs[0].Text(), "the summary") {
+		t.Fatalf("summary content missing from chain: %q", msgs[0].Text())
 	}
 }
 
@@ -231,7 +231,7 @@ func TestApplyCompactionClearsLastTotalInputTokens(t *testing.T) {
 	a := newAgentForPromptSizing(t)
 	a.SetMessages([]Message{
 		UserMessage("first", nil),
-		{Role: ai.RoleAssistant, Content: "reply"},
+		{Role: ai.RoleAssistant, Content: ai.TextContent("reply")},
 		UserMessage("second", nil),
 	})
 	a.lastTotalInputTokens = 195_000
@@ -267,12 +267,12 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 		UserMessage("more", nil),
 	})
 
-	if a.ingest(context.Background(), Message{Signal: SigCompact, Content: "the summary"}) {
+	if a.ingest(context.Background(), Inbound{Signal: SigCompact, Summary: "the summary"}) {
 		t.Fatal("SigCompact must not start a turn")
 	}
 
 	msgs := a.snapshot()
-	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "the summary") {
+	if len(msgs) != 1 || !strings.Contains(msgs[0].Text(), "the summary") {
 		t.Fatalf("SigCompact should compact in place to the single summary, got %d messages", len(msgs))
 	}
 
@@ -295,7 +295,7 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 		t.Fatalf("boundary %q must equal the summary message ID %q", info.SummaryMessageID, msgs[0].ID)
 	}
 
-	if !a.ingest(context.Background(), UserMessage("next", nil)) {
+	if !a.ingest(context.Background(), Inbound{Msg: UserMessage("next", nil)}) {
 		t.Fatal("a normal user message must start a turn")
 	}
 }
@@ -350,7 +350,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	}()
 
 	// Kick off the first turn, then interrupt while Infer is blocked.
-	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "first"}
+	ag.Inbox() <- Inbound{Msg: UserMessage("first", nil)}
 	// turn is stored at the top of each inner-loop iteration, right
 	// before ThinkAct is called — wait until that pointer is published.
 	waitFor(t, "agent turn to be stored", func() bool {
@@ -372,7 +372,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	// release channel is buffered so the test never races the agent's
 	// read of it. Waiting on turn.Load() instead of sleeping proves the
 	// second turn actually entered Infer.
-	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "second"}
+	ag.Inbox() <- Inbound{Msg: UserMessage("second", nil)}
 	waitFor(t, "second turn to enter Infer", func() bool {
 		return ag.(*agent).turn.Load() != nil
 	})
@@ -385,7 +385,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 		return ag.(*agent).turn.Load() == nil
 	})
 
-	ag.Inbox() <- Message{Signal: SigStop}
+	ag.Inbox() <- Inbound{Signal: SigStop}
 	select {
 	case err := <-runDone:
 		if err != nil {
@@ -463,7 +463,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	// Interrupt while the agent is parked in waitForInput.
 	<-ag.InterruptCurrentTurn()
 
-	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "answer me"}
+	ag.Inbox() <- Inbound{Msg: UserMessage("answer me", nil)}
 
 	// blockingLLM only replies once its release token is read, so a consumed
 	// token proves Infer was reached.
@@ -471,7 +471,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 		return len(llm.release) == 0
 	})
 
-	ag.Inbox() <- Message{Signal: SigStop}
+	ag.Inbox() <- Inbound{Signal: SigStop}
 	select {
 	case err := <-runDone:
 		if err != nil {
@@ -614,7 +614,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	result, err := ag.ThinkAct(ctx)
 	if !errors.Is(err, context.Canceled) {
@@ -659,7 +659,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -676,7 +676,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 
 	// Asked for again on the next call, so a mid-session change lands.
 	effort = ai.EffortHigh
-	ag.append(Message{Role: ai.RoleUser, Content: "again"})
+	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("again")})
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
@@ -704,7 +704,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -712,7 +712,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
-	if len(asked) != 1 || len(asked[0]) != 1 || asked[0][0].Content != "go" {
+	if len(asked) != 1 || len(asked[0]) != 1 || asked[0][0].Text() != "go" {
 		t.Fatalf("client asked with %v, want this turn's conversation", asked)
 	}
 }
@@ -730,7 +730,7 @@ func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

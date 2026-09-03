@@ -115,10 +115,10 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	case chain := <-provider.requests:
 		sent := false
 		for _, msg := range chain {
-			if len(msg.Images) > 0 {
-				t.Fatalf("provider received %d image part(s) it rejects: %+v", len(msg.Images), msg)
+			if imgCount(msg) > 0 {
+				t.Fatalf("provider received %d image part(s) it rejects: %+v", imgCount(msg), msg)
 			}
-			if strings.Contains(msg.Content, "/tmp/chart.png") {
+			if strings.Contains(msg.Text(), "/tmp/chart.png") {
 				sent = true
 			}
 		}
@@ -176,8 +176,8 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 		t.Fatal("compact request has no messages, so the check below proves nothing")
 	}
 	for _, msg := range req.Messages {
-		if len(msg.Images) > 0 {
-			t.Fatalf("compact request carries %d image part(s) the provider rejects: %+v", len(msg.Images), msg)
+		if imgCount(msg) > 0 {
+			t.Fatalf("compact request carries %d image part(s) the provider rejects: %+v", imgCount(msg), msg)
 		}
 	}
 	// The conversation keeps its own copy — only the request is stripped.
@@ -258,4 +258,14 @@ func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
 	}
+}
+
+func imgCount(m core.Message) int {
+	n := 0
+	for _, b := range m.Content {
+		if b.Type == ai.BlockImage {
+			n++
+		}
+	}
+	return n
 }

@@ -2,110 +2,11 @@ package core
 
 import "github.com/genai-io/sdk-go/pkg/ai"
 
-// Translating between San's conversation types and the SDK's.
+// What is left of translating between San and the SDK.
 //
-// The two disagree on one thing only, and it is the whole of this file: San
-// holds a turn as parallel fields — Content beside Thinking beside ToolCalls —
-// while the SDK holds it as the ordered block sequence the provider produced.
-// Going out, the fields are laid down in the order every protocol wants them
-// replayed: reasoning first, then the answer, then the calls it asked for.
-// Coming back, the blocks are projected onto the fields San's UI reads.
-//
-// Exported because the packages above core build calls of their own — llm's
-// one-shot Complete, print mode. One copy, in the foundation layer, which llm
-// imports rather than the other way round.
-
-// ToAIMessages converts San's history into the SDK's.
-//
-// It takes no model. A session can switch models mid-run, so the reasoning
-// state in the history may have come from somewhere else entirely — and since
-// sdk-go v0.4.0 the client drops what the endpoint being asked cannot replay,
-// which is the one thing that used to need deciding here.
-//
-// Tool-call/result pairing is not repaired here: ai.Client.prepare runs
-// RepairHistory on every request, which is the same repair San's providers do
-// themselves today.
-func ToAIMessages(msgs []Message) []ai.Message {
-	out := make([]ai.Message, 0, len(msgs))
-	for _, msg := range msgs {
-		switch {
-		case msg.ToolResult != nil:
-			out = append(out, ai.ToolResultsMessage(ai.ToolResult{
-				ToolCallID: msg.ToolResult.ToolCallID,
-				ToolName:   msg.ToolResult.ToolName,
-				Content:    ai.TextContent(msg.ToolResult.Content),
-				IsError:    msg.ToolResult.IsError,
-			}))
-		case msg.Role == ai.RoleUser:
-			if content := userContent(msg); len(content) > 0 {
-				out = append(out, ai.Message{Role: ai.RoleUser, Content: content})
-			}
-		case msg.Role == ai.RoleAssistant:
-			if content := assistantContent(msg); len(content) > 0 {
-				out = append(out, ai.Message{Role: ai.RoleAssistant, Content: content})
-			}
-		}
-	}
-	return out
-}
-
-// userContent lays out a user turn, keeping text and images in the order the
-// user typed them where the message records one.
-func userContent(msg Message) ai.Content {
-	parts := InterleavedContentParts(msg)
-	if parts == nil {
-		content := ai.TextContent(msg.Content)
-		for _, img := range msg.Images {
-			content = append(content, ai.ImageBlock(img.Image))
-		}
-		return content
-	}
-
-	content := make(ai.Content, 0, len(parts))
-	for _, part := range parts {
-		switch part.Type {
-		case ContentPartText:
-			if part.Text != "" {
-				content = append(content, ai.TextBlock(part.Text))
-			}
-		case ContentPartImage:
-			if part.Image != nil {
-				content = append(content, ai.ImageBlock(part.Image.Image))
-			}
-		}
-	}
-	return content
-}
-
-// assistantContent lays out a model turn in replay order: reasoning state
-// first — Anthropic rejects a thinking block that does not lead, and OpenAI's
-// stateless backend rejects a call whose reasoning item does not precede it —
-// then the answer, then the calls.
-//
-// Everything the model left behind goes in. Which of it the endpoint about to
-// be asked can actually replay is the SDK's to decide: ai drops the reasoning
-// state a model cannot take, so a history that came from another provider
-// costs nothing here and needs no model to lay out.
-func assistantContent(msg Message) ai.Content {
-	content := make(ai.Content, 0, 2+len(msg.Reasoning)+len(msg.ToolCalls))
-	if msg.Thinking != "" {
-		content = append(content, ai.ThinkingBlock(msg.Thinking, msg.ThinkingSignature))
-	}
-	for _, item := range msg.Reasoning {
-		content = append(content, ai.ReasoningBlock(ai.ReasoningItem{
-			ID:               item.ID,
-			EncryptedContent: item.EncryptedContent,
-			Summary:          item.Summary,
-		}))
-	}
-	if msg.Content != "" {
-		content = append(content, ai.TextBlock(msg.Content))
-	}
-	for _, call := range msg.ToolCalls {
-		content = append(content, ai.ToolCallBlock(call))
-	}
-	return content
-}
+// The conversation no longer needs translating: it is ai.Message on both
+// sides. What remains is the two things San holds in its own shape — a tool
+// schema, and the response as the UI reads it — and both are one-way.
 
 // ToAITools converts San's tool schemas. Run stays nil: San executes tools
 // itself and hands the results back as history, so the SDK is never asked to

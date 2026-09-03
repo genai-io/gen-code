@@ -178,7 +178,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 	}()
 
 	select {
-	case ag.Inbox() <- core.Message{Role: ai.RoleUser, Content: prompt}:
+	case ag.Inbox() <- core.Inbound{Msg: core.UserMessage(prompt, nil)}:
 	case <-ctx.Done():
 		<-done
 		return core.Result{}, ctx.Err()
@@ -193,7 +193,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 				hasResult = true
 			}
 			select {
-			case ag.Inbox() <- core.Message{Signal: core.SigStop}:
+			case ag.Inbox() <- core.Inbound{Signal: core.SigStop}:
 			case <-ctx.Done():
 			}
 		}
