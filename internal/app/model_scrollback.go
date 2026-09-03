@@ -4,12 +4,9 @@
 // terminal's native scrollback above.
 //
 // The frame rule everything here obeys: insertAbove prints above the managed
-// frame and Bubble Tea's inline renderer only ever redraws the frame's current
-// extent, so whatever the frame holds at that moment stays on screen and any
-// row it stops holding is left behind. Both are permanent — native scrollback
-// cannot be rewritten. Hence a chunk no taller than the room above the frame,
-// a queue that waits for a panel to close, and a handoff copy that keeps the
-// frame from shrinking mid-print.
+// frame, and the inline renderer only redraws the frame's current extent — so
+// what the frame holds then stays on screen, and any row it stops holding is
+// left behind. Both are permanent; scrollback cannot be rewritten.
 package app
 
 import (
@@ -31,6 +28,8 @@ type pendingScrollbackPrint struct {
 	id        uint64
 	remaining string
 	current   string
+	frameRows int  // chat rows this print's content occupied in the live tail
+	started   bool // first chunk prepared; the rest is no longer the frame's job
 }
 
 func printScrollback(id uint64) tea.Cmd {
@@ -78,16 +77,12 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering   bool             // one render in flight at a time, so Printlns stay ordered
-	renderer    *conv.MDRenderer // background renderer, off the live-view MDRenderer's mutex
-	width       int              // width the renderer was built for; rebuild when it changes
-	nextPrintID uint64           // monotonic identity for queued scrollback prints
-	// handoffRows is how tall the chat section stood while the live tail still
-	// held the blocks the queued print carries; the copy is padded to it.
-	handoffRows      int
-	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
-	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
-	frameForPrint    *tea.View                // freeze insertAbove geometry until the print completes
+	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width         int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
+	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	frameForPrint *tea.View                // freeze insertAbove geometry until the print completes
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -218,7 +213,8 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 
 	var cmds []tea.Cmd
 	if msg.printed != "" {
-		cmds = append(cmds, m.queueScrollbackPrint(msg.printed))
+		// No budget: a streamed block leaves the tail as its rendered self.
+		cmds = append(cmds, m.queueScrollbackPrint(msg.printed, 0))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
 	// the row is still uncommitted, so it's safe.
@@ -250,10 +246,8 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
 	lastIdx := len(m.conv.Messages) - 1
 	params := m.messageRenderParams()
-	// Measured before the loop below empties the live tail: the rows the handoff
-	// copy has to stand in for. The composer and status bar are left out because
-	// a commit does not touch them, and counting them would overshoot.
-	preCommitRows := viewRows(conv.RenderActiveContent(params))
+	// What the loop below is about to take out of the frame.
+	preCommitRows := rowCount(conv.RenderActiveContent(params))
 
 	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
 		msg := m.conv.Messages[i]
@@ -280,8 +274,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
-	m.flush.handoffRows = preCommitRows
-	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"))}
+	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)}
 }
 
 // queueScrollbackPrint appends content to a single-flight FIFO. Only an empty
@@ -289,8 +282,8 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 // Tea has processed the current Println. Each chunk is no taller than the rows
 // above the managed frame, so insertAbove cannot scroll live UI rows into native
 // history.
-func (m *model) queueScrollbackPrint(content string) tea.Cmd {
-	return m.flush.queueScrollbackPrint(content)
+func (m *model) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
+	return m.flush.queueScrollbackPrint(content, frameRows)
 }
 
 // resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.
@@ -307,7 +300,7 @@ func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
 	return printScrollback(m.flush.pendingPrints[0].id)
 }
 
-func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
+func (f *flushState) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
 	if content == "" {
 		return nil
 	}
@@ -315,6 +308,7 @@ func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
 	pending := pendingScrollbackPrint{
 		id:        f.nextPrintID,
 		remaining: content,
+		frameRows: frameRows,
 	}
 	f.pendingPrints = append(f.pendingPrints, pending)
 	if len(f.pendingPrints) > 1 {
@@ -338,7 +332,6 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id {
 		return nil
 	}
-	f.minimizeForPrint = false
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
 	if f.pendingPrints[0].remaining != "" {
@@ -366,11 +359,19 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if m.flush.minimizeForPrint {
+	if frameFillsScreen(frameHeight, m.env.Height) {
 		frame = tea.NewView("")
 	}
 	m.flush.frameForPrint = &frame
 	return content, true
+}
+
+// frameFillsScreen reports that the frame leaves no room above it. The print
+// then has nowhere to insert, so it shrinks the frame to nothing for the
+// duration — both halves of prepareScrollbackPrint read the answer here rather
+// than one telling the other.
+func frameFillsScreen(frameHeight, height int) bool {
+	return height > 0 && frameHeight >= height
 }
 
 func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeight int) (string, bool) {
@@ -381,13 +382,12 @@ func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeigh
 	if len(lines) == 0 {
 		return "", false
 	}
+	f.pendingPrints[0].started = true
 
 	capacity := len(lines)
-	f.minimizeForPrint = false
 	if height > 0 {
 		capacity = height - min(max(frameHeight, 0), height)
-		if capacity < 1 {
-			f.minimizeForPrint = true
+		if frameFillsScreen(frameHeight, height) {
 			capacity = height
 		}
 	}
@@ -410,7 +410,29 @@ func (m *model) useMinimalScrollbackFrame() {
 	}
 	frame := tea.NewView("")
 	m.flush.frameForPrint = &frame
-	m.flush.minimizeForPrint = true
+}
+
+// trimPadding drops the padding a full-width buffer leaves on a row.
+// Free at the width it was printed at, but scrollback is immutable: narrow the
+// window and text-plus-padding rewraps into two rows, the second all spaces.
+//
+// A trailing space counts as padding whatever foreground or bold it inherited —
+// none of that shows on a space. Only a background or an underline does, and
+// those are content.
+func trimPadding(line uv.Line) uv.Line {
+	end := len(line)
+	for end > 0 && isPadding(&line[end-1]) {
+		end--
+	}
+	return line[:end]
+}
+
+func isPadding(c *uv.Cell) bool {
+	if c.IsZero() || c.Equal(&uv.EmptyCell) {
+		return true
+	}
+	return c.Content == " " && c.Link.IsZero() &&
+		c.Style.Bg == nil && c.Style.UnderlineColor == nil && c.Style.Underline == uv.UnderlineNone
 }
 
 // scrollbackPhysicalLines decomposes content exactly as Bubble Tea's
@@ -448,6 +470,9 @@ func renderScrollbackLines(lines []uv.Line) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	for i, line := range lines {
+		lines[i] = trimPadding(line)
+	}
 	if rendered := uv.Lines(lines).Render(); rendered != "" {
 		return rendered
 	}
@@ -480,9 +505,7 @@ func (m model) welcomeBannerText() string {
 }
 
 // pendingScrollbackView is the handoff copy: the queued chunk stays drawn in the
-// managed view until its Println has been processed, so committing — which
-// empties the live tail first — cannot shrink the frame mid-print and leave the
-// plain streaming tail on screen for insertAbove to print underneath.
+// frame until its Println lands, so committing cannot shrink the frame mid-print.
 //
 // Restored from e02ed422, which 74ac1647 dropped as redundant beside the FIFO
 // and the renderer's flush barrier. It is not: the barrier fixes *when*
@@ -491,21 +514,24 @@ func (m model) pendingScrollbackView() string {
 	if len(m.flush.pendingPrints) == 0 {
 		return ""
 	}
+	// Until the first chunk goes out the whole payload stands in for the tail;
+	// after it, only the chunk in flight. Holding the remainder would swell the
+	// frame, and the next chunk's insertAbove welds that into its own output.
 	head := m.flush.pendingPrints[0]
 	handoff := head.current
-	if handoff == "" {
+	if !head.started {
 		handoff = head.remaining
 	}
-	// The rendered block is usually shorter than the plain wrapped tail it
-	// replaces, and every row of that difference is one the frame would vacate.
-	for rows := viewRows(handoff); rows < m.flush.handoffRows; rows++ {
-		handoff += "\n"
+	if handoff == "" {
+		return ""
 	}
-	return handoff
+	// The rendered block is shorter than the plain tail it replaces, and every
+	// row of the difference is one the frame would vacate.
+	return handoff + strings.Repeat("\n", max(head.frameRows-rowCount(handoff), 0))
 }
 
-// viewRows counts the rows a rendered section occupies.
-func viewRows(s string) int {
+// rowCount is how many terminal rows a rendered section occupies.
+func rowCount(s string) int {
 	if s == "" {
 		return 0
 	}

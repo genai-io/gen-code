@@ -165,6 +165,7 @@ func renderNestedToolBody(content string) string {
 
 	var sb strings.Builder
 	for line := range strings.SplitSeq(content, "\n") {
+		line = visibleLine(line)
 		if strings.TrimSpace(line) == "" {
 			sb.WriteString(strings.Repeat(" ", lipgloss.Width(nestedBodyPrefix)) + "\n")
 			continue
@@ -174,8 +175,20 @@ func renderNestedToolBody(content string) string {
 	return sb.String()
 }
 
+// visibleLine drops the progress a tool drew in place and then wrote over —
+// git's "Rebasing (1/3)\r…". Left in, the carriage return lands inside the "┊"
+// gutter and the terminal restarts the row at column 0, connector and all. A
+// trailing one is CRLF, not an overwrite.
+func visibleLine(line string) string {
+	line = strings.TrimSuffix(line, "\r")
+	if i := strings.LastIndexByte(line, '\r'); i >= 0 {
+		return line[i+1:]
+	}
+	return line
+}
+
 func renderNestedToolBodyLine(line string) string {
-	return toolResultStyle.Render(nestedBodyPrefix+line) + "\n"
+	return toolResultStyle.Render(nestedBodyPrefix+visibleLine(line)) + "\n"
 }
 
 func renderNestedToolBodyContinuous(content string) string {

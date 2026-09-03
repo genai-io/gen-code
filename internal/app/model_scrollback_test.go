@@ -155,7 +155,7 @@ func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
 func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 	var flush flushState
 	content := "\x1b[31mabcdefghij\x1b[0m\nlast\n"
-	cmd := flush.queueScrollbackPrint(content)
+	cmd := flush.queueScrollbackPrint(content, 0)
 	if cmd == nil {
 		t.Fatal("the first chunk must start immediately")
 	}
@@ -183,13 +183,13 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.env.Height = 1
-	cmd := m.queueScrollbackPrint("A")
+	cmd := m.queueScrollbackPrint("A", 0)
 	if cmd == nil {
 		t.Fatal("the first chunk must start immediately")
 	}
 	ready := cmd().(scrollbackPrintReadyMsg)
-	if _, ok := m.prepareScrollbackPrint(ready.id); !ok || !m.flush.minimizeForPrint {
-		t.Fatal("a full-height frame must be minimized before printing")
+	if _, ok := m.prepareScrollbackPrint(ready.id); !ok {
+		t.Fatal("a full-height frame must still prepare a print")
 	}
 	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != "" {
 		t.Fatalf("frame during print = %#v, ok=%v, want an empty frozen frame", frame, ok)
@@ -197,7 +197,7 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	if next := m.finishScrollbackPrint(ready.id); next != nil {
 		t.Fatal("the one-row payload should finish in one minimized print")
 	}
-	if m.flush.minimizeForPrint || m.flush.frameForPrint != nil {
+	if m.flush.frameForPrint != nil {
 		t.Fatal("the managed frame must be restored after the print completes")
 	}
 }
@@ -207,7 +207,7 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 // terminal history together with the actual conversation output.
 func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -248,7 +248,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 		ToolName: "Bash",
 		BashMeta: &perm.BashMetadata{Command: "git status"},
 	}
-	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL")
+	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
 	if cmd == nil {
 		t.Fatal("the queued print must start")
 	}
@@ -269,11 +269,11 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 
 func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	firstCmd := m.queueScrollbackPrint("A")
+	firstCmd := m.queueScrollbackPrint("A", 0)
 	if firstCmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
-	if secondCmd := m.queueScrollbackPrint("B"); secondCmd != nil {
+	if secondCmd := m.queueScrollbackPrint("B", 0); secondCmd != nil {
 		t.Fatal("a second print must wait until the in-flight head completes")
 	}
 
@@ -516,12 +516,10 @@ func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 	}
 }
 
-// A fullscreen picker holds the queue exactly like a docked prompt does, and
-// closing it has to restart the queue. Nothing in the picker's own dismissal
-// says "approval answered", so a resume wired to the three prompt replies never
-// fired: the head stalled, every block queued behind it, and renderAndCommit
-// had already advanced CommittedCount — so the live tail had stopped drawing
-// what the queue was still holding. The output was on neither.
+// A picker holds the queue like a docked prompt, and closing it has to restart
+// the queue. Wired to the three prompt replies, the resume never fired for one:
+// the head stalled, everything queued behind it, and CommittedCount had already
+// advanced — so the output was in neither the tail nor scrollback.
 func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
 	m.userInput.Approval.Hide()
@@ -530,7 +528,7 @@ func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 		t.Fatal("the config picker did not become the active overlay")
 	}
 
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK")
+	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -570,51 +568,75 @@ func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
 	}
 }
 
-// The handoff copy keeps a committed block drawn in the managed view until its
-// Println has landed. Without it the frame shrinks the moment CommittedCount
-// advances, and Bubble Tea's inline renderer leaves the vacated rows on screen —
-// a plain copy of the streaming tail welded into native scrollback, with the
-// rendered version printed underneath it.
-func TestCommittedBlockStaysInTheFrameUntilItsPrintLands(t *testing.T) {
+// The handoff copy tracks one print's life: the whole payload stands in for the
+// tail a commit emptied, then only the chunk in flight once printing starts, and
+// nothing between chunks. Without it the frame shrinks the moment CommittedCount
+// advances and the renderer leaves the vacated rows on screen; holding the
+// remainder instead swells it for the next chunk's insertAbove to weld in.
+func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	cmd := m.queueScrollbackPrint("RENDERED_BLOCK")
+	m.env.Height = 6
+	cmd := m.queueScrollbackPrint(strings.Join([]string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"}, "\n"), 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start")
 	}
-	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
-		t.Fatalf("handoff copy = %q, want the queued block", view)
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "L8") {
+		t.Fatalf("before printing = %q, want the whole payload", view)
 	}
 
 	ready := cmd().(scrollbackPrintReadyMsg)
-	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+	chunk, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 2)
+	if !ok {
 		t.Fatal("the print did not prepare")
 	}
-	if view := m.pendingScrollbackView(); !strings.Contains(view, "RENDERED_BLOCK") {
-		t.Fatalf("handoff copy during the print = %q, want the block still drawn", view)
+	if m.flush.pendingPrints[0].remaining == "" {
+		t.Fatal("the payload fit in one chunk; this test needs it split")
+	}
+	if view := m.pendingScrollbackView(); view != chunk {
+		t.Fatalf("in flight = %q, want the chunk %q", view, chunk)
 	}
 
 	m.finishScrollbackPrint(ready.id)
 	if view := m.pendingScrollbackView(); view != "" {
-		t.Fatalf("handoff copy after the print = %q, want it dropped", view)
+		t.Fatalf("between chunks = %q, want none", view)
 	}
 }
 
-// The rendered block is shorter than the plain wrapped tail it replaces, and
-// every row of that difference is a row the frame vacates — so the copy is
-// padded to what the live tail occupied.
+// The rendered block is shorter than the plain tail it replaces, so the copy is
+// padded to what the commit removed — and never trimmed, since a taller copy is
+// the frame growing, which the renderer handles.
 func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	m.queueScrollbackPrint("ONE\nTWO")
-	m.flush.handoffRows = 6
+	m.queueScrollbackPrint("ONE\nTWO", 6)
+	ready := printScrollback(m.flush.pendingPrints[0].id)().(scrollbackPrintReadyMsg)
+	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0)
 
-	if rows := viewRows(m.pendingScrollbackView()); rows != 6 {
+	if rows := rowCount(m.pendingScrollbackView()); rows != 6 {
 		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
 	}
-
-	// Never trimmed: a copy taller than the tail it replaces is the frame
-	// growing, which the renderer handles.
-	m.flush.handoffRows = 1
-	if rows := viewRows(m.pendingScrollbackView()); rows != 2 {
+	m.flush.pendingPrints[0].frameRows = 1
+	if rows := rowCount(m.pendingScrollbackView()); rows != 2 {
 		t.Fatalf("handoff rows = %d, want the block's own 2", rows)
+	}
+}
+
+// Committed rows carry no trailing padding: scrollback is immutable, so a
+// padded row rewraps into two when the window narrows — the second all spaces.
+func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
+	// Real trailing spaces under an open foreground colour — how the markdown
+	// renderer pads a block. They are cells, not gaps, so "is it empty" misses
+	// them; nothing of a foreground shows on a space, only a background would.
+	styled := "\x1b[38;2;24;24;27mshort" + strings.Repeat(" ", 30) + "\nalso short\n"
+	rendered := renderScrollbackLines(scrollbackPhysicalLines(styled, 40))
+
+	for _, line := range strings.Split(rendered, "\n") {
+		if plain := ansi.Strip(line); plain != strings.TrimRight(plain, " ") {
+			t.Errorf("line padded to the buffer width: %q", plain)
+		}
+	}
+	for _, want := range []string{"short", "also short"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered lost %q: %q", want, rendered)
+		}
 	}
 }
