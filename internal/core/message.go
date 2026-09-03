@@ -134,6 +134,13 @@ type ChatMessage struct {
 	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
 	Expanded          bool // UI: the tool-result block is expanded
 
+	// ToolDetails is the structured form of what a tool produced — the diff
+	// behind an edit, the exit code behind a command — kept so the interface
+	// can draw more than the text the model was given. The model never sees
+	// it, which is why it is here and not on ToolResult: a field the
+	// conversation carries is a field a provider is sent.
+	ToolDetails any
+
 	// Decision is the auto-review judge's decision for the tool call this message
 	// carries the result of — set only on a ai.RoleUser/ToolResult message whose
 	// call was judged, so the renderer can draw the decision inline under the
@@ -253,12 +260,10 @@ type ReasoningItem struct {
 
 // ToolResult is the outcome of a tool execution.
 type ToolResult struct {
-	ToolCallID   string `json:"tool_call_id"`
-	ToolName     string `json:"tool_name,omitempty"`
-	Content      string `json:"content"`
-	IsError      bool   `json:"is_error,omitempty"`
-	HookResponse any    `json:"-"`
-	Details      any    `json:"-"`
+	ToolCallID string `json:"tool_call_id"`
+	ToolName   string `json:"tool_name,omitempty"`
+	Content    string `json:"content"`
+	IsError    bool   `json:"is_error,omitempty"`
 }
 
 // --- Constructors ---

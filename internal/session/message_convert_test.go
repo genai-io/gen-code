@@ -60,7 +60,7 @@ func Test_extractUserContent_stripsReminderFromDisplay(t *testing.T) {
 		{Type: "text", Text: "hi\n\n"},
 		{Type: "text", Text: "<system-reminder source=\"memory-auto\">\nmem\n</system-reminder>", Source: SourceReminder + ":memory-auto"},
 	}
-	var msg core.Message
+	var msg core.ChatMessage
 	extractUserContent(blocks, &msg)
 
 	if !strings.Contains(msg.Content, "system-reminder") {
@@ -115,7 +115,7 @@ func Test_commandEnvelope_hiddenFromDisplayOnResume(t *testing.T) {
 				t.Fatalf("round-trip mismatch:\n got: %q\nwant: %q", joined.String(), tc.content)
 			}
 
-			var msg core.Message
+			var msg core.ChatMessage
 			extractUserContent(blocks, &msg)
 			if msg.Content != tc.content {
 				t.Errorf("Content must keep the inlined body for the model:\n got %q\nwant %q", msg.Content, tc.content)
@@ -137,20 +137,18 @@ func Test_userContentToBlocks_plainTextOneBlock(t *testing.T) {
 
 func Test_messagesToNodes_roundtrip(t *testing.T) {
 	// Test that messagesToNodes -> messagesFromNodes roundtrips correctly.
-	msgs := []core.Message{
-		{Role: ai.RoleUser, Content: "hello"},
-		{Role: ai.RoleAssistant, Content: "hi", Thinking: "let me think",
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "hello"},
+		{Role: core.ChatAssistant, Content: "hi", Thinking: "let me think",
 			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Edit", Input: `{"path":"/tmp/test","edits":[{"oldText":"old","newText":"new"}]}`}}},
-		{Role: ai.RoleUser, ToolResult: &core.ToolResult{
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{
 			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
-			Details: toolresult.FileChangeDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"},
-		}},
-		{Role: ai.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
-		{Role: ai.RoleUser, ToolResult: &core.ToolResult{
+		}, ToolDetails: toolresult.FileChangeDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"}},
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{
 			ToolCallID: "tc-2", ToolName: "Bash", Content: "Error: exit code 1", IsError: true,
-			Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 0},
-		}},
-		{Role: ai.RoleAssistant, Content: "I see the file."},
+		}, ToolDetails: toolresult.BashDetails{Error: "exit code 1", LineCount: 0}},
+		{Role: core.ChatAssistant, Content: "I see the file."},
 	}
 
 	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")
@@ -190,16 +188,16 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 	if restored[2].ToolResult.ToolName != "Edit" {
 		t.Errorf("msg[2].ToolResult.ToolName: want 'Edit', got %q", restored[2].ToolResult.ToolName)
 	}
-	details, ok := restored[2].ToolResult.Details.(toolresult.FileChangeDetails)
+	details, ok := restored[2].ToolDetails.(toolresult.FileChangeDetails)
 	if !ok || details.UnifiedDiff != "@@ -1 +1 @@\n-old\n+new" {
-		t.Errorf("restored Edit details = %#v", restored[2].ToolResult.Details)
+		t.Errorf("restored Edit details = %#v", restored[2].ToolDetails)
 	}
 	if restored[4].ToolResult == nil || restored[4].ToolResult.ToolName != "Bash" {
 		t.Fatalf("restored Bash result = %#v", restored[4].ToolResult)
 	}
-	bashDetails, ok := restored[4].ToolResult.Details.(toolresult.BashDetails)
+	bashDetails, ok := restored[4].ToolDetails.(toolresult.BashDetails)
 	if !ok || bashDetails.Error != "exit code 1" || bashDetails.LineCount != 0 {
-		t.Errorf("restored Bash details = %#v", restored[4].ToolResult.Details)
+		t.Errorf("restored Bash details = %#v", restored[4].ToolDetails)
 	}
 }
 

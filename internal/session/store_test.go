@@ -1,8 +1,6 @@
 package session
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
@@ -14,9 +12,9 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: ai.RoleUser, Content: "hello"},
-		{Role: ai.RoleAssistant, Content: "world"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "hello"},
+		{Role: core.ChatAssistant, Content: "world"},
 	}
 
 	// Save with a custom title
@@ -51,8 +49,8 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: ai.RoleUser, Content: "hello"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "hello"},
 	}
 
 	// Save with initial title
@@ -90,8 +88,8 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: ai.RoleUser, Content: "first message"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "first message"},
 	}
 
 	sess := &Snapshot{

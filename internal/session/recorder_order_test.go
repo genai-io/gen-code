@@ -133,9 +133,9 @@ func TestRecorderAndSaveDoNotDoubleWrite(t *testing.T) {
 	// these would each spawn a second message.appended record.
 	snap := &Snapshot{
 		Metadata: SessionMetadata{ID: "sess-dup", Cwd: dir},
-		Messages: []core.Message{
-			{ID: "tui-m1", Role: ai.RoleUser, Content: "hi"},
-			{ID: "tui-m2", Role: ai.RoleAssistant, Content: "hello"},
+		Messages: []core.ChatMessage{
+			{ID: "tui-m1", Role: core.ChatUser, Content: "hi"},
+			{ID: "tui-m2", Role: core.ChatAssistant, Content: "hello"},
 		},
 		OmitMessageWrites: true,
 	}

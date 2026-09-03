@@ -100,14 +100,14 @@ func injectedSource(text string, m []int) string {
 // shared by the append-only save path (messagesToNodes) and the live Recorder
 // (onAppend), so a message serializes identically whichever writer runs. A
 // control-signal / unknown-role message yields nil.
-func MessageToBlocks(msg core.Message) []ContentBlock {
+func MessageToBlocks(msg core.ChatMessage) []ContentBlock {
 	switch msg.Role {
-	case ai.RoleUser:
+	case core.ChatUser:
 		if msg.ToolResult != nil {
-			return toolResultToBlocks(msg.ToolResult)
+			return toolResultToBlocks(msg.ToolResult, msg.ToolDetails)
 		}
 		return userContentToBlocks(msg.Content, msg.DisplayContent, msg.Images)
-	case ai.RoleAssistant:
+	case core.ChatAssistant:
 		return assistantContentToBlocks(msg.Content, msg.Thinking, msg.ThinkingSignature, msg.ToolCalls)
 	default:
 		return nil
@@ -188,9 +188,9 @@ func assistantContentToBlocks(content, thinking, thinkingSignature string, toolC
 	return blocks
 }
 
-func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
+func toolResultToBlocks(tr *core.ToolResult, details any) []ContentBlock {
 	block := ContentBlock{Type: "tool_result", ToolUseID: tr.ToolCallID, IsError: tr.IsError}
-	switch details := tr.Details.(type) {
+	switch details := details.(type) {
 	case toolresult.FileChangeDetails:
 		block.EditDetails, _ = json.Marshal(details)
 	case toolresult.BashDetails:
@@ -202,7 +202,7 @@ func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
 	return []ContentBlock{block}
 }
 
-func ExtractLastUserText(msgs []core.Message) string {
+func ExtractLastUserText(msgs []core.ChatMessage) string {
 	for _, msg := range slices.Backward(msgs) {
 		if text, ok := extractUserText(msg); ok {
 			return text
@@ -211,7 +211,7 @@ func ExtractLastUserText(msgs []core.Message) string {
 	return ""
 }
 
-func extractUserContent(blocks []ContentBlock, msg *core.Message) {
+func extractUserContent(blocks []ContentBlock, msg *core.ChatMessage) {
 	imageCount := 0
 	var display strings.Builder
 	var content strings.Builder
@@ -238,12 +238,12 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 			if len(block.EditDetails) > 0 {
 				var details toolresult.FileChangeDetails
 				if json.Unmarshal(block.EditDetails, &details) == nil {
-					tr.Details = details
+					msg.ToolDetails = details
 				}
 			} else if len(block.BashDetails) > 0 {
 				var details toolresult.BashDetails
 				if json.Unmarshal(block.BashDetails, &details) == nil {
-					tr.Details = details
+					msg.ToolDetails = details
 				}
 			}
 			for _, sub := range block.Content {
@@ -264,7 +264,7 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 	}
 }
 
-func extractAssistantContent(blocks []ContentBlock, msg *core.Message) {
+func extractAssistantContent(blocks []ContentBlock, msg *core.ChatMessage) {
 	var content strings.Builder
 	for _, block := range blocks {
 		switch block.Type {
@@ -284,8 +284,8 @@ func extractAssistantContent(blocks []ContentBlock, msg *core.Message) {
 	msg.Content = content.String()
 }
 
-func extractUserText(msg core.Message) (string, bool) {
-	if msg.Role != ai.RoleUser || msg.ToolResult != nil {
+func extractUserText(msg core.ChatMessage) (string, bool) {
+	if msg.Role != core.ChatUser || msg.ToolResult != nil {
 		return "", false
 	}
 	for _, block := range MessageToBlocks(msg) {

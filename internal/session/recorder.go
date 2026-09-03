@@ -208,11 +208,15 @@ func (r *Recorder) onAppend(ev core.Event) {
 	// dedupe key (message ID) maps to byte-identical content from either writer.
 	// A tool result is a RoleUser message with a non-nil ToolResult; it
 	// serializes as a "user" turn carrying tool_result blocks.
-	content := MessageToBlocks(msg)
+	// The agent's message is the conversation; the transcript is the view of
+	// it. ToChat is that view with nothing drawn on it yet, which is exactly
+	// what an agent-side message is.
+	chat := msg.ToChat()
+	content := MessageToBlocks(chat)
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
-	role := transcriptRole(msg.Role)
+	role := transcriptRole(chat.Role)
 
 	r.mu.Lock()
 	parent := r.lastMessageID

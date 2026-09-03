@@ -32,7 +32,7 @@ type Store struct {
 
 type Snapshot struct {
 	Metadata SessionMetadata
-	Messages []core.Message
+	Messages []core.ChatMessage
 	Tasks    []todo.Item
 
 	// OmitMessageWrites skips the per-item AppendMessage loop in Save. Used
@@ -314,7 +314,9 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 			Cwd:             cwd,
 			ParentSessionID: parentSessionID,
 		},
-		Messages: messages,
+		// A subagent has no interface, so its transcript is its conversation
+		// with nothing drawn on it — which is what ToChat gives.
+		Messages: chatOf(messages),
 	}
 	if err := s.Save(sess); err != nil {
 		return "", "", err
@@ -357,4 +359,13 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Messages)
 	}
 	return sess, nil
+}
+
+// chatOf views a conversation as a transcript with no display state set.
+func chatOf(msgs []core.Message) []core.ChatMessage {
+	out := make([]core.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.ToChat())
+	}
+	return out
 }

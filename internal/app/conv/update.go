@@ -287,10 +287,11 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			}
 		}
 	}
-	result := rt.OnToolResult(tr)
+	result, details := rt.OnToolResult(tr)
 	m.Append(core.ChatMessage{
-		Role:       core.ChatUser,
-		ToolResult: result,
+		Role:        core.ChatUser,
+		ToolResult:  result,
+		ToolDetails: details,
 		// Stamp the auto-review decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed
 		// here — the handoff map keeps only in-flight calls.

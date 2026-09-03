@@ -338,13 +338,12 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 			ToolCallID: editCall.ID,
 			ToolName:   "Edit",
 			Content:    "Edited main.go",
-			Details: toolresult.FileChangeDetails{
-				Path:         "main.go",
-				EditCount:    1,
-				AddedLines:   1,
-				RemovedLines: 1,
-				UnifiedDiff:  "@@ -1 +1 @@\n-old\n+EDIT_RESULT_SENTINEL",
-			},
+		}, ToolDetails: toolresult.FileChangeDetails{
+			Path:         "main.go",
+			EditCount:    1,
+			AddedLines:   1,
+			RemovedLines: 1,
+			UnifiedDiff:  "@@ -1 +1 @@\n-old\n+EDIT_RESULT_SENTINEL",
 		}},
 	)
 	secondCmds := m.CommitMessages()

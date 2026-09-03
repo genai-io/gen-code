@@ -6,7 +6,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func NormalizeMetadata(meta *SessionMetadata, msgs []core.Message, defaultCwd string, now time.Time) {
+func NormalizeMetadata(meta *SessionMetadata, msgs []core.ChatMessage, defaultCwd string, now time.Time) {
 	if meta.ID == "" {
 		meta.ID = generateSessionID()
 	}

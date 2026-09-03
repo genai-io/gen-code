@@ -1,8 +1,6 @@
 package session
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -15,7 +13,7 @@ import (
 // produce byte-identical content for a given message ID. Only user/assistant
 // messages become nodes (control signals are not model-visible); each node's
 // timestamp is derived from createdAt so a re-save is deterministic.
-func messagesToNodes(msgs []core.Message, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {
+func messagesToNodes(msgs []core.ChatMessage, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {
 	nodes := make([]transcript.Node, 0, len(msgs))
 	var prevID string
 
@@ -46,7 +44,7 @@ func messagesToNodes(msgs []core.Message, defaultCwd string, createdAt time.Time
 // messagesFromNodes rebuilds the wire messages from transcript nodes on load.
 // tool_result blocks carry only a tool_use id, so a first pass indexes tool
 // names from assistant tool_use blocks to backfill ToolResult.ToolName.
-func messagesFromNodes(nodes []transcript.Node) []core.Message {
+func messagesFromNodes(nodes []transcript.Node) []core.ChatMessage {
 	toolNameByID := make(map[string]string)
 	for _, node := range nodes {
 		if node.Role == "assistant" {
@@ -58,15 +56,15 @@ func messagesFromNodes(nodes []transcript.Node) []core.Message {
 		}
 	}
 
-	msgs := make([]core.Message, 0, len(nodes))
+	msgs := make([]core.ChatMessage, 0, len(nodes))
 	for _, node := range nodes {
 		if node.Role == "assistant" {
-			msg := core.Message{Role: ai.RoleAssistant, ID: node.ID}
+			msg := core.ChatMessage{Role: core.ChatAssistant, ID: node.ID}
 			extractAssistantContent(node.Content, &msg)
 			msgs = append(msgs, msg)
 			continue
 		}
-		msg := core.Message{Role: ai.RoleUser, ID: node.ID}
+		msg := core.ChatMessage{Role: core.ChatUser, ID: node.ID}
 		extractUserContent(node.Content, &msg)
 		if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
 			if name, ok := toolNameByID[msg.ToolResult.ToolCallID]; ok {
@@ -81,11 +79,11 @@ func messagesFromNodes(nodes []transcript.Node) []core.Message {
 // transcriptRole maps a wire role onto the transcript's role string. Only
 // user and assistant turns are persisted; anything else returns "" so the
 // caller skips it.
-func transcriptRole(role ai.Role) string {
+func transcriptRole(role core.ChatRole) string {
 	switch role {
-	case ai.RoleUser:
+	case core.ChatUser:
 		return "user"
-	case ai.RoleAssistant:
+	case core.ChatAssistant:
 		return "assistant"
 	default:
 		return ""

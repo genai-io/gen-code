@@ -77,7 +77,7 @@ func (m *model) OnStepEnd() tea.Cmd {
 	return tea.Batch(notices, queued)
 }
 
-func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
+func (m *model) OnToolResult(tr core.ToolResult) (*core.ToolResult, any) {
 	// Track skill usage for the self-learning trigger: any Skill tool call this
 	// turn (even a failing one — a broken skill is a prime refine/retire
 	// candidate) flips the turn onto the update/delete review path.
@@ -102,10 +102,9 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 		ToolName:   tr.ToolName,
 		Content:    tr.Content,
 		IsError:    tr.IsError,
-		Details:    details,
 	}
 	m.persistOverflow(result)
-	return result
+	return result, details
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {

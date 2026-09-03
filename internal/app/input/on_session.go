@@ -2,8 +2,6 @@
 package input
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -14,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -193,7 +192,7 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 
 	for _, msg := range slices.Backward(fullSession.Messages) {
 
-		if msg.Role != ai.RoleUser && msg.Role != ai.RoleAssistant {
+		if msg.Role != core.ChatUser && msg.Role != core.ChatAssistant {
 			continue
 		}
 		blocks := session.MessageToBlocks(msg)
@@ -236,7 +235,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 	}
 
 	for _, msg := range fullSession.Messages {
-		if msg.Role != ai.RoleUser {
+		if msg.Role != core.ChatUser {
 			continue
 		}
 		blocks := session.MessageToBlocks(msg)

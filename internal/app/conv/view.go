@@ -132,7 +132,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 				IsError:  next.ToolResult.IsError,
 				Expanded: next.Expanded,
 				Decision: next.Decision,
-				Details:  next.ToolResult.Details,
+				Details:  next.ToolDetails,
 			}
 		}
 	}
@@ -193,7 +193,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 				Expanded:    msg.Expanded,
 				Interactive: p.Interactive,
 				Width:       p.Width,
-				Details:     msg.ToolResult.Details,
+				Details:     msg.ToolDetails,
 			}, p.MDRenderer))
 		case core.IsCompactSummary(msg.Content):
 			// The post-compaction summary is injected as a user message (the
