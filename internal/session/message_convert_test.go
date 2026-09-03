@@ -142,11 +142,11 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 		{Role: core.ChatAssistant, Content: "hi", Thinking: "let me think",
 			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Edit", Input: `{"path":"/tmp/test","edits":[{"oldText":"old","newText":"new"}]}`}}},
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{
-			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
+			ToolCallID: "tc-1", ToolName: "Edit", Content: ai.TextContent("Edited /tmp/test (1 replacements, +1 -1)"),
 		}, ToolDetails: toolresult.FileChangeDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"}},
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{
-			ToolCallID: "tc-2", ToolName: "Bash", Content: "Error: exit code 1", IsError: true,
+			ToolCallID: "tc-2", ToolName: "Bash", Content: ai.TextContent("Error: exit code 1"), IsError: true,
 		}, ToolDetails: toolresult.BashDetails{Error: "exit code 1", LineCount: 0}},
 		{Role: core.ChatAssistant, Content: "I see the file."},
 	}

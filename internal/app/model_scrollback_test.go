@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func flushTestModel(msg core.ChatMessage) *model {
@@ -323,7 +324,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		core.ChatMessage{Role: core.ChatUser, Expanded: true, ToolResult: &core.ToolResult{
 			ToolCallID: bashCall.ID,
 			ToolName:   "Bash",
-			Content:    "BASH_RESULT_SENTINEL",
+			Content:    ai.TextContent("BASH_RESULT_SENTINEL"),
 		}},
 	)
 	firstCmds := m.CommitMessages()
@@ -337,7 +338,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
 			ToolCallID: editCall.ID,
 			ToolName:   "Edit",
-			Content:    "Edited main.go",
+			Content:    ai.TextContent("Edited main.go"),
 		}, ToolDetails: toolresult.FileChangeDetails{
 			Path:         "main.go",
 			EditCount:    1,

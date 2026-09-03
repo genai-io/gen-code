@@ -220,7 +220,7 @@ func TestAssistantTurnReplaysInOrder(t *testing.T) {
 	history := []core.Message{
 		core.UserMessage("read main.go", nil),
 		replay,
-		core.ToolResultMessage(core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "package main"}),
+		core.ToolResultMessage(core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: ai.TextContent("package main")}),
 	}
 	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: history,

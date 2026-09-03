@@ -196,8 +196,8 @@ func toolResultToBlocks(tr *core.ToolResult, details any) []ContentBlock {
 	case toolresult.BashDetails:
 		block.BashDetails, _ = json.Marshal(details)
 	}
-	if tr.Content != "" {
-		block.Content = []ContentBlock{{Type: "text", Text: tr.Content}}
+	if text := tr.Content.Text(); text != "" {
+		block.Content = []ContentBlock{{Type: "text", Text: text}}
 	}
 	return []ContentBlock{block}
 }
@@ -248,7 +248,7 @@ func extractUserContent(blocks []ContentBlock, msg *core.ChatMessage) {
 			}
 			for _, sub := range block.Content {
 				if sub.Type == "text" {
-					tr.Content = sub.Text
+					tr.Content = ai.TextContent(sub.Text)
 				}
 			}
 			msg.ToolResult = tr

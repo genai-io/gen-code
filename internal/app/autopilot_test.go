@@ -56,7 +56,7 @@ func TestAutopilotRecentTranscriptIncludesCompletionEvidence(t *testing.T) {
 		{Role: core.ChatUser, Content: core.FormatCompactSummary("created the package skeleton")},
 		{Role: core.ChatAssistant, Content: "Run the tests."},
 		{Role: core.ChatUser, Content: "ok", ToolResult: &core.ToolResult{
-			ToolName: "Bash", Content: "ok  github.com/genai-io/san/internal/app", IsError: false,
+			ToolName: "Bash", Content: ai.TextContent("ok  github.com/genai-io/san/internal/app"), IsError: false,
 		}},
 	}
 

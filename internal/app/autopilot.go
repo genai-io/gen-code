@@ -422,7 +422,7 @@ func autopilotRecentTranscript(messages []core.ChatMessage, budget int) string {
 		case core.IsCompactSummary(msg.Content):
 			label, text = "session summary", strings.TrimPrefix(msg.Content, core.CompactSummaryPrefix)
 		case msg.ToolResult != nil:
-			label, text, limit = "tool "+msg.ToolResult.ToolName+" result", msg.ToolResult.Content, toolCap
+			label, text, limit = "tool "+msg.ToolResult.ToolName+" result", msg.ToolResult.Content.Text(), toolCap
 			if msg.ToolResult.IsError {
 				label += " (error)"
 			}

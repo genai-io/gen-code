@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	session "github.com/genai-io/san/internal/session"
 	taskTracker "github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // newTestStore creates a Store using a temp directory instead of ~/.san/projects/.
@@ -271,7 +272,7 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 			{
 				ID:         "u2",
 				Role:       core.ChatUser,
-				ToolResult: &core.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: "file contents"},
+				ToolResult: &core.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: ai.TextContent("file contents")},
 			},
 			makeAssistantEntry("a2", "done"),
 		},
@@ -304,8 +305,8 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	if userResult.ToolResult == nil || userResult.ToolResult.ToolCallID != "tc-1" {
 		t.Fatalf("tool_result did not round-trip: %+v", userResult.ToolResult)
 	}
-	if userResult.ToolResult.Content != "file contents" {
-		t.Errorf("tool_result content mismatch: %q", userResult.ToolResult.Content)
+	if userResult.ToolResult.Content.Text() != "file contents" {
+		t.Errorf("tool_result content mismatch: %q", userResult.ToolResult.Content.Text())
 	}
 	// ToolName is backfilled from the assistant tool_use block on load.
 	if userResult.ToolResult.ToolName != "Read" {
@@ -352,7 +353,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 				Role: core.ChatUser,
 				ToolResult: &core.ToolResult{
 					ToolCallID: toolCallID,
-					Content:    "preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]",
+					Content:    ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]"),
 				},
 			},
 		},
@@ -365,7 +366,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	got := loaded.Messages[0].ToolResult.Content
+	got := loaded.Messages[0].ToolResult.Content.Text()
 	if got != content {
 		t.Fatalf("hydrated tool result len = %d, want %d", len(got), len(content))
 	}

@@ -2,6 +2,7 @@ package conv
 
 import (
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 type StreamState struct {
@@ -127,7 +128,7 @@ func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, co
 			ToolResult: &core.ToolResult{
 				ToolCallID: tc.ID,
 				ToolName:   tc.Name,
-				Content:    contentFn(tc),
+				Content:    ai.TextContent(contentFn(tc)),
 				IsError:    true,
 			},
 			// Consume the stashed auto-review decision so an interrupted judged

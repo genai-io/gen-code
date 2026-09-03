@@ -277,12 +277,8 @@ func ChatOf(m Message) ChatMessage {
 			}
 		case ai.BlockToolResult:
 			if block.ToolResult != nil {
-				c.ToolResult = &ToolResult{
-					ToolCallID: block.ToolResult.ToolCallID,
-					ToolName:   block.ToolResult.ToolName,
-					Content:    block.ToolResult.Content.Text(),
-					IsError:    block.ToolResult.IsError,
-				}
+				tr := *block.ToolResult
+				c.ToolResult = &tr
 			}
 		}
 	}
@@ -311,13 +307,11 @@ type ToolCall = ai.ToolCall
 // untouched or a reasoning model starts over.
 type ReasoningItem = ai.ReasoningItem
 
-// ToolResult is the outcome of a tool execution.
-type ToolResult struct {
-	ToolCallID string `json:"tool_call_id"`
-	ToolName   string `json:"tool_name,omitempty"`
-	Content    string `json:"content"`
-	IsError    bool   `json:"is_error,omitempty"`
-}
+// ToolResult is what a tool call came to say, as the model is told it. It is
+// ai.ToolResult: the same four things, with Content an ordered sequence rather
+// than a string, so a tool that looked at something can answer with it — a
+// screenshot, a rendered chart — on the protocols that carry one.
+type ToolResult = ai.ToolResult
 
 // --- Constructors ---
 
@@ -351,19 +345,14 @@ func ErrorResult(tc ToolCall, content string) *ToolResult {
 	return &ToolResult{
 		ToolCallID: tc.ID,
 		ToolName:   tc.Name,
-		Content:    content,
+		Content:    ai.TextContent(content),
 		IsError:    true,
 	}
 }
 
 // ToolResultMessage creates a tool result message.
 func ToolResultMessage(result ToolResult) Message {
-	return ai.ToolResultsMessage(ai.ToolResult{
-		ToolCallID: result.ToolCallID,
-		ToolName:   result.ToolName,
-		Content:    ai.TextContent(result.Content),
-		IsError:    result.IsError,
-	})
+	return ai.ToolResultsMessage(result)
 }
 
 // --- Utilities ---

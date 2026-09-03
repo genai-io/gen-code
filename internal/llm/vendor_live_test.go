@@ -179,7 +179,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 			history = append(history, replay, core.ToolResultMessage(core.ToolResult{
 				ToolCallID: call.ID,
 				ToolName:   call.Name,
-				Content:    "18C and raining",
+				Content:    ai.TextContent("18C and raining"),
 			}))
 
 			answered := turn(history)

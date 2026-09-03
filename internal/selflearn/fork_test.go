@@ -67,7 +67,7 @@ func stubClient(d ai.Driver) func([]core.Message) (*ai.Client, error) {
 func TestTrimTrailingPendingMessages(t *testing.T) {
 	asst := core.Message{Role: ai.RoleAssistant, Content: ai.TextContent("ok")}
 	usr := core.UserMessage("ask", nil)
-	toolResult := core.ToolResultMessage(core.ToolResult{Content: "tool result"})
+	toolResult := core.ToolResultMessage(core.ToolResult{Content: ai.TextContent("tool result")})
 
 	// Snapshot ends with two trailing user messages → both dropped.
 	in := []core.Message{asst, usr, usr}

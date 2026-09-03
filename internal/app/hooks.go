@@ -32,7 +32,7 @@ func (m *model) firePostToolHook(tr core.ToolResult, sideEffect any) {
 		ToolResponse: toolResponse,
 	}
 	if tr.IsError {
-		input.Error = tr.Content
+		input.Error = tr.Content.Text()
 	}
 	m.services.Hook.ExecuteAsync(eventType, input)
 }

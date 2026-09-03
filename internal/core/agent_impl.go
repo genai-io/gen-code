@@ -553,14 +553,14 @@ func (a *agent) execTools(ctx context.Context, calls []ToolCall) int {
 		if r.err != nil {
 			a.appendResult(t.call, r.err.Error(), true)
 			a.emit(ctx, PostToolEvent(ToolResult{
-				ToolCallID: t.call.ID, ToolName: t.call.Name, Content: r.err.Error(), IsError: true,
+				ToolCallID: t.call.ID, ToolName: t.call.Name, Content: ai.TextContent(r.err.Error()), IsError: true,
 			}))
 			continue
 		}
 		toolUses++
 		a.appendResult(t.call, r.content, false)
 		a.emit(ctx, PostToolEvent(ToolResult{
-			ToolCallID: t.call.ID, ToolName: t.call.Name, Content: r.content,
+			ToolCallID: t.call.ID, ToolName: t.call.Name, Content: ai.TextContent(r.content),
 		}))
 	}
 	return toolUses
@@ -917,7 +917,7 @@ func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	// A tool result rides on a ai.RoleUser message — its content lives on
 	// ToolResult.Content, not on Message.Content. See the Role doc.
 	a.append(ToolResultMessage(ToolResult{
-		ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError,
+		ToolCallID: tc.ID, ToolName: tc.Name, Content: ai.TextContent(content), IsError: isError,
 	}))
 }
 
