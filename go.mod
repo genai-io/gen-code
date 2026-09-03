@@ -26,13 +26,13 @@ require (
 require (
 	github.com/Netflix/go-expect v0.0.0-20180615182759-c93bf25de8e8 // indirect
 	github.com/PuerkitoBio/goquery v1.9.2 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.66.0 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.68.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.17.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/kr/pty v1.1.1 // indirect
-	github.com/openai/openai-go/v3 v3.52.0 // indirect
+	github.com/openai/openai-go/v3 v3.54.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
@@ -101,3 +101,7 @@ require (
 	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+// TODO(pr1): 开发期指向本地 sdk-go —— ai.Message.ID 尚未发布。
+// 合并前必须删掉这一行，改成 bump 到含该字段的 sdk-go release。
+replace github.com/genai-io/sdk-go => ../sdk-go

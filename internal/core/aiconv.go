@@ -34,7 +34,7 @@ func ToAIMessages(msgs []Message, model ai.Model) []ai.Message {
 			out = append(out, ai.ToolResultsMessage(ai.ToolResult{
 				ToolCallID: msg.ToolResult.ToolCallID,
 				ToolName:   msg.ToolResult.ToolName,
-				Content:    msg.ToolResult.Content,
+				Content:    ai.TextContent(msg.ToolResult.Content),
 				IsError:    msg.ToolResult.IsError,
 			}))
 		case msg.Role == RoleUser:
