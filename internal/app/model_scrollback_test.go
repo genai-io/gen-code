@@ -188,8 +188,8 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 		t.Fatal("the first chunk must start immediately")
 	}
 	ready := cmd().(scrollbackPrintReadyMsg)
-	if _, ok := m.prepareScrollbackPrint(ready.id); !ok || !m.flush.minimizeForPrint {
-		t.Fatal("a full-height frame must be minimized before printing")
+	if _, ok := m.prepareScrollbackPrint(ready.id); !ok {
+		t.Fatal("a full-height frame must still prepare a print")
 	}
 	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != "" {
 		t.Fatalf("frame during print = %#v, ok=%v, want an empty frozen frame", frame, ok)
@@ -197,7 +197,7 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	if next := m.finishScrollbackPrint(ready.id); next != nil {
 		t.Fatal("the one-row payload should finish in one minimized print")
 	}
-	if m.flush.minimizeForPrint || m.flush.frameForPrint != nil {
+	if m.flush.frameForPrint != nil {
 		t.Fatal("the managed frame must be restored after the print completes")
 	}
 }

@@ -219,7 +219,7 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		if m.flush.minimizeForPrint {
+		if frameFillsScreen(nativeFrameHeight, nativeHistoryHeight) {
 			frame = tea.NewView("")
 		}
 		m.flush.frameForPrint = &frame

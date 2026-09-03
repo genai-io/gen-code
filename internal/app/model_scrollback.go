@@ -77,13 +77,12 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering        bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer         *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width            int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID      uint64                   // monotonic identity for queued scrollback prints
-	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
-	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
-	frameForPrint    *tea.View                // freeze insertAbove geometry until the print completes
+	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width         int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
+	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	frameForPrint *tea.View                // freeze insertAbove geometry until the print completes
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -333,7 +332,6 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id {
 		return nil
 	}
-	f.minimizeForPrint = false
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
 	if f.pendingPrints[0].remaining != "" {
@@ -361,11 +359,19 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if m.flush.minimizeForPrint {
+	if frameFillsScreen(frameHeight, m.env.Height) {
 		frame = tea.NewView("")
 	}
 	m.flush.frameForPrint = &frame
 	return content, true
+}
+
+// frameFillsScreen reports that the frame leaves no room above it. The print
+// then has nowhere to insert, so it shrinks the frame to nothing for the
+// duration — both halves of prepareScrollbackPrint read the answer here rather
+// than one telling the other.
+func frameFillsScreen(frameHeight, height int) bool {
+	return height > 0 && frameHeight >= height
 }
 
 func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeight int) (string, bool) {
@@ -379,11 +385,9 @@ func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeigh
 	f.pendingPrints[0].started = true
 
 	capacity := len(lines)
-	f.minimizeForPrint = false
 	if height > 0 {
 		capacity = height - min(max(frameHeight, 0), height)
-		if capacity < 1 {
-			f.minimizeForPrint = true
+		if frameFillsScreen(frameHeight, height) {
 			capacity = height
 		}
 	}
@@ -406,7 +410,6 @@ func (m *model) useMinimalScrollbackFrame() {
 	}
 	frame := tea.NewView("")
 	m.flush.frameForPrint = &frame
-	m.flush.minimizeForPrint = true
 }
 
 // trimPadding drops the padding a full-width buffer leaves on a row.
