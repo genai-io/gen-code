@@ -178,7 +178,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 	}()
 
 	select {
-	case ag.Inbox() <- core.Message{Role: core.RoleUser, Content: prompt}:
+	case ag.Inbox() <- core.Message{Role: ai.RoleUser, Content: prompt}:
 	case <-ctx.Done():
 		<-done
 		return core.Result{}, ctx.Err()

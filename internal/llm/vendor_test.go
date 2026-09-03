@@ -157,7 +157,7 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 	text, thinking, resp, err := collect(t, claude(t, e), CompletionOptions{
 		Model:        "claude-opus-5",
 		SystemPrompt: "be brief",
-		Messages:     []core.Message{{Role: core.RoleUser, Content: "read main.go"}},
+		Messages:     []core.Message{{Role: ai.RoleUser, Content: "read main.go"}},
 		Tools:        []ToolSchema{{Name: "Read", Description: "Read a file", Parameters: map[string]any{"type": "object"}}},
 		MaxTokens:    2048,
 	})
@@ -211,15 +211,15 @@ func TestAssistantTurnReplaysInOrder(t *testing.T) {
 	)
 
 	history := []core.Message{
-		{Role: core.RoleUser, Content: "read main.go"},
+		{Role: ai.RoleUser, Content: "read main.go"},
 		{
-			Role:              core.RoleAssistant,
+			Role:              ai.RoleAssistant,
 			Content:           "reading it",
 			Thinking:          "weighing it",
 			ThinkingSignature: "sig-1",
 			ToolCalls:         []core.ToolCall{{ID: "call_1", Name: "Read", Input: `{"path":"main.go"}`}},
 		},
-		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "package main"}},
+		{Role: ai.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "package main"}},
 	}
 	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: history,
@@ -262,8 +262,8 @@ func TestUnansweredToolCallIsRepaired(t *testing.T) {
 	// A turn interrupted between the call and its result: every protocol
 	// rejects the history as it stands.
 	history := []core.Message{
-		{Role: core.RoleUser, Content: "read main.go"},
-		{Role: core.RoleAssistant, Content: "reading it", ToolCalls: []core.ToolCall{{ID: "call_1", Name: "Read", Input: "{}"}}},
+		{Role: ai.RoleUser, Content: "read main.go"},
+		{Role: ai.RoleAssistant, Content: "reading it", ToolCalls: []core.ToolCall{{ID: "call_1", Name: "Read", Input: "{}"}}},
 	}
 	if _, _, _, err := collect(t, claude(t, e), CompletionOptions{
 		Model: "claude-opus-5", Messages: history,
@@ -282,7 +282,7 @@ func TestRateLimitIsRetryableWithTheProvidersHint(t *testing.T) {
 	e.error = `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`
 
 	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
-		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		Model: "claude-opus-5", Messages: []core.Message{{Role: ai.RoleUser, Content: "hi"}},
 	})
 	// Asked of pkg/ai now. San used to re-tag this into its own vocabulary,
 	// and the partition it produced was this one exactly.
@@ -300,7 +300,7 @@ func TestOverflowedPromptAsksForCompaction(t *testing.T) {
 	e.error = `{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 300000 tokens > 200000 maximum"}}`
 
 	_, _, _, err := collect(t, claude(t, e), CompletionOptions{
-		Model: "claude-opus-5", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		Model: "claude-opus-5", Messages: []core.Message{{Role: ai.RoleUser, Content: "hi"}},
 	})
 	if !ai.IsContextExceeded(err) {
 		t.Fatalf("an overflowed prompt was not marked for compaction: %v", err)
@@ -358,7 +358,7 @@ func TestThinkingEffortReachesTheWire(t *testing.T) {
 
 	if _, _, _, err := collect(t, p, CompletionOptions{
 		Model:          "claude-opus-5",
-		Messages:       []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		Messages:       []core.Message{{Role: ai.RoleUser, Content: "hi"}},
 		ThinkingEffort: top,
 	}); err != nil {
 		t.Fatalf("stream: %v", err)
@@ -374,7 +374,7 @@ func TestCopilotOptsIntoVisionOnlyWhenSendingImages(t *testing.T) {
 		t.Fatal("Copilot states no turn-dependent headers")
 	}
 
-	opening := headers([]core.Message{{Role: core.RoleUser, Content: "hi"}})
+	opening := headers([]core.Message{{Role: ai.RoleUser, Content: "hi"}})
 	if opening["X-Initiator"] != "user" {
 		t.Errorf("X-Initiator on the opening turn = %q", opening["X-Initiator"])
 	}
@@ -383,8 +383,8 @@ func TestCopilotOptsIntoVisionOnlyWhenSendingImages(t *testing.T) {
 	}
 
 	followUp := headers([]core.Message{
-		{Role: core.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
-		{Role: core.RoleAssistant, Content: "looking"},
+		{Role: ai.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
+		{Role: ai.RoleAssistant, Content: "looking"},
 	})
 	if followUp["X-Initiator"] != "agent" {
 		t.Errorf("X-Initiator once the loop is driving = %q", followUp["X-Initiator"])
@@ -562,7 +562,7 @@ func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	var streamErr error
 	for chunk := range legacyStream(context.Background(), p, CompletionOptions{
 		Model:    "claude-opus-5",
-		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		Messages: []core.Message{{Role: ai.RoleUser, Content: "hi"}},
 	}) {
 		if chunk.Type == ChunkTypeError {
 			streamErr = chunk.Error

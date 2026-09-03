@@ -4,6 +4,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"strings"
 	"time"
@@ -204,7 +206,7 @@ func buildHookCompleter(p llm.Provider) hook.LLMCompleter {
 	return func(ctx context.Context, systemPrompt, userMessage, model string) (string, error) {
 		c := llm.NewClient(p, model, 0)
 		resp, err := c.Complete(ctx, systemPrompt, []core.Message{{
-			Role:    core.RoleUser,
+			Role:    ai.RoleUser,
 			Content: userMessage,
 		}}, 4096)
 		if err != nil {

@@ -33,7 +33,7 @@ func (s *autopilotStubProvider) Client(string, map[string]string) (*ai.Client, e
 func (s *autopilotStubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	msgs := make([]core.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		msgs = append(msgs, core.Message{Role: core.Role(m.Role), Content: m.Content.Text()})
+		msgs = append(msgs, core.Message{Role: ai.Role(m.Role), Content: m.Content.Text()})
 	}
 	s.lastOptions = llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs}
 	content := s.content
@@ -53,9 +53,9 @@ func (s *autopilotStubProvider) Name() string                                   
 
 func TestAutopilotRecentTranscriptIncludesCompletionEvidence(t *testing.T) {
 	messages := []core.ChatMessage{
-		{Role: core.RoleUser, Content: core.FormatCompactSummary("created the package skeleton")},
-		{Role: core.RoleAssistant, Content: "Run the tests."},
-		{Role: core.RoleUser, Content: "ok", ToolResult: &core.ToolResult{
+		{Role: core.ChatUser, Content: core.FormatCompactSummary("created the package skeleton")},
+		{Role: core.ChatAssistant, Content: "Run the tests."},
+		{Role: core.ChatUser, Content: "ok", ToolResult: &core.ToolResult{
 			ToolName: "Bash", Content: "ok  github.com/genai-io/san/internal/app", IsError: false,
 		}},
 	}
@@ -70,8 +70,8 @@ func TestAutopilotRecentTranscriptIncludesCompletionEvidence(t *testing.T) {
 
 func TestAutopilotRecentTranscriptSkipsEmptyCompactSummary(t *testing.T) {
 	messages := []core.ChatMessage{
-		{Role: core.RoleUser, Content: core.FormatCompactSummary("")},
-		{Role: core.RoleAssistant, Content: "Working on it."},
+		{Role: core.ChatUser, Content: core.FormatCompactSummary("")},
+		{Role: core.ChatAssistant, Content: "Working on it."},
 	}
 
 	got := autopilotRecentTranscript(messages, 3000)
@@ -230,9 +230,9 @@ func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) 
 	m.env.ApplyModePermissions(t.TempDir())
 	m.env.AutoPilot.Steers.Suggest = &suggest
 	m.conv.Messages = []core.ChatMessage{
-		{Role: core.RoleAssistant, Content: "Done."},
-		{Role: core.RoleUser, Content: "Next."},
-		{Role: core.RoleAssistant, Content: "Also done."},
+		{Role: core.ChatAssistant, Content: "Done."},
+		{Role: core.ChatUser, Content: "Next."},
+		{Role: core.ChatAssistant, Content: "Also done."},
 	}
 	return m
 }

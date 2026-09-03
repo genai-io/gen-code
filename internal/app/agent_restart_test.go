@@ -38,7 +38,7 @@ func (p *restartStubProvider) Stream(_ context.Context, req *ai.Request) iter.Se
 func flattenAI(msgs []ai.Message) []core.Message {
 	out := make([]core.Message, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, core.Message{Role: core.Role(m.Role), Content: m.Content.Text()})
+		out = append(out, core.Message{Role: ai.Role(m.Role), Content: m.Content.Text()})
 	}
 	return out
 }
@@ -54,8 +54,8 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	inferences := make(chan core.InferenceContext, 1)
 	live := []core.Message{
-		{ID: "u1", Role: core.RoleUser, Content: "survey internal/broker"},
-		{ID: "a1", Role: core.RoleAssistant, Content: "foreground result"},
+		{ID: "u1", Role: ai.RoleUser, Content: "survey internal/broker"},
+		{ID: "a1", Role: ai.RoleAssistant, Content: "foreground result"},
 	}
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -73,7 +73,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	// A background completion is already represented in the UI when
 	// SubmitToAgent asks for a replacement. It is sent through the inbox after
 	// Start, so it must not displace the preserved seed.
-	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.RoleUser, Content: "background result"})
+	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
 	got := m.seedAgentMessages("background result")
 	if len(got) != len(live) {
 		t.Fatalf("seedAgentMessages() len = %d, want %d: %+v", len(got), len(live), got)
@@ -115,7 +115,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		if request[0].Content != live[0].Content || request[1].Content != live[1].Content {
 			t.Fatalf("inference lost preserved content: %+v", request)
 		}
-		if request[2].Role != core.RoleUser || request[2].Content != "background result" {
+		if request[2].Role != ai.RoleUser || request[2].Content != "background result" {
 			t.Fatalf("inference trailing message = %+v, want background result", request[2])
 		}
 	case <-time.After(time.Second):
@@ -145,11 +145,11 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 		services: services{Agent: &agent.Session{}},
 		conv:     conv.NewModel(80),
 		agentRestartMessages: []core.Message{
-			{ID: "old-u1", Role: core.RoleUser, Content: "old session"},
+			{ID: "old-u1", Role: ai.RoleUser, Content: "old session"},
 		},
 	}
 	m.ResetAgentSession()
-	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.RoleUser, Content: "new session"})
+	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
 	if got := m.seedAgentMessages("new session"); len(got) != 0 {
 		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
@@ -167,11 +167,11 @@ func chainWithImage() []core.Message {
 	return []core.Message{
 		{
 			ID:      "u1",
-			Role:    core.RoleUser,
+			Role:    ai.RoleUser,
 			Content: "what is in this screenshot?",
 			Images:  []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n", FileName: "shot.png"}}},
 		},
-		{ID: "a1", Role: core.RoleAssistant, Content: "a terminal"},
+		{ID: "a1", Role: ai.RoleAssistant, Content: "a terminal"},
 	}
 }
 

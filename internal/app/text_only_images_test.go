@@ -165,7 +165,7 @@ func TestReleasedQueuedMessageSplitsDisplayFromContent(t *testing.T) {
 func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.conv.Append(core.ChatMessage{
-		Role:    core.RoleUser,
+		Role:    core.ChatUser,
 		Content: "what does this show",
 		Images:  []core.Attachment{chartImage()},
 	})

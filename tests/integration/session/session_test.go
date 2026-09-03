@@ -1,6 +1,8 @@
 package session_test
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,12 +32,12 @@ func newTestStore(t *testing.T) *session.Store {
 
 // makeUserEntry creates a user text message for testing.
 func makeUserEntry(uuid, text string) core.Message {
-	return core.Message{ID: uuid, Role: core.RoleUser, Content: text}
+	return core.Message{ID: uuid, Role: ai.RoleUser, Content: text}
 }
 
 // makeAssistantEntry creates an assistant text message for testing.
 func makeAssistantEntry(uuid, text string) core.Message {
-	return core.Message{ID: uuid, Role: core.RoleAssistant, Content: text}
+	return core.Message{ID: uuid, Role: ai.RoleAssistant, Content: text}
 }
 
 // getEntryText returns a message's text.
@@ -262,7 +264,7 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 			makeUserEntry("u1", "read this file"),
 			{
 				ID:                "a1",
-				Role:              core.RoleAssistant,
+				Role:              ai.RoleAssistant,
 				Content:           "I'll inspect it.",
 				Thinking:          "need to inspect the file",
 				ThinkingSignature: "sig-1",
@@ -270,7 +272,7 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 			},
 			{
 				ID:         "u2",
-				Role:       core.RoleUser,
+				Role:       ai.RoleUser,
 				ToolResult: &core.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: "file contents"},
 			},
 			makeAssistantEntry("a2", "done"),
@@ -349,7 +351,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 		Messages: []core.Message{
 			{
 				ID:   "u1",
-				Role: core.RoleUser,
+				Role: ai.RoleUser,
 				ToolResult: &core.ToolResult{
 					ToolCallID: toolCallID,
 					Content:    "preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]",
@@ -486,9 +488,9 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 			t.Errorf("entry[%d]: want %q, got %q", i, want.text, got)
 		}
 
-		wantRole := core.RoleUser
+		wantRole := ai.RoleUser
 		if want.role == "assistant" {
-			wantRole = core.RoleAssistant
+			wantRole = ai.RoleAssistant
 		}
 		if loaded.Messages[i].Role != wantRole {
 			t.Errorf("entry[%d]: want role %q, got %q", i, wantRole, loaded.Messages[i].Role)

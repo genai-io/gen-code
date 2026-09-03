@@ -231,7 +231,7 @@ func TestApplyCompactionClearsLastTotalInputTokens(t *testing.T) {
 	a := newAgentForPromptSizing(t)
 	a.SetMessages([]Message{
 		UserMessage("first", nil),
-		{Role: RoleAssistant, Content: "reply"},
+		{Role: ai.RoleAssistant, Content: "reply"},
 		UserMessage("second", nil),
 	})
 	a.lastTotalInputTokens = 195_000
@@ -350,7 +350,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	}()
 
 	// Kick off the first turn, then interrupt while Infer is blocked.
-	ag.Inbox() <- Message{Role: RoleUser, Content: "first"}
+	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "first"}
 	// turn is stored at the top of each inner-loop iteration, right
 	// before ThinkAct is called — wait until that pointer is published.
 	waitFor(t, "agent turn to be stored", func() bool {
@@ -372,7 +372,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	// release channel is buffered so the test never races the agent's
 	// read of it. Waiting on turn.Load() instead of sleeping proves the
 	// second turn actually entered Infer.
-	ag.Inbox() <- Message{Role: RoleUser, Content: "second"}
+	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "second"}
 	waitFor(t, "second turn to enter Infer", func() bool {
 		return ag.(*agent).turn.Load() != nil
 	})
@@ -463,7 +463,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	// Interrupt while the agent is parked in waitForInput.
 	<-ag.InterruptCurrentTurn()
 
-	ag.Inbox() <- Message{Role: RoleUser, Content: "answer me"}
+	ag.Inbox() <- Message{Role: ai.RoleUser, Content: "answer me"}
 
 	// blockingLLM only replies once its release token is read, so a consumed
 	// token proves Infer was reached.
@@ -614,7 +614,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: "go"})
 
 	result, err := ag.ThinkAct(ctx)
 	if !errors.Is(err, context.Canceled) {
@@ -659,7 +659,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: "go"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -676,7 +676,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 
 	// Asked for again on the next call, so a mid-session change lands.
 	effort = ai.EffortHigh
-	ag.append(Message{Role: RoleUser, Content: "again"})
+	ag.append(Message{Role: ai.RoleUser, Content: "again"})
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
@@ -704,7 +704,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: "go"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -730,7 +730,7 @@ func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: RoleUser, Content: "go"})
+	ag.append(Message{Role: ai.RoleUser, Content: "go"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

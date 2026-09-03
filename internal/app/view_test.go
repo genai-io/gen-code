@@ -107,7 +107,7 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 	// text-only final chunk — so the live tail believes it is mid-turn.
 	m.conv.Stream.Active = true
 	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{
-		Role:      core.RoleAssistant,
+		Role:      core.ChatAssistant,
 		Content:   rationale,
 		ToolCalls: batch,
 	})

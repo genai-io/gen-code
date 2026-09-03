@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -59,12 +61,12 @@ func messagesFromNodes(nodes []transcript.Node) []core.Message {
 	msgs := make([]core.Message, 0, len(nodes))
 	for _, node := range nodes {
 		if node.Role == "assistant" {
-			msg := core.Message{Role: core.RoleAssistant, ID: node.ID}
+			msg := core.Message{Role: ai.RoleAssistant, ID: node.ID}
 			extractAssistantContent(node.Content, &msg)
 			msgs = append(msgs, msg)
 			continue
 		}
-		msg := core.Message{Role: core.RoleUser, ID: node.ID}
+		msg := core.Message{Role: ai.RoleUser, ID: node.ID}
 		extractUserContent(node.Content, &msg)
 		if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
 			if name, ok := toolNameByID[msg.ToolResult.ToolCallID]; ok {
@@ -79,11 +81,11 @@ func messagesFromNodes(nodes []transcript.Node) []core.Message {
 // transcriptRole maps a wire role onto the transcript's role string. Only
 // user and assistant turns are persisted; anything else returns "" so the
 // caller skips it.
-func transcriptRole(role core.Role) string {
+func transcriptRole(role ai.Role) string {
 	switch role {
-	case core.RoleUser:
+	case ai.RoleUser:
 		return "user"
-	case core.RoleAssistant:
+	case ai.RoleAssistant:
 		return "assistant"
 	default:
 		return ""

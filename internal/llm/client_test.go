@@ -73,7 +73,7 @@ func TestCompleteCollectsTheStream(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "test-model", maxTokens: 4096}
 
-	msgs := []core.Message{{Role: core.RoleUser, Content: "hi"}}
+	msgs := []core.Message{{Role: ai.RoleUser, Content: "hi"}}
 	resp, err := Complete(context.Background(), mp, l.completionOpts(msgs, nil, "system prompt"))
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
@@ -91,7 +91,7 @@ func TestLLMComplete(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "test-model"}
 
-	resp, err := l.Complete(context.Background(), "compact", []core.Message{{Role: core.RoleUser, Content: "summarize"}}, 2048)
+	resp, err := l.Complete(context.Background(), "compact", []core.Message{{Role: ai.RoleUser, Content: "summarize"}}, 2048)
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
 	client := NewClient(p, "mock", 0)
 
 	if _, err := client.TurnClient([]core.Message{
-		{Role: core.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
+		{Role: ai.RoleUser, Content: "look", Images: []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "x"}}}},
 	}); err != nil {
 		t.Fatalf("TurnClient: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
 		t.Fatalf("headers = %v, want the turn's vision opt-in", p.got)
 	}
 
-	if _, err := client.TurnClient([]core.Message{{Role: core.RoleUser, Content: "hi"}}); err != nil {
+	if _, err := client.TurnClient([]core.Message{{Role: ai.RoleUser, Content: "hi"}}); err != nil {
 		t.Fatalf("TurnClient: %v", err)
 	}
 	if _, asked := p.got["Copilot-Vision-Request"]; asked {
@@ -440,7 +440,7 @@ func TestTurnClientCarriesTheTurnsOwnHeaders(t *testing.T) {
 // A provider whose headers never vary gets none, rather than an empty map that
 // would key its client cache differently from a nil one.
 func TestTurnClientSendsNoHeadersForAPlainProvider(t *testing.T) {
-	if got := TurnHeaders(&mockLLMProvider{}, []core.Message{{Role: core.RoleUser, Content: "hi"}}); got != nil {
+	if got := TurnHeaders(&mockLLMProvider{}, []core.Message{{Role: ai.RoleUser, Content: "hi"}}); got != nil {
 		t.Fatalf("TurnHeaders = %v, want nil", got)
 	}
 }

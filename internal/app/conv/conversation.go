@@ -46,13 +46,13 @@ func (m *ConversationModel) Clear() {
 }
 
 func (m *ConversationModel) AddNotice(content string) {
-	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content})
+	m.Messages = append(m.Messages, core.ChatMessage{Role: core.ChatNotice, Content: content})
 }
 
 // AddAgentNotice adds a notice that came from a background agent (a subagent
 // completion or interim report), rendered distinctly from a plain system notice.
 func (m *ConversationModel) AddAgentNotice(content string) {
-	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content, AgentNotice: true})
+	m.Messages = append(m.Messages, core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
 }
 
 // LastMessageIsStreaming reports whether the stream is still writing into the
@@ -69,7 +69,7 @@ func (m *ConversationModel) LastMessageIsStreaming() bool {
 	if !m.Stream.Active || len(m.Messages) == 0 {
 		return false
 	}
-	return m.Messages[len(m.Messages)-1].Role == core.RoleAssistant
+	return m.Messages[len(m.Messages)-1].Role == core.ChatAssistant
 }
 
 func (m *ConversationModel) AppendToLast(text, thinking string) {
@@ -77,7 +77,7 @@ func (m *ConversationModel) AppendToLast(text, thinking string) {
 		return
 	}
 	idx := len(m.Messages) - 1
-	if m.Messages[idx].Role != core.RoleAssistant {
+	if m.Messages[idx].Role != core.ChatAssistant {
 		return
 	}
 	if thinking != "" {
@@ -96,7 +96,7 @@ func (m *ConversationModel) SetLastToolCalls(calls []core.ToolCall) {
 	// Defensive: tool_calls only belong on an assistant message. Without
 	// this check, a late PostInfer event landing after the cancel handler
 	// has appended a trailing user marker would corrupt that marker.
-	if last.Role != core.RoleAssistant {
+	if last.Role != core.ChatAssistant {
 		return
 	}
 	last.ToolCalls = calls
@@ -107,7 +107,7 @@ func (m *ConversationModel) SetLastThinkingSignature(sig string) {
 		return
 	}
 	last := &m.Messages[len(m.Messages)-1]
-	if last.Role != core.RoleAssistant {
+	if last.Role != core.ChatAssistant {
 		return
 	}
 	last.ThinkingSignature = sig
@@ -123,7 +123,7 @@ func (m *ConversationModel) AppendErrorToLast(err error) {
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.ReviewDecision) {
 	for _, tc := range calls {
 		m.Append(core.ChatMessage{
-			Role: core.RoleUser,
+			Role: core.ChatUser,
 			ToolResult: &core.ToolResult{
 				ToolCallID: tc.ID,
 				ToolName:   tc.Name,
@@ -147,7 +147,7 @@ func (m *ConversationModel) DropStreamingAssistant() {
 	if n == 0 || n <= m.CommittedCount {
 		return
 	}
-	if m.Messages[n-1].Role == core.RoleAssistant {
+	if m.Messages[n-1].Role == core.ChatAssistant {
 		m.Messages = m.Messages[:n-1]
 	}
 }
@@ -155,7 +155,7 @@ func (m *ConversationModel) DropStreamingAssistant() {
 func (m *ConversationModel) RemoveEmptyLastAssistant() {
 	if len(m.Messages) > 0 {
 		last := m.Messages[len(m.Messages)-1]
-		if last.Role == core.RoleAssistant && last.Content == "" {
+		if last.Role == core.ChatAssistant && last.Content == "" {
 			m.Messages = m.Messages[:len(m.Messages)-1]
 		}
 	}
@@ -164,7 +164,7 @@ func (m *ConversationModel) RemoveEmptyLastAssistant() {
 func (m *ConversationModel) MarkLastInterrupted() {
 	for i := len(m.Messages) - 1; i >= 0; i-- {
 		msg := &m.Messages[i]
-		if msg.Role != core.RoleAssistant {
+		if msg.Role != core.ChatAssistant {
 			continue
 		}
 		if len(msg.ToolCalls) == 0 {
@@ -232,7 +232,7 @@ func (m *ConversationModel) HasAllToolResults(idx int) bool {
 
 	for j := idx + 1; j < len(m.Messages); j++ {
 		msg := m.Messages[j]
-		if msg.Role == core.RoleNotice {
+		if msg.Role == core.ChatNotice {
 			continue
 		}
 		if msg.ToolResult == nil {
@@ -269,11 +269,11 @@ func (m ConversationModel) ConvertToProviderFrom(startIdx int) []core.Message {
 	}
 	providerMsgs := make([]core.Message, 0, len(m.Messages)-startIdx)
 	for i := startIdx; i < len(m.Messages); i++ {
-		msg := m.Messages[i]
-		if msg.Role == core.RoleNotice {
-			continue
+		// A notice is San talking to the person, not a turn. ToMessage is what
+		// knows that, so this loop does not have to.
+		if pm, ok := m.Messages[i].ToMessage(); ok {
+			providerMsgs = append(providerMsgs, pm)
 		}
-		providerMsgs = append(providerMsgs, msg.ToMessage())
 	}
 	return providerMsgs
 }

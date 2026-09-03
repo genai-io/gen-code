@@ -3,6 +3,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"slices"
@@ -462,7 +464,7 @@ func (m *model) seedAgentMessages(pendingSend string) []core.Message {
 	}
 	if pendingSend != "" && len(coreMessages) > 0 {
 		last := coreMessages[len(coreMessages)-1]
-		if last.Role == core.RoleUser && last.Content == pendingSend {
+		if last.Role == ai.RoleUser && last.Content == pendingSend {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}

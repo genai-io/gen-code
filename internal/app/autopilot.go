@@ -4,6 +4,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -243,7 +245,7 @@ func (m *model) missionRefine(ctx context.Context, draft string) (string, error)
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        modelID,
 		SystemPrompt: missionRefinePrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: "Mission draft payload (JSON; rewrite only the draft value):\n" + string(payload)}},
+		Messages:     []core.Message{{Role: ai.RoleUser, Content: "Mission draft payload (JSON; rewrite only the draft value):\n" + string(payload)}},
 		MaxTokens:    600,
 	})
 	if err != nil {
@@ -426,9 +428,9 @@ func autopilotRecentTranscript(messages []core.ChatMessage, budget int) string {
 			if msg.ToolResult.IsError {
 				label += " (error)"
 			}
-		case msg.Role == core.RoleUser:
+		case msg.Role == core.ChatUser:
 			label, text = "you", msg.Content
-		case msg.Role == core.RoleAssistant:
+		case msg.Role == core.ChatAssistant:
 			label, text = "agent", msg.Content
 		default:
 			continue
@@ -779,7 +781,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	resp, err := llm.Complete(ctx, call.provider, llm.CompletionOptions{
 		Model:        call.model,
 		SystemPrompt: call.system,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: call.user}},
+		Messages:     []core.Message{{Role: ai.RoleUser, Content: call.user}},
 		MaxTokens:    call.maxTokens,
 	})
 	if err != nil {

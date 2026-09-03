@@ -1,6 +1,8 @@
 package loop_test
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -58,7 +60,7 @@ func TestAgent_MultiTurn_ToolUse(t *testing.T) {
 	hasToolCall := false
 	hasToolResult := false
 	for _, m := range msgs {
-		if m.Role == core.RoleAssistant && len(m.ToolCalls) > 0 {
+		if m.Role == ai.RoleAssistant && len(m.ToolCalls) > 0 {
 			hasToolCall = true
 		}
 		if m.ToolResult != nil {

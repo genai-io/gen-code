@@ -29,8 +29,8 @@ func TestThinkingIsReplayedOnlyWhereItCanBe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	signed := Message{Role: RoleAssistant, Content: "done", Thinking: "weighing it", ThinkingSignature: "sig-1"}
-	unsigned := Message{Role: RoleAssistant, Content: "done", Thinking: "weighing it"}
+	signed := Message{Role: ai.RoleAssistant, Content: "done", Thinking: "weighing it", ThinkingSignature: "sig-1"}
+	unsigned := Message{Role: ai.RoleAssistant, Content: "done", Thinking: "weighing it"}
 
 	cases := []struct {
 		name      string

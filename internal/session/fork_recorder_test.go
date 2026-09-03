@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"os"
 	"strings"
 	"testing"
@@ -81,7 +83,7 @@ func TestForkRecorderWritesToTheForkNotTheParent(t *testing.T) {
 	// The live agent stamps an id in append(); OnAppend drops messages without
 	// one, so the harness has to do the same.
 	parentRec.OnAgentEvent(core.AppendEvent("main", core.Message{
-		ID: "m1", Role: core.RoleUser, Content: "before the fork",
+		ID: "m1", Role: ai.RoleUser, Content: "before the fork",
 	}))
 
 	// Fork: the session id moves, and the rebuilt agent picks up a recorder
@@ -89,7 +91,7 @@ func TestForkRecorderWritesToTheForkNotTheParent(t *testing.T) {
 	setup.SetID("fork")
 	forkRec := setup.NewRecorder("main", "anthropic", "model", 1000)
 	forkRec.OnAgentEvent(core.AppendEvent("main", core.Message{
-		ID: "m2", Role: core.RoleUser, Content: "after the fork",
+		ID: "m2", Role: ai.RoleUser, Content: "after the fork",
 	}))
 
 	parentBody := readTranscript(t, store, "parent")

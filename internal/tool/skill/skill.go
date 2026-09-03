@@ -1,13 +1,14 @@
 package skill
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -218,7 +219,7 @@ func alreadyInlined(ctx context.Context, fullName string) bool {
 
 		// Want the most recent user-typed turn; a tool result is also RoleUser
 		// (it carries a ToolResult), so skip those to avoid stopping on one.
-		if m.Role != core.RoleUser || m.ToolResult != nil {
+		if m.Role != ai.RoleUser || m.ToolResult != nil {
 			continue
 		}
 		return strings.HasPrefix(strings.TrimSpace(m.Content), tag)

@@ -67,7 +67,7 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 	// notice (see RenderMessageAt: IsCompactSummary), so the transcript shows
 	// one clean line instead of the raw summary markdown or a "❭" user turn.
 	m.conv.Append(core.ChatMessage{
-		Role:           core.RoleUser,
+		Role:           core.ChatUser,
 		Content:        core.FormatCompactSummary(info.Summary),
 		DisplayContent: fmt.Sprintf("≡ Conversation compacted — %d messages summarized (scroll up for history)", info.OriginalCount),
 	})

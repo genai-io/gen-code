@@ -11,10 +11,11 @@ import (
 func MessagesFromChat(messages []core.ChatMessage) []core.Message {
 	msgs := make([]core.Message, 0, len(messages))
 	for _, msg := range messages {
-		if msg.Role == core.RoleNotice {
-			continue
+		// A notice is San talking to the person, not a turn — ToMessage is
+		// what knows that, so nothing out here has to remember it.
+		if m, ok := msg.ToMessage(); ok {
+			msgs = append(msgs, m)
 		}
-		msgs = append(msgs, msg.ToMessage())
 	}
 	return msgs
 }

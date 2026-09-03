@@ -149,7 +149,7 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	allImages = append(allImages, inlineImages...)
 	allImages = append(allImages, fileImages...)
 	return core.ChatMessage{
-		Role:           core.RoleUser,
+		Role:           core.ChatUser,
 		Content:        content,
 		DisplayContent: displayContent,
 		Images:         allImages,
@@ -266,7 +266,7 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: fullMsg, DisplayContent: displayMsg})
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg})
 	if pluginRoot != "" {
 		m.services.Agent.SetPluginRoot(pluginRoot)
 	}

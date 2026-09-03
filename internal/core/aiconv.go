@@ -37,11 +37,11 @@ func ToAIMessages(msgs []Message, model ai.Model) []ai.Message {
 				Content:    ai.TextContent(msg.ToolResult.Content),
 				IsError:    msg.ToolResult.IsError,
 			}))
-		case msg.Role == RoleUser:
+		case msg.Role == ai.RoleUser:
 			if content := userContent(msg); len(content) > 0 {
 				out = append(out, ai.Message{Role: ai.RoleUser, Content: content})
 			}
-		case msg.Role == RoleAssistant:
+		case msg.Role == ai.RoleAssistant:
 			if content := assistantContent(msg, model); len(content) > 0 {
 				out = append(out, ai.Message{Role: ai.RoleAssistant, Content: content})
 			}

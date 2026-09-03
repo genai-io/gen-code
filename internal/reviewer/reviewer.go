@@ -10,6 +10,8 @@
 package reviewer
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -118,7 +120,7 @@ func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
 		Model:        r.model,
 		SystemPrompt: r.systemPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: userMessage}},
+		Messages:     []core.Message{{Role: ai.RoleUser, Content: userMessage}},
 		MaxTokens:    maxVerdictTokens,
 	})
 	if err != nil {

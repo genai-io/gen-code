@@ -24,19 +24,39 @@ func NewMessageID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// Role identifies who produced a message in the conversation.
+// ChatRole says who put a row on the screen, which is a different question
+// from who spoke in the conversation and has a different answer set.
 //
-// A tool result is a RoleUser message carrying a non-nil ToolResult — that is
-// the wire shape every provider expects (tool_result blocks ride inside a
-// user turn), so it is also how we hold them in history. Distinguish a
-// tool-result turn from a user-typed turn by ToolResult != nil, never by Role.
-type Role string
+// The conversation has two producers, the person and the model, and that is
+// ai.Role. The interface has three: San writes rows of its own — a notice, a
+// status line, the summary shown after a compaction — that the model must
+// never see. Modelling that as a third ai.Role would put messages the model
+// cannot be shown into the type the model is sent, and leave every consumer
+// remembering that a role might not be one.
+//
+// A tool result is a ChatUser row carrying a non-nil ToolResult, which is the
+// wire shape every provider expects. Tell it from a typed turn by
+// ToolResult != nil, never by the role.
+type ChatRole string
 
 const (
-	RoleUser      Role = "user"
-	RoleAssistant Role = "assistant"
-	RoleNotice    Role = "notice"
+	ChatUser      ChatRole = "user"
+	ChatAssistant ChatRole = "assistant"
+	// ChatNotice is San talking to the person. It never reaches a model.
+	ChatNotice ChatRole = "notice"
 )
+
+// AIRole is the conversation role this row maps to. A notice has none: it is
+// not a turn, which is why ToAI drops it rather than translating it.
+func (r ChatRole) AIRole() (ai.Role, bool) {
+	switch r {
+	case ChatUser:
+		return ai.RoleUser, true
+	case ChatAssistant:
+		return ai.RoleAssistant, true
+	}
+	return "", false
+}
 
 // Signal represents control signals sent through channels.
 type Signal string
@@ -54,7 +74,7 @@ const (
 // UI/display state — for the rendered TUI view-model, see ChatMessage.
 type Message struct {
 	ID             string       `json:"id,omitempty"`
-	Role           Role         `json:"role"`
+	Role           ai.Role      `json:"role"`
 	Content        string       `json:"content,omitempty"`
 	DisplayContent string       `json:"display_content,omitempty"`
 	Images         []Attachment `json:"images,omitempty"`
@@ -103,7 +123,7 @@ type ChatMessage struct {
 	// across saves of the same message — empty IDs would trigger re-appends
 	// of the entire conversation on every persist.
 	ID                string
-	Role              Role
+	Role              ChatRole
 	Content           string
 	DisplayContent    string
 	Thinking          string
@@ -115,7 +135,7 @@ type ChatMessage struct {
 	Expanded          bool // UI: the tool-result block is expanded
 
 	// Decision is the auto-review judge's decision for the tool call this message
-	// carries the result of — set only on a RoleUser/ToolResult message whose
+	// carries the result of — set only on a ai.RoleUser/ToolResult message whose
 	// call was judged, so the renderer can draw the decision inline under the
 	// tool call. Display-only: dropped by ToMessage, never persisted.
 	Decision *ReviewDecision
@@ -159,10 +179,18 @@ func (m *ChatMessage) ResetStreamCommit() {
 // consume the result without aliasing conv's copy. This is the single Chat →
 // Message field mapping — every converter (provider, transcript) routes through
 // it so a new field can never be forgotten in one path.
-func (c ChatMessage) ToMessage() Message {
+//
+// A notice is not a turn and has no conversation role, so it converts to
+// nothing and says so. Callers that were filtering notices by role now ask
+// here instead, which is the one place that knows.
+func (c ChatMessage) ToMessage() (Message, bool) {
+	role, ok := c.Role.AIRole()
+	if !ok {
+		return Message{}, false
+	}
 	msg := Message{
 		ID:                c.ID,
-		Role:              c.Role,
+		Role:              role,
 		Content:           c.Content,
 		DisplayContent:    c.DisplayContent,
 		Images:            c.Images,
@@ -174,7 +202,7 @@ func (c ChatMessage) ToMessage() Message {
 		tr := *c.ToolResult
 		msg.ToolResult = &tr
 	}
-	return msg
+	return msg, true
 }
 
 // ToChat wraps a wire/agent Message as a fresh view-model with no display state
@@ -183,7 +211,7 @@ func (c ChatMessage) ToMessage() Message {
 func (m Message) ToChat() ChatMessage {
 	return ChatMessage{
 		ID:                m.ID,
-		Role:              m.Role,
+		Role:              ChatRole(m.Role),
 		Content:           m.Content,
 		DisplayContent:    m.DisplayContent,
 		Images:            m.Images,
@@ -238,7 +266,7 @@ type ToolResult struct {
 // UserMessage creates a user message with optional images.
 func UserMessage(text string, images []Attachment) Message {
 	return Message{
-		Role:           RoleUser,
+		Role:           ai.RoleUser,
 		Content:        text,
 		DisplayContent: text,
 		Images:         images,
@@ -248,7 +276,7 @@ func UserMessage(text string, images []Attachment) Message {
 // AssistantMessage creates an assistant message.
 func AssistantMessage(text, thinking string, calls []ToolCall) Message {
 	return Message{
-		Role:      RoleAssistant,
+		Role:      ai.RoleAssistant,
 		Content:   text,
 		Thinking:  thinking,
 		ToolCalls: calls,
@@ -268,7 +296,7 @@ func ErrorResult(tc ToolCall, content string) *ToolResult {
 // ToolResultMessage creates a tool result message.
 func ToolResultMessage(result ToolResult) Message {
 	return Message{
-		Role:       RoleUser,
+		Role:       ai.RoleUser,
 		ToolResult: &result,
 	}
 }
@@ -369,7 +397,7 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 
 	for _, msg := range msgs {
 		switch msg.Role {
-		case RoleUser:
+		case ai.RoleUser:
 			if msg.ToolResult != nil {
 				content := msg.ToolResult.Content
 				if len(content) > 500 {
@@ -387,7 +415,7 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 				fmt.Fprintf(w, "User: %s\n\n", content)
 			}
 
-		case RoleAssistant:
+		case ai.RoleAssistant:
 			if msg.Content != "" {
 				fmt.Fprintf(w, "Assistant: %s\n\n", msg.Content)
 			}
@@ -418,7 +446,7 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.
 func LastAssistantChatContent(msgs []ChatMessage) string {
 	for _, msg := range slices.Backward(msgs) {
-		if msg.Role == RoleAssistant && msg.Content != "" {
+		if msg.Role == ChatAssistant && msg.Content != "" {
 			return msg.Content
 		}
 	}

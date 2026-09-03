@@ -8,7 +8,7 @@ import "context"
 // The agent loop handles interception (via hooks) and result recording (via Message).
 //
 // Execute returns plain text. The agent loop wraps it into a ToolResult and
-// appends it to the conversation as a RoleUser Message carrying that ToolResult.
+// appends it to the conversation as a ai.RoleUser Message carrying that ToolResult.
 type Tool interface {
 	Name() string
 	Description() string

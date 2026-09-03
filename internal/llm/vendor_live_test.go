@@ -58,7 +58,7 @@ func TestLiveTurn(t *testing.T) {
 			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
-				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},
+				Messages:     []core.Message{{Role: ai.RoleUser, Content: "What is the capital of France?"}},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {
@@ -156,7 +156,7 @@ func TestLiveToolRoundTrip(t *testing.T) {
 				return resp
 			}
 
-			history := []core.Message{{Role: core.RoleUser, Content: "What is the weather in Paris right now?"}}
+			history := []core.Message{{Role: ai.RoleUser, Content: "What is the weather in Paris right now?"}}
 			asked := turn(history)
 			if len(asked.ToolCalls) == 0 {
 				// Whether a model reaches for a tool is its own decision, not
@@ -169,14 +169,14 @@ func TestLiveToolRoundTrip(t *testing.T) {
 
 			history = append(history,
 				core.Message{
-					Role:              core.RoleAssistant,
+					Role:              ai.RoleAssistant,
 					Content:           asked.Content,
 					Thinking:          asked.Thinking,
 					ThinkingSignature: asked.ThinkingSignature,
 					Reasoning:         asked.Reasoning,
 					ToolCalls:         asked.ToolCalls,
 				},
-				core.Message{Role: core.RoleUser, ToolResult: &core.ToolResult{
+				core.Message{Role: ai.RoleUser, ToolResult: &core.ToolResult{
 					ToolCallID: call.ID,
 					ToolName:   call.Name,
 					Content:    "18C and raining",
@@ -233,7 +233,7 @@ func TestLiveSubscription(t *testing.T) {
 			for chunk := range legacyStream(ctx, p, CompletionOptions{
 				Model:        tc.model,
 				SystemPrompt: "Answer with one word.",
-				Messages:     []core.Message{{Role: core.RoleUser, Content: "What is the capital of France?"}},
+				Messages:     []core.Message{{Role: ai.RoleUser, Content: "What is the capital of France?"}},
 				MaxTokens:    64,
 			}) {
 				switch chunk.Type {

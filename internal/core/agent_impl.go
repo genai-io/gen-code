@@ -432,7 +432,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 
 		a.emit(ctx, PostInferEvent(a.id, resp))
 		a.append(Message{
-			Role:    RoleAssistant,
+			Role:    ai.RoleAssistant,
 			Content: resp.Content, Thinking: resp.Thinking,
 			ThinkingSignature: resp.ThinkingSignature,
 			Reasoning:         resp.Reasoning,
@@ -452,7 +452,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 				return makeResult(StopMaxOutputRecoveryExhausted), nil
 			}
 			maxOutputRecoveryCount++
-			a.append(Message{Role: RoleUser, Content: TruncatedResumePrompt})
+			a.append(Message{Role: ai.RoleUser, Content: TruncatedResumePrompt})
 			continue
 		}
 
@@ -920,10 +920,10 @@ func (a *agent) snapshot() []Message {
 }
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
-	// A tool result rides on a RoleUser message — its content lives on
+	// A tool result rides on a ai.RoleUser message — its content lives on
 	// ToolResult.Content, not on Message.Content. See the Role doc.
 	a.append(Message{
-		Role:       RoleUser,
+		Role:       ai.RoleUser,
 		ToolResult: &ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError},
 	})
 }

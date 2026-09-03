@@ -1,6 +1,8 @@
 package input
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 
 	tea "charm.land/bubbletea/v2"
@@ -131,7 +133,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 
 	assistantCount := 0
 	for _, msg := range deps.Conversation.Messages {
-		if msg.Role == core.RoleAssistant {
+		if msg.Role == core.ChatAssistant {
 			assistantCount++
 		}
 	}
@@ -139,7 +141,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 		return PromptSuggestionRequest{}, false
 	}
 	msgs := RecentSuggestionMessages(deps.Conversation)
-	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: SuggestionUserPrompt})
+	msgs = append(msgs, core.Message{Role: ai.RoleUser, Content: SuggestionUserPrompt})
 
 	return PromptSuggestionRequest{
 		Client:       deps.BuildClient(),

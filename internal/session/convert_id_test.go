@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"testing"
 	"time"
 
@@ -12,8 +14,8 @@ import (
 // append-only persistence path duplicates the entire history each turn.
 func Test_MessagesFromChat_preservesChatMessageID(t *testing.T) {
 	msgs := []core.ChatMessage{
-		{ID: "fixed-1", Role: core.RoleUser, Content: "hello"},
-		{ID: "fixed-2", Role: core.RoleAssistant, Content: "hi"},
+		{ID: "fixed-1", Role: core.ChatUser, Content: "hello"},
+		{ID: "fixed-2", Role: core.ChatAssistant, Content: "hi"},
 	}
 
 	first := MessagesFromChat(msgs)
@@ -36,7 +38,7 @@ func Test_MessagesFromChat_preservesChatMessageID(t *testing.T) {
 // transcript node (back-compat for any path that builds a message without
 // going through conv.Append).
 func Test_messagesToNodes_fallsBackWhenIDMissing(t *testing.T) {
-	msgs := []core.Message{{Role: core.RoleUser, Content: "hello"}}
+	msgs := []core.Message{{Role: ai.RoleUser, Content: "hello"}}
 	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")
 	if len(nodes) != 1 || nodes[0].ID == "" {
 		t.Fatalf("expected fallback node ID, got %+v", nodes)

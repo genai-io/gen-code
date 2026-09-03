@@ -1,6 +1,8 @@
 package core
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"strings"
 	"testing"
 )
@@ -15,8 +17,8 @@ func TestConversationTextLenMatchesBuild(t *testing.T) {
 			{ID: "2", Name: "Bash"},
 			{ID: "3", Name: "Read"},
 		}),
-		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "1", ToolName: "Bash", Content: "ok"}},
-		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "2", ToolName: "Bash", Content: long}},
+		{Role: ai.RoleUser, ToolResult: &ToolResult{ToolCallID: "1", ToolName: "Bash", Content: "ok"}},
+		{Role: ai.RoleUser, ToolResult: &ToolResult{ToolCallID: "2", ToolName: "Bash", Content: long}},
 		AssistantMessage("final answer", "", nil),
 	}
 

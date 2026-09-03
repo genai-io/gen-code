@@ -187,7 +187,7 @@ func (c SlashCommandController) Execute(ctx context.Context, inputText string) (
 func (c SlashCommandController) HandleSubmit(inputText string) (tea.Cmd, bool) {
 	preserve := shouldPreserveCommandInConversation(inputText)
 	if preserve {
-		c.env.Conversation.Append(core.ChatMessage{Role: core.RoleUser, Content: inputText})
+		c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: inputText})
 	}
 
 	result, cmd, isCmd := c.Execute(context.Background(), inputText)
@@ -600,7 +600,7 @@ func (c *SlashCommandController) handleLoopCommand(_ context.Context, args strin
 		*c.env.Conversation = conv.NewConversation()
 	}
 	c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled recurring task %s (%s, cron `%s`).%s Auto-expires after 7 days. Executing now.", job.ID, parsed.Human, parsed.Cron, parsed.Note))
-	c.env.Conversation.Append(core.ChatMessage{Role: core.RoleUser, Content: parsed.Prompt})
+	c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: parsed.Prompt})
 	return "", c.env.SubmitToAgent(parsed.Prompt, nil), nil
 }
 

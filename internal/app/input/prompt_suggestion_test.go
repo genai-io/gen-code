@@ -15,7 +15,7 @@ import (
 func TestRecentSuggestionMessagesCarryNoImages(t *testing.T) {
 	c := &conv.ConversationModel{
 		Messages: []core.ChatMessage{{
-			Role:    core.RoleUser,
+			Role:    core.ChatUser,
 			Content: "what does this show",
 			Images:  []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "chart.png"}}},
 		}},

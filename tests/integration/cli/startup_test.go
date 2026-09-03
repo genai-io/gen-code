@@ -5,6 +5,8 @@
 package cli_test
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -199,8 +201,8 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 			Cwd:      dir,
 		},
 		Messages: []core.Message{
-			{ID: "u1", Role: core.RoleUser, Content: "original message"},
-			{ID: "a1", Role: core.RoleAssistant, Content: "original reply"},
+			{ID: "u1", Role: ai.RoleUser, Content: "original message"},
+			{ID: "a1", Role: ai.RoleAssistant, Content: "original reply"},
 		},
 	}
 	if err := store.Save(original); err != nil {
@@ -234,7 +236,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	// 3. Append a new entry to the fork and save it.
 	forked.Messages = append(forked.Messages, core.Message{
 		ID:      "u2",
-		Role:    core.RoleUser,
+		Role:    ai.RoleUser,
 		Content: "fork-only message",
 	})
 	if err := store.Save(forked); err != nil {

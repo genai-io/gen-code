@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"fmt"
 	"sync"
@@ -98,7 +100,7 @@ func (s *Session) Send(content string, images []core.Attachment) {
 	if ag == nil {
 		return
 	}
-	ag.Inbox() <- core.Message{Role: core.RoleUser, Content: content, Images: images}
+	ag.Inbox() <- core.Message{Role: ai.RoleUser, Content: content, Images: images}
 }
 
 // Compact asks the running agent to compact in place using the precomputed

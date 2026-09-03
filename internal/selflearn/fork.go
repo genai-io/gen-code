@@ -103,7 +103,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 	end := len(msgs)
 	for end > 0 {
-		if msgs[end-1].Role != core.RoleUser {
+		if msgs[end-1].Role != ai.RoleUser {
 			break
 		}
 		end--

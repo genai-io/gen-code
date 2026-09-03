@@ -321,7 +321,7 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
 	_, err := state.Selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod)
 	if err != nil {
-		deps.Conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: "Error: " + err.Error()})
+		deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Error: " + err.Error()})
 		return tea.Batch(deps.CommitMessages()...)
 	}
 

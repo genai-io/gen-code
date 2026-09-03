@@ -245,22 +245,22 @@ func toProviderMessages(msgs []core.Message) []core.Message {
 	out := make([]core.Message, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
-		case core.RoleUser:
+		case ai.RoleUser:
 			if m.ToolResult != nil {
 				out = append(out, core.Message{
-					Role:       core.RoleUser,
+					Role:       ai.RoleUser,
 					ToolResult: m.ToolResult,
 				})
 			} else {
 				out = append(out, core.Message{
-					Role:    core.RoleUser,
+					Role:    ai.RoleUser,
 					Content: m.Content,
 					Images:  m.Images,
 				})
 			}
-		case core.RoleAssistant:
+		case ai.RoleAssistant:
 			out = append(out, core.Message{
-				Role:              core.RoleAssistant,
+				Role:              ai.RoleAssistant,
 				Content:           m.Content,
 				Thinking:          m.Thinking,
 				ThinkingSignature: m.ThinkingSignature,

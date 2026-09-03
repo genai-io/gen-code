@@ -67,7 +67,7 @@ func TestRenderMessageCollapsesResumedAgentEnvelope(t *testing.T) {
 	content := `<task-notification task-id="t1" status="completed" description="README review">` + "\n## full report body\n</task-notification>"
 	out := stripANSI(RenderMessageAt(RenderContext{
 		Width:    80,
-		Messages: []core.ChatMessage{{Role: core.RoleUser, Content: content}},
+		Messages: []core.ChatMessage{{Role: core.ChatUser, Content: content}},
 	}, 0, false))
 
 	if strings.Contains(out, "<task-notification") || strings.Contains(out, "full report body") {

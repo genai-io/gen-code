@@ -138,19 +138,19 @@ func Test_userContentToBlocks_plainTextOneBlock(t *testing.T) {
 func Test_messagesToNodes_roundtrip(t *testing.T) {
 	// Test that messagesToNodes -> messagesFromNodes roundtrips correctly.
 	msgs := []core.Message{
-		{Role: core.RoleUser, Content: "hello"},
-		{Role: core.RoleAssistant, Content: "hi", Thinking: "let me think",
+		{Role: ai.RoleUser, Content: "hello"},
+		{Role: ai.RoleAssistant, Content: "hi", Thinking: "let me think",
 			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Edit", Input: `{"path":"/tmp/test","edits":[{"oldText":"old","newText":"new"}]}`}}},
-		{Role: core.RoleUser, ToolResult: &core.ToolResult{
+		{Role: ai.RoleUser, ToolResult: &core.ToolResult{
 			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
 			Details: toolresult.FileChangeDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"},
 		}},
-		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
-		{Role: core.RoleUser, ToolResult: &core.ToolResult{
+		{Role: ai.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
+		{Role: ai.RoleUser, ToolResult: &core.ToolResult{
 			ToolCallID: "tc-2", ToolName: "Bash", Content: "Error: exit code 1", IsError: true,
 			Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 0},
 		}},
-		{Role: core.RoleAssistant, Content: "I see the file."},
+		{Role: ai.RoleAssistant, Content: "I see the file."},
 	}
 
 	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")

@@ -334,7 +334,7 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 
 	result := executor.buildUnfinishedAgentResult(run, &core.Result{
 		Content:    "partial",
-		Messages:   []core.Message{{Role: core.RoleAssistant, Content: "partial"}},
+		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: "partial"}},
 		Steps:      2,
 		ToolUses:   1,
 		StopReason: core.StopCancelled,
@@ -958,7 +958,7 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	}
 
 	sessionID, transcriptPath := executor.persistSubagentSession("General", "test-model", "Inspect code", []core.Message{
-		{Role: core.RoleUser, Content: "hello"},
+		{Role: ai.RoleUser, Content: "hello"},
 	})
 
 	if sessionID != "agent-1" {
@@ -1009,7 +1009,7 @@ func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 
 	result := executor.buildUnfinishedAgentResult(run, &core.Result{
 		Content:    "partial",
-		Messages:   []core.Message{{Role: core.RoleAssistant, Content: "partial"}},
+		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: "partial"}},
 		Steps:      8,
 		StopReason: core.StopError,
 		StopDetail: "provider unavailable",

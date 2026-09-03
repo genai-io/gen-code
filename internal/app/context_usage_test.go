@@ -60,7 +60,7 @@ func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
 
 func TestMessageWireCoversEveryFieldSentToTheProvider(t *testing.T) {
 	msg := core.Message{
-		Role:           core.RoleAssistant,
+		Role:           ai.RoleAssistant,
 		Content:        "visible answer",
 		DisplayContent: "rendered for the TUI only",
 		Thinking:       "reasoning text",

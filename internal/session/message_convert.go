@@ -102,12 +102,12 @@ func injectedSource(text string, m []int) string {
 // control-signal / unknown-role message yields nil.
 func MessageToBlocks(msg core.Message) []ContentBlock {
 	switch msg.Role {
-	case core.RoleUser:
+	case ai.RoleUser:
 		if msg.ToolResult != nil {
 			return toolResultToBlocks(msg.ToolResult)
 		}
 		return userContentToBlocks(msg.Content, msg.DisplayContent, msg.Images)
-	case core.RoleAssistant:
+	case ai.RoleAssistant:
 		return assistantContentToBlocks(msg.Content, msg.Thinking, msg.ThinkingSignature, msg.ToolCalls)
 	default:
 		return nil
@@ -285,7 +285,7 @@ func extractAssistantContent(blocks []ContentBlock, msg *core.Message) {
 }
 
 func extractUserText(msg core.Message) (string, bool) {
-	if msg.Role != core.RoleUser || msg.ToolResult != nil {
+	if msg.Role != ai.RoleUser || msg.ToolResult != nil {
 		return "", false
 	}
 	for _, block := range MessageToBlocks(msg) {

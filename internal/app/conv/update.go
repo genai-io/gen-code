@@ -188,7 +188,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
 	commitCmds := rt.CommitMessages()
-	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: ""})
+	m.Append(core.ChatMessage{Role: core.ChatAssistant, Content: ""})
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
@@ -289,7 +289,7 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	}
 	result := rt.OnToolResult(tr)
 	m.Append(core.ChatMessage{
-		Role:       core.RoleUser,
+		Role:       core.ChatUser,
 		ToolResult: result,
 		// Stamp the auto-review decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed

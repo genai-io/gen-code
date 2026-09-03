@@ -256,7 +256,7 @@ func handleMemorySelected(deps OverlayDeps, state *MemoryState, msg memorySelect
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		if err := CreateMemoryFile(filePath, msg.Level, deps.Cwd); err != nil {
 			deps.Conv.Append(core.ChatMessage{
-				Role:    core.RoleNotice,
+				Role:    core.ChatNotice,
 				Content: fmt.Sprintf("Error: %v", err),
 			})
 			return tea.Batch(deps.CommitMessages()...)
@@ -268,7 +268,7 @@ func handleMemorySelected(deps OverlayDeps, state *MemoryState, msg memorySelect
 	displayPath := FormatMemoryDisplayPath(filePath, msg.Level, deps.Cwd)
 
 	deps.Conv.Append(core.ChatMessage{
-		Role:    core.RoleNotice,
+		Role:    core.ChatNotice,
 		Content: fmt.Sprintf("Opening %s memory: %s", msg.Level, displayPath),
 	})
 
@@ -291,7 +291,7 @@ func handleMemoryEditorFinished(deps OverlayDeps, state *MemoryState, msg Memory
 		deps.FireFileChanged(filePath, "memory_editor")
 	}
 
-	deps.Conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: content})
+	deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
 	return tea.Batch(deps.CommitMessages()...)
 }
 

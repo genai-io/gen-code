@@ -65,28 +65,28 @@ func stubClient(d ai.Driver) func([]core.Message) (*ai.Client, error) {
 }
 
 func TestTrimTrailingPendingMessages(t *testing.T) {
-	asst := core.Message{Role: core.RoleAssistant, Content: "ok"}
-	usr := core.Message{Role: core.RoleUser, Content: "ask"}
-	toolResult := core.Message{Role: core.RoleUser, ToolResult: &core.ToolResult{Content: "tool result"}}
+	asst := core.Message{Role: ai.RoleAssistant, Content: "ok"}
+	usr := core.Message{Role: ai.RoleUser, Content: "ask"}
+	toolResult := core.Message{Role: ai.RoleUser, ToolResult: &core.ToolResult{Content: "tool result"}}
 
 	// Snapshot ends with two trailing user messages → both dropped.
 	in := []core.Message{asst, usr, usr}
 	out := trimTrailingPendingMessages(in)
-	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+	if len(out) != 1 || out[0].Role != ai.RoleAssistant {
 		t.Fatalf("trailing user not trimmed: %+v", out)
 	}
 	// Snapshot ends with tool_result(s) → all dropped (provider encodes them
 	// as user role and the appended prompt would be the second user turn).
 	in = []core.Message{asst, toolResult, toolResult}
 	out = trimTrailingPendingMessages(in)
-	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+	if len(out) != 1 || out[0].Role != ai.RoleAssistant {
 		t.Fatalf("trailing tool_result not trimmed: %+v", out)
 	}
 	// Snapshot ends with assistant after a trailing user-then-tool mix → all
 	// pending tail dropped down to the last assistant message.
 	in = []core.Message{asst, usr, toolResult, usr}
 	out = trimTrailingPendingMessages(in)
-	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+	if len(out) != 1 || out[0].Role != ai.RoleAssistant {
 		t.Fatalf("mixed trailing pending not trimmed: %+v", out)
 	}
 	// Snapshot already ends with assistant → unchanged.
