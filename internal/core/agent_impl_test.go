@@ -3,6 +3,8 @@ package core
 import (
 	"iter"
 
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -564,10 +566,11 @@ type cancelOnRunTool struct {
 	onRun     func()
 }
 
-func (c cancelOnRunTool) Name() string        { return c.name }
-func (c cancelOnRunTool) Description() string { return "records its execution" }
-func (c cancelOnRunTool) Schema() ToolSchema  { return ToolSchema{Name: c.name} }
-func (c cancelOnRunTool) Execute(ctx context.Context, _ map[string]any) (string, error) {
+func (c cancelOnRunTool) Schema() ToolSchema {
+	return ToolSchema{Name: c.name, Description: "records its execution"}
+}
+
+func (c cancelOnRunTool) Run(ctx context.Context, _ ai.ToolCall) (sdkagent.Result, error) {
 	c.ran.Add(1)
 	if ctx.Err() != nil {
 		c.ranOnDead.Add(1)
@@ -575,7 +578,7 @@ func (c cancelOnRunTool) Execute(ctx context.Context, _ map[string]any) (string,
 	if c.onRun != nil {
 		c.onRun()
 	}
-	return "ok", nil
+	return sdkagent.TextResult("ok"), nil
 }
 
 // batchLLM answers with three side-effecting calls, so execTools runs the

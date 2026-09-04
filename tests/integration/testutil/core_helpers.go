@@ -119,7 +119,9 @@ func buildAllRegisteredTools(cwd string) core.Tools {
 		if !ok {
 			continue
 		}
-		schema := core.ToolSchema{Name: name, Description: t.Description()}
+		// The tool's own name, not the registry's lookup key: List() lowercases
+		// for matching, and the schema is what the model is told to call.
+		schema := core.ToolSchema{Name: t.Name(), Description: t.Description()}
 		adapted = append(adapted, tool.AdaptTool(t, schema, func() string { return cwd }))
 	}
 	return core.NewTools(adapted...)

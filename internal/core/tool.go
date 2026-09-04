@@ -1,28 +1,17 @@
 package core
 
 import (
-	"context"
-
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// Tool is a single capability an agent can execute.
+// Tool is one thing an agent can do, and it is the SDK's: what the model is
+// told, and what answers a call.
 //
-// Tools are pure: they don't know about hooks, permissions, or conversation history.
-// The agent loop handles interception (via hooks) and result recording (via Message).
-//
-// Execute returns plain text. The agent loop wraps it into a ToolResult and
-// appends it to the conversation as a ai.RoleUser Message carrying that ToolResult.
-type Tool interface {
-	Name() string
-	Description() string
-	Schema() ToolSchema
-
-	// Execute runs the tool with the given input.
-	// Returns the result text on success, or an error on failure.
-	// The agent wraps errors as ToolResult{IsError: true}.
-	Execute(ctx context.Context, input map[string]any) (string, error)
-}
+// It carries no Name or Description of its own. Those are Schema().Name and
+// Schema().Description — one fact with one home, where before a tool could
+// answer one thing to a caller and declare another to the model.
+type Tool = sdkagent.Tool
 
 // ToolSchema is what the model is told a tool takes. It is ai.Schema: the
 // same three things — a name, a description, and the JSON Schema itself —

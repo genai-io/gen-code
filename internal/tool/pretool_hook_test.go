@@ -1,6 +1,11 @@
 package tool
 
 import (
+	"encoding/json"
+
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -12,12 +17,13 @@ type captureCoreTool struct {
 	input map[string]any
 }
 
-func (t *captureCoreTool) Name() string            { return "Bash" }
-func (t *captureCoreTool) Description() string     { return "test" }
-func (t *captureCoreTool) Schema() core.ToolSchema { return core.ToolSchema{Name: t.Name()} }
-func (t *captureCoreTool) Execute(ctx context.Context, input map[string]any) (string, error) {
-	t.input = input
-	return "ok", nil
+func (t *captureCoreTool) Schema() core.ToolSchema {
+	return core.ToolSchema{Name: "Bash", Description: "test"}
+}
+
+func (t *captureCoreTool) Run(_ context.Context, call ai.ToolCall) (agent.Result, error) {
+	t.input, _ = core.ParseToolInput(call.Input)
+	return agent.TextResult("ok"), nil
 }
 
 type fakeHookHandler struct {
@@ -44,7 +50,7 @@ func TestWithPreToolUseHooksAppliesUpdatedInput(t *testing.T) {
 	}}
 	tools := WithPreToolUseHooks(core.NewTools(inner), hooks)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -87,7 +93,7 @@ func TestPreToolUseAllowOverridesPermissionPrompt(t *testing.T) {
 	checker := &fakePreToolPermissionChecker{}
 	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -105,7 +111,7 @@ func TestPreToolUseAllowStillGatedWhenNotHonored(t *testing.T) {
 	checker := &fakePreToolPermissionChecker{refuseHookAllow: true}
 	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "rm -rf important/"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "rm -rf important/"})})
 	if err == nil {
 		t.Fatal("expected the gate to block the call")
 	}
@@ -123,7 +129,7 @@ func TestPreToolUseAskForcesPermissionPrompt(t *testing.T) {
 	checker := &fakePreToolPermissionChecker{allow: true}
 	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -137,7 +143,7 @@ func TestPreToolUseContinueFalseBlocksWithSystemMessage(t *testing.T) {
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{ShouldContinue: false, ShouldBlock: true, AdditionalContext: "stop here"}}
 	tools := WithPreToolUseHooks(core.NewTools(inner), hooks)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
 	if err == nil || err.Error() != "blocked: stop here" {
 		t.Fatalf("Execute returned error %v", err)
 	}
@@ -150,11 +156,20 @@ func TestPreToolUseAskWinsOverAllow(t *testing.T) {
 	checker := &fakePreToolPermissionChecker{allow: true}
 	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
 
-	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if !checker.called || !checker.forcePrompt {
 		t.Fatalf("expected a forced prompt despite allow; called=%v forcePrompt=%v", checker.called, checker.forcePrompt)
 	}
+}
+
+// mustJSON renders a tool's arguments the way a model sends them: raw JSON.
+func mustJSON(v map[string]any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

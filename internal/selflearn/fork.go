@@ -117,7 +117,7 @@ func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 func allowOnly(allowed core.Tools) perm.PermissionFunc {
 	names := make(map[string]bool)
 	for _, t := range allowed.All() {
-		names[t.Name()] = true
+		names[t.Schema().Name] = true
 	}
 	return func(_ context.Context, name string, _ map[string]any) (bool, string) {
 		if names[name] {

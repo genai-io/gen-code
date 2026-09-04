@@ -2,10 +2,13 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func WithPreToolUseHooks(inner core.Tools, hooks hook.Handler) core.Tools {
@@ -66,17 +69,16 @@ type preToolHookTool struct {
 	check PreToolPermissionChecker
 }
 
-func (pt *preToolHookTool) Name() string            { return pt.inner.Name() }
-func (pt *preToolHookTool) Description() string     { return pt.inner.Description() }
 func (pt *preToolHookTool) Schema() core.ToolSchema { return pt.inner.Schema() }
 
-func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (string, error) {
+func (pt *preToolHookTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	input, _ := core.ParseToolInput(call.Input)
 	allowByHook := false
 	forceAsk := false
 	permissionReason := ""
 	if pt.hooks != nil && pt.hooks.HasHooks(hook.PreToolUse) {
 		outcome := pt.hooks.Execute(ctx, hook.PreToolUse, hook.HookInput{
-			ToolName:  pt.inner.Name(),
+			ToolName:  call.Name,
 			ToolInput: input,
 		})
 		if !outcome.ShouldContinue || outcome.ShouldBlock {
@@ -87,7 +89,7 @@ func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (s
 			if reason == "" {
 				reason = "blocked by PreToolUse hook"
 			}
-			return "", fmt.Errorf("blocked: %s", reason)
+			return agent.Result{}, fmt.Errorf("blocked: %s", reason)
 		}
 		if outcome.UpdatedInput != nil {
 			input = outcome.UpdatedInput
@@ -103,12 +105,17 @@ func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (s
 		// hooks disagree; so does a deny rule, the circuit breaker, either
 		// confirmation tier or an explicit ask rule, which is what
 		// HonorsHookAllow reports on.
-		waived := allowByHook && !forceAsk && pt.check.HonorsHookAllow(pt.inner.Name(), input)
+		waived := allowByHook && !forceAsk && pt.check.HonorsHookAllow(call.Name, input)
 		if !waived {
-			if allow, reason := pt.check.Check(ctx, pt.inner.Name(), input, forceAsk, permissionReason); !allow {
-				return "", fmt.Errorf("blocked: %s", reason)
+			if allow, reason := pt.check.Check(ctx, call.Name, input, forceAsk, permissionReason); !allow {
+				return agent.Result{}, fmt.Errorf("blocked: %s", reason)
 			}
 		}
 	}
-	return pt.inner.Execute(ctx, input)
+	// The hook may have rewritten the arguments; the call the tool runs is the
+	// one that survived the gate, not the one the model sent.
+	if edited, err := json.Marshal(input); err == nil {
+		call.Input = string(edited)
+	}
+	return pt.inner.Run(ctx, call)
 }

@@ -436,7 +436,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	if e.mcpTools != nil {
 		mcpCaller := mcp.NewCaller(e.mcpTools)
 		for _, t := range mcp.AsCoreTools(schemas, mcpCaller) {
-			tools.Add(t, "mcp:"+t.Name())
+			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}
 

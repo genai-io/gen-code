@@ -3,6 +3,8 @@ package core
 import (
 	"iter"
 
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -20,11 +22,9 @@ import (
 // turn loop iterating instead of ending on the first step.
 type noopTool struct{}
 
-func (noopTool) Name() string        { return "noop" }
-func (noopTool) Description() string { return "does nothing" }
-func (noopTool) Schema() ToolSchema  { return ToolSchema{Name: "noop"} }
-func (noopTool) Execute(context.Context, map[string]any) (string, error) {
-	return "done", nil
+func (noopTool) Schema() ToolSchema { return ToolSchema{Name: "noop", Description: "does nothing"} }
+func (noopTool) Run(context.Context, ai.ToolCall) (sdkagent.Result, error) {
+	return sdkagent.TextResult("done"), nil
 }
 
 // talkingLLM answers every inference with text plus a tool call, so the turn

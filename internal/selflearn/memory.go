@@ -1,6 +1,9 @@
 package selflearn
 
 import (
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -316,20 +319,14 @@ func newMemoryWriteTool(store *MemoryStore) *memoryWriteTool {
 	return &memoryWriteTool{store: store}
 }
 
-func (t *memoryWriteTool) Name() string { return "memory_write" }
-
-func (t *memoryWriteTool) Description() string {
-	return "Persist a durable fact to project memory (survives across sessions). " +
-		"Actions: add (new entry), replace (update — old_text identifies it), remove (delete — old_text identifies it). " +
-		"Save user preferences, project conventions, and build/debug insights — never one-off task state or session narratives. " +
-		"old_text is a short unique substring of the existing entry. " +
-		"file defaults to the MEMORY.md index; spill long detail into a topic file (e.g. debugging.md)."
-}
-
 func (t *memoryWriteTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
-		Name:        t.Name(),
-		Description: t.Description(),
+		Name: "memory_write",
+		Description: "Persist a durable fact to project memory (survives across sessions). " +
+			"Actions: add (new entry), replace (update — old_text identifies it), remove (delete — old_text identifies it). " +
+			"Save user preferences, project conventions, and build/debug insights — never one-off task state or session narratives. " +
+			"old_text is a short unique substring of the existing entry. " +
+			"file defaults to the MEMORY.md index; spill long detail into a topic file (e.g. debugging.md).",
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -359,7 +356,8 @@ func (t *memoryWriteTool) Schema() core.ToolSchema {
 	}
 }
 
-func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (string, error) {
+func (t *memoryWriteTool) Run(_ context.Context, call ai.ToolCall) (agent.Result, error) {
+	input, _ := core.ParseToolInput(call.Input)
 	action := strings.TrimSpace(tool.GetString(input, "action"))
 	file := tool.GetString(input, "file")
 	content := tool.GetString(input, "content")
@@ -378,11 +376,11 @@ func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (stri
 	case "remove":
 		msg, err = t.store.Remove(file, oldText, note)
 	default:
-		return "", fmt.Errorf("unknown action %q; use add, replace, or remove", action)
+		return agent.Result{}, fmt.Errorf("unknown action %q; use add, replace, or remove", action)
 	}
 	if err != nil {
-		return "", err
+		return agent.Result{}, err
 	}
 	out, _ := json.Marshal(map[string]string{"status": "ok", "message": msg})
-	return string(out), nil
+	return agent.TextResult(string(out)), nil
 }

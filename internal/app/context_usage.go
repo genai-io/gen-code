@@ -44,7 +44,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 		usage.SystemPrompt = kit.EstimateTokens(sys.Prompt())
 		for _, t := range tools.All() {
 			size := kit.EstimateTokens(toolSchemaWire(t.Schema()))
-			if mcp.IsMCPTool(t.Name()) {
+			if mcp.IsMCPTool(t.Schema().Name) {
 				usage.MCPTools += size
 				continue
 			}

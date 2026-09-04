@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // activityTools wraps core.Tools to call onExec before each tool execution.
@@ -30,10 +32,9 @@ type activityTool struct {
 	onExec func(name string, params map[string]any)
 }
 
-func (t *activityTool) Name() string            { return t.inner.Name() }
-func (t *activityTool) Description() string     { return t.inner.Description() }
 func (t *activityTool) Schema() core.ToolSchema { return t.inner.Schema() }
-func (t *activityTool) Execute(ctx context.Context, input map[string]any) (string, error) {
-	t.onExec(t.inner.Name(), input)
-	return t.inner.Execute(ctx, input)
+func (t *activityTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	params, _ := core.ParseToolInput(call.Input)
+	t.onExec(call.Name, params)
+	return t.inner.Run(ctx, call)
 }

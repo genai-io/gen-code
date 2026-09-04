@@ -573,10 +573,11 @@ func executeToolTask(ctx context.Context, t agentToolTask) (result toolTaskOutpu
 			result = toolTaskOutput{"", fmt.Errorf("tool %s panicked: %v", t.call.Name, r)}
 		}
 	}()
-	params, _ := ParseToolInput(t.call.Input)
 	execCtx := WithToolCallID(ctx, t.call.ID)
-	content, err := t.tool.Execute(execCtx, params)
-	return toolTaskOutput{content, err}
+	// The SDK hands a tool the call as the model made it — raw JSON, so a
+	// replay is byte-exact — rather than a decoded map this loop re-encoded.
+	res, err := t.tool.Run(execCtx, t.call)
+	return toolTaskOutput{res.Content.Text(), err}
 }
 
 // canExecuteToolBatchInParallel permits two batch shapes: all read-only

@@ -1,6 +1,9 @@
 package selflearn
 
 import (
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -549,20 +552,14 @@ func newSkillManageTool(mgr *SkillManager) *skillManageTool {
 	return &skillManageTool{mgr: mgr}
 }
 
-func (t *skillManageTool) Name() string { return "skill_manage" }
-
-func (t *skillManageTool) Description() string {
-	return "Create or maintain an agent-created skill (a reusable, class-level technique). " +
-		"Prefer updating an existing skill over creating a new one. Actions: " +
-		"create (new class-level skill), patch (targeted find-and-replace), edit (full body rewrite — rare), " +
-		"write_file/remove_file (references|templates|scripts support files), delete. " +
-		"Only skills with origin: agent-created may be modified."
-}
-
 func (t *skillManageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
-		Name:        t.Name(),
-		Description: t.Description(),
+		Name: "skill_manage",
+		Description: "Create or maintain an agent-created skill (a reusable, class-level technique). " +
+			"Prefer updating an existing skill over creating a new one. Actions: " +
+			"create (new class-level skill), patch (targeted find-and-replace), edit (full body rewrite — rare), " +
+			"write_file/remove_file (references|templates|scripts support files), delete. " +
+			"Only skills with origin: agent-created may be modified.",
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -585,11 +582,12 @@ func (t *skillManageTool) Schema() core.ToolSchema {
 	}
 }
 
-func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string, error) {
+func (t *skillManageTool) Run(_ context.Context, call ai.ToolCall) (agent.Result, error) {
+	in, _ := core.ParseToolInput(call.Input)
 	action := strings.TrimSpace(tool.GetString(in, "action"))
 	name := strings.TrimSpace(tool.GetString(in, "name"))
 	if name == "" {
-		return "", fmt.Errorf("name is required")
+		return agent.Result{}, fmt.Errorf("name is required")
 	}
 	note := tool.GetString(in, "note")
 
@@ -611,11 +609,11 @@ func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string,
 	case "delete":
 		msg, err = t.mgr.Delete(name, note)
 	default:
-		return "", fmt.Errorf("unknown action %q", action)
+		return agent.Result{}, fmt.Errorf("unknown action %q", action)
 	}
 	if err != nil {
-		return "", err
+		return agent.Result{}, err
 	}
 	out, _ := json.Marshal(map[string]string{"status": "ok", "message": msg})
-	return string(out), nil
+	return agent.TextResult(string(out)), nil
 }
