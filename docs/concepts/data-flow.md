@@ -596,9 +596,9 @@ follow-up user message resumes the same session via the inbox channel.
        │
        │                          inner break (turn cancel detected),
        │                          interruptPending.Store(false),
-       │                          TurnEvent(StopCanceled) emitted
+       │                          TurnEnded{StopCanceled} emitted
        │
-       │   ◀── TurnEvent ─────────┤
+       │   ◀── TurnEnded ─────────┤
        │   OnTurnEnd: StopReason==Cancelled
        │              → skip idle hooks, no Stop/Notification hook fires
        │

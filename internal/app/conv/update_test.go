@@ -27,11 +27,11 @@ func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Bash"}})
 	rt := &postToolRuntime{}
 
-	applyPostTool(rt, &m, core.PostToolEvent(core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}))
+	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"})
 	if rt.drainCalls != 0 {
 		t.Fatalf("drained pending input after first tool result; calls = %d", rt.drainCalls)
 	}
-	applyPostTool(rt, &m, core.PostToolEvent(core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"}))
+	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"})
 	if rt.drainCalls != 1 {
 		t.Fatalf("drain calls after complete tool batch = %d, want 1", rt.drainCalls)
 	}

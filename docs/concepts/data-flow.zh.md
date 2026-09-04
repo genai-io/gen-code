@@ -564,9 +564,9 @@ scrollback。`go.mod` 中的替代依赖固定到
        │
        │                          内循环 break（识别 turn cancel），
        │                          interruptPending.Store(false)，
-       │                          emit TurnEvent(StopCanceled)
+       │                          emit TurnEnded{StopCanceled}
        │
-       │   ◀── TurnEvent ─────────┤
+       │   ◀── TurnEnded ─────────┤
        │   OnTurnEnd: StopReason==Cancelled
        │              → 跳过 idle 钩子；Stop/通知钩子都不会触发
        │

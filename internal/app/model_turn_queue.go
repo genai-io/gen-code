@@ -107,7 +107,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// Drain ONE user message per call so each gets its own agent response.
 	// The agent's inner loop also drains one inbox message at a time,
-	// producing one TurnEvent per queued message. Leaving edit mode re-kicks a
+	// producing one TurnEnded per queued message. Leaving edit mode re-kicks a
 	// drain held by a head item under edit (see routeKeypress).
 	if cmd, released := m.releaseQueuedMessage(); released {
 		log.QueueLog("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())

@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // restartStubProvider lets the foreground Session run without contacting a
@@ -52,7 +53,7 @@ func (*restartStubProvider) Name() string                                       
 func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	sess := &agent.Session{}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	inferences := make(chan core.InferenceContext, 1)
+	inferences := make(chan []string, 1)
 	live := []core.Message{
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/broker")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("foreground result")},
@@ -88,8 +89,12 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		Provider: provider,
 		ModelID:  "m",
 		OnEvent: func(event core.Event) {
-			if inference, ok := event.InferenceContext(); ok {
-				inferences <- inference
+			if start, ok := event.(sdkagent.MessageStart); ok && start.Inference != nil {
+				ids := make([]string, 0, len(start.Inference.Messages))
+				for _, m := range start.Inference.Messages {
+					ids = append(ids, m.ID)
+				}
+				inferences <- ids
 			}
 		},
 	}, got); err != nil {
@@ -123,15 +128,15 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	}
 
 	select {
-	case inference := <-inferences:
-		if len(inference.MessageIDs) != 3 {
-			t.Fatalf("PreInfer message IDs = %v, want three IDs", inference.MessageIDs)
+	case ids := <-inferences:
+		if len(ids) != 3 {
+			t.Fatalf("inference message IDs = %v, want three IDs", ids)
 		}
-		if inference.MessageIDs[0] != "u1" || inference.MessageIDs[1] != "a1" {
-			t.Fatalf("PreInfer lost preserved IDs: %v", inference.MessageIDs)
+		if ids[0] != "u1" || ids[1] != "a1" {
+			t.Fatalf("the inference lost preserved IDs: %v", ids)
 		}
-		if inference.MessageIDs[2] == "" {
-			t.Fatal("PreInfer did not assign an ID to the background result")
+		if ids[2] == "" {
+			t.Fatal("the background result went unnamed")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for PreInfer event")

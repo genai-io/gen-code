@@ -200,7 +200,7 @@ Enter handler).
 ### Step 1 — PreInfer: open an empty assistant stub
 
 ```
-event:           core.PreInfer
+event:           sdkagent.MessageStart
 applyPreInfer:   m.Stream.Active = true
                  m.Append({Role: assistant, Content: ""})
                  start spinner
@@ -233,7 +233,7 @@ Repaint zone shows `● ▮ ⋯`. Scrollback unchanged.
 ### Step 2 — OnChunk (text): grow the message
 
 ```
-event:           core.OnChunk{Text: "I'll list them with ls.", Done: false}
+event:           sdkagent.MessageUpdate{Delta: {Block: {Type: text, Text: "I'll list them with ls."}}}
 applyChunk:      m.AppendToLast(text, "")
 
 conv.Messages:   [user, assistant{Content:"I'll list them with ls."}]
@@ -248,7 +248,7 @@ non-empty content and `MDRenderer.Render` styles it. Repaint zone:
 ### Step 3 — PostInfer: tool calls land on the assistant message
 
 ```
-event:           core.PostInfer{Response: {ToolCalls: [{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
+event:           sdkagent.MessageEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
 applyPostInfer:  rt.OnInference(resp)
                  m.SetLastToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
@@ -284,7 +284,7 @@ Repaint zone now shows:
 ### Step 4 — PostTool: result arrives, gets inlined
 
 ```
-event:           core.PostTool{Result: {ToolCallID:"tc-1", Content:"file1\nfile2"}}
+event:           sdkagent.ToolEnd{ID:"tc-1", Result: {Content:"file1\nfile2"}}
 m.ProcessToolResult(tr):
   applyToolSideEffects(...)
   firePostToolHook(...)
@@ -327,7 +327,7 @@ Repaint zone:
 ### Step 5 — OnChunk(Done): promote the block to scrollback
 
 ```
-event:           core.OnChunk{Done: true, Response: {...}}
+event:           sdkagent.MessageEnd{Response: {...}}
 applyChunk:      m.AppendToLast(...)       (possibly a final text chunk)
                  if chunk.Done && no tool calls remaining:
                      m.Stream.Active = false

@@ -1,6 +1,7 @@
 package session
 
 import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -36,20 +37,22 @@ func TestRecorderWritesMessageBeforeInference(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096, Cwd: "/tmp",
 	})
 
-	// Simulate one turn: user message appends, then PreInfer fires referencing it.
+	// Simulate one turn: the user message appends, then the call that references
+	// it goes out.
 	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: userMsg})
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: userMsg})
 
-	rec.OnAgentEvent(core.Event{Type: core.PreInfer, Source: "main", Data: core.InferenceContext{
-		SystemDigest: "sha256:sys", ToolsDigest: "sha256:tools", MessageIDs: []string{"m1"},
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+		System:   "you are san",
+		Messages: []core.Message{userMsg},
 	}})
 
 	// Assistant reply appends after PostInfer.
-	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &ai.Response{
+	rec.OnAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 10, Output: 5},
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: assistantMsg})
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: assistantMsg})
 
 	records := readAllRecords(t, dir, "sess-order")
 
@@ -122,10 +125,10 @@ func TestRecorderAndSaveDoNotDoubleWrite(t *testing.T) {
 	})
 
 	// Recorder writes the two messages (agent-side path).
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m1", Role: ai.RoleUser, Content: ai.TextContent("hi"),
 	}})
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m2", Role: ai.RoleAssistant, Content: ai.TextContent("hello"),
 	}})
 
@@ -222,10 +225,10 @@ func TestRecorderSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	rec0 := NewRecorder(RecorderOptions{
 		FileStore: fs, SessionID: "sess-seed", AgentID: "main",
 	})
-	rec0.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec0.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m1", Role: ai.RoleUser, Content: ai.TextContent("first turn"),
 	}})
-	rec0.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec0.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m2", Role: ai.RoleAssistant, Content: ai.TextContent("first reply"),
 	}})
 
@@ -236,7 +239,7 @@ func TestRecorderSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	})
 	rec.seedLastMessageID("old-m2")
 
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
 	}})
 
@@ -357,7 +360,7 @@ func TestRecorderSkipsEmptyMessages(t *testing.T) {
 	}
 	rec := NewRecorder(RecorderOptions{FileStore: fs, SessionID: "sess-skip", AgentID: "main"})
 
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: core.Message{
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "empty-1", Role: ai.RoleUser, // no content, no tool result, no images
 	}})
 

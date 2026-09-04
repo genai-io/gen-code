@@ -188,11 +188,9 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 	var result core.Result
 	var hasResult bool
 	for ev := range ag.Outbox() {
-		if ev.Type == core.OnTurn {
-			if r, ok := ev.Result(); ok {
-				result = r
-				hasResult = true
-			}
+		if turn, ok := ev.(core.TurnEnded); ok {
+			result = turn.Result
+			hasResult = true
 			select {
 			case ag.Inbox() <- core.Inbound{Signal: core.SigStop}:
 			case <-ctx.Done():

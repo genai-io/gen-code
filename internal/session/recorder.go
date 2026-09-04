@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session/transcript"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // Recorder turns core.Agent lifecycle events into transcript records in
@@ -160,19 +161,19 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 	if r == nil || r.fs == nil || r.sessionID == "" {
 		return
 	}
-	switch ev.Type {
-	case core.PreInfer:
-		r.onPreInfer(ev)
-	case core.PostInfer:
-		r.onPostInfer(ev)
-	case core.OnSystemChange:
-		r.onSystemChange(ev)
-	case core.OnToolsChange:
-		r.onToolsChange(ev)
-	case core.OnAppend:
-		r.onAppend(ev)
-	case core.OnCompact:
-		r.onCompact(ev)
+	switch e := ev.(type) {
+	case sdkagent.MessageStart:
+		r.onInferenceRequested(e)
+	case sdkagent.MessageEnd:
+		r.onInferenceResponded(e)
+	case core.SystemChange:
+		r.onSystemChange(e)
+	case core.ToolsChange:
+		r.onToolsChange(e)
+	case sdkagent.MessageAdded:
+		r.onAppend(e.Message)
+	case core.Compacted:
+		r.onCompact(e)
 	}
 }
 
@@ -180,9 +181,8 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 // recorded via the preceding message.appended (compaction emits OnAppend for
 // it first); this record marks that summary's ID as the point where replay
 // stops walking parents, so the summarized-away history is not resurrected.
-func (r *Recorder) onCompact(ev core.Event) {
-	info, ok := ev.CompactInfo()
-	if !ok || info.SummaryMessageID == "" {
+func (r *Recorder) onCompact(info core.Compacted) {
+	if info.SummaryMessageID == "" {
 		return
 	}
 	err := r.fs.Compact(context.Background(), transcript.CompactCommand{
@@ -198,9 +198,8 @@ func (r *Recorder) onCompact(ev core.Event) {
 // onAppend persists message.appended at the moment the message enters the
 // chain. This is what guarantees "causes before consumers": any subsequent
 // inference.requested lands after the messages it references.
-func (r *Recorder) onAppend(ev core.Event) {
-	msg, ok := ev.Data.(core.Message)
-	if !ok || msg.ID == "" {
+func (r *Recorder) onAppend(msg core.Message) {
+	if msg.ID == "" {
 		return
 	}
 
@@ -238,11 +237,7 @@ func (r *Recorder) onAppend(ev core.Event) {
 	}
 }
 
-func (r *Recorder) onToolsChange(ev core.Event) {
-	c, ok := ev.ToolsChange()
-	if !ok {
-		return
-	}
+func (r *Recorder) onToolsChange(c core.ToolsChange) {
 	typ := transcript.ToolAdded
 	payload := transcript.ToolRecord{Caller: c.Caller}
 	if c.Removed {
@@ -275,11 +270,7 @@ func toolSchemaView(s core.ToolSchema) *transcript.ToolSchemaView {
 	return view
 }
 
-func (r *Recorder) onSystemChange(ev core.Event) {
-	c, ok := ev.SystemChange()
-	if !ok {
-		return
-	}
+func (r *Recorder) onSystemChange(c core.SystemChange) {
 	typ := transcript.SystemSectionAdded
 	if c.Removed {
 		typ = transcript.SystemSectionRemoved
@@ -300,11 +291,14 @@ func (r *Recorder) onSystemChange(ev core.Event) {
 	}
 }
 
-func (r *Recorder) onPreInfer(ev core.Event) {
-	ic, ok := ev.InferenceContext()
-	if !ok {
+// onInferenceRequested records the call as digests rather than content, so the
+// transcript can reference what went out without copying it on every turn. The
+// digesting lives here because this is the only thing that ever wanted it.
+func (r *Recorder) onInferenceRequested(e sdkagent.MessageStart) {
+	if e.Inference == nil {
 		return
 	}
+	ic := inferenceDigest(e.Inference)
 
 	turn := int(r.turn.Add(1))
 	now := time.Now()
@@ -333,9 +327,9 @@ func (r *Recorder) onPreInfer(ev core.Event) {
 	}
 }
 
-func (r *Recorder) onPostInfer(ev core.Event) {
-	resp, ok := ev.Response()
-	if !ok || resp == nil {
+func (r *Recorder) onInferenceResponded(e sdkagent.MessageEnd) {
+	resp := e.Response
+	if resp == nil {
 		return
 	}
 
@@ -372,5 +366,21 @@ func (r *Recorder) onPostInfer(ev core.Event) {
 	})
 	if err != nil {
 		log.Logger().Warn("recorder: append inference.responded failed", zap.Error(err))
+	}
+}
+
+// inferenceDigest is what the transcript keeps of one call: content-addressed,
+// so a record can reference the system prompt and the toolset without carrying
+// either. It moved here from core when the loop's events stopped being
+// translated — nothing else ever read it.
+func inferenceDigest(inf *sdkagent.Inference) transcript.InferenceRecord {
+	schemas := make([]core.ToolSchema, 0, len(inf.Tools))
+	for _, t := range inf.Tools {
+		schemas = append(schemas, t.Schema)
+	}
+	return transcript.InferenceRecord{
+		SystemDigest: sha256Hex([]byte(inf.System)),
+		ToolsDigest:  toolsDigest(schemas),
+		MessageIDs:   messageIDs(inf.Messages),
 	}
 }
