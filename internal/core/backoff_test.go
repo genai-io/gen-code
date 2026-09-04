@@ -43,18 +43,6 @@ func TestBackoffSleepHonorsCancel(t *testing.T) {
 	}
 }
 
-func TestStreamSentinelsAreRetryable(t *testing.T) {
-	for _, e := range []error{errStreamStalled, errStreamTruncated} {
-		var re RetryableError
-		if !errors.As(e, &re) {
-			t.Fatalf("%v should satisfy RetryableError", e)
-		}
-		if re.RetryAfter() != 0 {
-			t.Fatalf("%v RetryAfter = %v, want 0", e, re.RetryAfter())
-		}
-	}
-}
-
 // scriptedLLM fails the first `failures` Infer calls with failErr, then
 // completes with a text-only end_turn response.
 type scriptedLLM struct {
@@ -156,10 +144,8 @@ func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
 }
 
 func TestThinkActDoesNotRetryFatalError(t *testing.T) {
-	// A 400 as the driver hands it over — typed, so classification leaves it
-	// fatal. An *untyped* terminal failure is deliberately the other way: a
-	// transport routinely loses the type, and ClassifyStream gives that the
-	// benefit of the doubt (see TestThinkActRetriesAnOpaqueStreamFailure).
+	// A 400 as the driver hands it over — typed, so ai.IsRetryable leaves it
+	// fatal.
 	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindInvalidRequest, Status: 400,
 		Message: "bad request"}, failures: 99}
 	a := newRetryAgent(t, llm, 3, 0)

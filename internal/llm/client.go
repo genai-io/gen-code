@@ -158,16 +158,16 @@ func (l *Client) Complete(ctx context.Context,
 		if resp, err = Complete(ctx, l.provider, opts); err == nil {
 			return resp, nil
 		}
-		// Tagged on the way out, not just for the retry decision: an error
-		// leaving this package is always classified, so a caller cannot get a
+		// Classified on the way out, not just for the retry decision: an error
+		// leaving this package is always an *ai.Error, so a caller cannot get a
 		// different answer about the same failure by reaching for a different
-		// helper.
-		err = core.ClassifyStream(err)
-		var re core.RetryableError
-		if !errors.As(err, &re) || attempt == completeMaxAttempts {
+		// helper. StreamError is Classify plus the rule a transport needs — an
+		// unrecognized terminal failure is a transport failure.
+		err = ai.StreamError("", 0, nil, "", "", err)
+		if !ai.IsRetryable(err) || attempt == completeMaxAttempts {
 			return resp, err
 		}
-		if werr := core.BackoffSleep(ctx, attempt, re.RetryAfter()); werr != nil {
+		if werr := core.BackoffSleep(ctx, attempt, ai.RetryAfter(err)); werr != nil {
 			return resp, werr
 		}
 	}

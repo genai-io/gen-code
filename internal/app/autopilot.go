@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
@@ -738,11 +738,10 @@ func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse f
 				return out, nil
 			}
 		} else {
-			var retryable core.RetryableError
-			if !errors.As(core.Classify(err), &retryable) {
+			if !ai.IsRetryable(err) {
 				return zero, err
 			}
-			retryFloor = retryable.RetryAfter() // a 429's Retry-After outranks our own spacing
+			retryFloor = ai.RetryAfter(err) // a 429's Retry-After outranks our own spacing
 		}
 		if attempt >= autopilotSteerAttempts {
 			return zero, err
