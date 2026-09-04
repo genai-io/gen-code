@@ -48,6 +48,18 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 }
 
 // translate turns one SDK event into San's and folds it into the outcome.
+//
+// Three of the SDK's twelve are deliberately not forwarded, and saying so is
+// the point — an unhandled case in a closed set is otherwise indistinguishable
+// from one nobody thought about:
+//
+//	MessagesReplaced  the only hooks that replace a conversation are San's own
+//	                  two, and both announce the one message they collapse to
+//	                  as an append — which is what a transcript replays from.
+//	ToolUpdate        a tool reporting mid-run. No San tool calls agent.Report;
+//	                  the first one that does wants a case here.
+//	TurnStart         San's turn boundary is the mailbox's, not the exchange's:
+//	                  Run emits it around however many exchanges a turn took.
 func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result) {
 	switch e := event.(type) {
 	case sdkagent.MessageStart:
@@ -89,6 +101,12 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 
 	case sdkagent.CompactionStart:
 		a.emit(ctx, CompactStartEvent(a.id, CompactStart{Count: len(e.Messages)}))
+
+	case sdkagent.CompactionEnd:
+		// The loop closes this span whichever way the hook went, which is the
+		// only reason a consumer that drew a progress line on the start is
+		// guaranteed to be told to stop.
+		a.emit(ctx, CompactEndEvent(a.id, CompactEnd{Count: len(e.Messages), Err: e.Err}))
 
 	case sdkagent.TurnEnd:
 		out.Content = e.Message.Text()

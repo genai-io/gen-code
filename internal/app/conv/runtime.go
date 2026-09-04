@@ -37,6 +37,7 @@ type Runtime interface {
 	OnTurnEnd(result core.Result) tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnCompactStart(count int) tea.Cmd
+	OnCompactEnd(end core.CompactEnd) tea.Cmd
 	OnCompacted(info core.CompactInfo) tea.Cmd
 
 	// ── Handle*: system messages ────────────────────────────────

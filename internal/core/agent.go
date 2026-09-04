@@ -291,6 +291,16 @@ const (
 	// the UI side and does not emit it.
 	OnCompactStart EventType = "CompactStart"
 
+	// OnCompactEnd closes what OnCompactStart opened, however it went: a
+	// conversation shortened, one the summarizer decided to leave alone, or a
+	// summarizer that failed. Data is CompactEnd.
+	//
+	// It is not OnCompact, which fires only when there is a summary. A consumer
+	// that drew a progress line on the start has to be told to stop on all
+	// three — and on the path where the prompt was already too long, a failed
+	// shortening ends the turn, so there is no later event to be told by.
+	OnCompactEnd EventType = "CompactEnd"
+
 	// OnSystemChange fires when a system-prompt section is added, replaced,
 	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
 	// the outbox on backpressure.
@@ -320,11 +330,19 @@ func (e Event) Chunk() (ai.Event, bool)            { c, ok := e.Data.(ai.Event);
 func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
 func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
 func (e Event) CompactStart() (CompactStart, bool) { cs, ok := e.Data.(CompactStart); return cs, ok }
+func (e Event) CompactEnd() (CompactEnd, bool)     { ce, ok := e.Data.(CompactEnd); return ce, ok }
 
 // CompactStart carries the pre-compaction message count for the OnCompactStart
 // event so the progress line can read "Compacting N messages…".
 type CompactStart struct {
 	Count int
+}
+
+// CompactEnd carries what the conversation was left holding, and why it was
+// left that way when it was not shortened.
+type CompactEnd struct {
+	Count int
+	Err   error
 }
 
 // CompactInfo carries compaction details for the OnCompact event.
@@ -415,6 +433,9 @@ func CompactEvent(agentID string, info CompactInfo) Event {
 }
 func CompactStartEvent(agentID string, cs CompactStart) Event {
 	return Event{Type: OnCompactStart, Source: agentID, Data: cs}
+}
+func CompactEndEvent(agentID string, ce CompactEnd) Event {
+	return Event{Type: OnCompactEnd, Source: agentID, Data: ce}
 }
 
 func SystemChangeEvent(agentID string, c SystemChange) Event {

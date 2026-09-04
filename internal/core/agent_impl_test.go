@@ -697,3 +697,65 @@ func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
 		}
 	}
 }
+
+// A summarizer that produces nothing still closes the span it opened. This is
+// the case that matters: OnCompact never fires, so if the close came from
+// there, a consumer that drew a progress line on the start would be left
+// holding it — and on the OnInferError path there is no next inference to fall
+// through to, because a prompt that is still too long ends the turn.
+func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
+	var captured []Event
+	ag := NewAgent(Config{
+		ID:         "test",
+		Client:     testClient(&talkingLLM{text: "done"}),
+		System:     NewSystem(),
+		Tools:      NewTools(),
+		MaxSteps:   1,
+		InputLimit: func() int { return 1 },
+		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
+			return "", errors.New("the summarizer is down")
+		},
+		OnEvent: func(e Event) { captured = append(captured, e) },
+	})
+	a := ag.(*agent)
+
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("hi", nil),
+		AssistantMessage("hello", "", nil),
+		UserMessage("tell me more", nil),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := a.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+
+	start, end := -1, -1
+	for i, e := range captured {
+		switch e.Type {
+		case OnCompactStart:
+			if start < 0 {
+				start = i
+			}
+		case OnCompactEnd:
+			if _, ok := e.CompactEnd(); !ok {
+				t.Fatalf("OnCompactEnd carried %T, want CompactEnd", e.Data)
+			}
+			end = i
+		case OnCompact:
+			t.Error("a summarizer that produced nothing announced a compaction")
+		}
+	}
+	if start < 0 {
+		t.Fatal("the hook announced nothing, so there is no span to test")
+	}
+	if end < start {
+		t.Error("the span opened and was never closed")
+	}
+}

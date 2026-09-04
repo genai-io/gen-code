@@ -152,6 +152,9 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	case core.OnCompactStart:
 		cs, _ := ev.CompactStart()
 		return rt.OnCompactStart(cs.Count)
+	case core.OnCompactEnd:
+		ce, _ := ev.CompactEnd()
+		return rt.OnCompactEnd(ce)
 	case core.OnMessage:
 		// Nothing to do: every path that hands a user message to the agent —
 		// idle submit, queue release, cron prompt, async hook, a notice
