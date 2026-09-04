@@ -146,7 +146,7 @@ func RenderAutopilotMark(note string) string {
 }
 
 // RenderUserMessage renders a user message with prompt and optional images.
-func RenderUserMessage(content, displayContent string, images []core.Image, mdRenderer *MDRenderer, width int) string {
+func RenderUserMessage(content, displayContent string, images []core.Attachment, mdRenderer *MDRenderer, width int) string {
 	var sb strings.Builder
 	prompt := InputPromptStyle.Render(InputPrompt)
 	if displayContent == "" {

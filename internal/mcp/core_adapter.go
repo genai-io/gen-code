@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // mcpCoreTool wraps an MCP tool as a core.Tool for use with core.Agent.
@@ -13,19 +15,18 @@ type mcpCoreTool struct {
 	caller *Caller
 }
 
-func (t *mcpCoreTool) Name() string            { return t.schema.Name }
-func (t *mcpCoreTool) Description() string     { return t.schema.Description }
 func (t *mcpCoreTool) Schema() core.ToolSchema { return t.schema }
 
-func (t *mcpCoreTool) Execute(ctx context.Context, input map[string]any) (string, error) {
+func (t *mcpCoreTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	input, _ := core.ParseToolInput(call.Input)
 	content, isError, err := t.caller.CallTool(ctx, t.schema.Name, input)
 	if err != nil {
-		return "", err
+		return agent.Result{}, err
 	}
 	if isError {
-		return content, fmt.Errorf("%s", content)
+		return agent.TextResult(content), fmt.Errorf("%s", content)
 	}
-	return content, nil
+	return agent.TextResult(content), nil
 }
 
 // AsCoreTools converts MCP tool schemas into core.Tool implementations

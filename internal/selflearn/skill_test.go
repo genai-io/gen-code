@@ -1,6 +1,8 @@
 package selflearn
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"os"
 	"path/filepath"
@@ -198,17 +200,17 @@ func TestSkillProjectOverridesUser(t *testing.T) {
 func TestSkillManageToolDispatch(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	tool := newSkillManageTool(mgr)
-	out, err := tool.Execute(context.Background(), map[string]any{
+	out, err := tool.Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{
 		"action":      "create",
 		"name":        "tool-made",
 		"description": "skill created via the tool dispatch path",
 		"content":     "Body from tool.",
 		"level":       "user",
-	})
-	if err != nil || !strings.Contains(out, "ok") {
-		t.Fatalf("create via tool: out=%q err=%v", out, err)
+	})})
+	if err != nil || !strings.Contains(out.Content.Text(), "ok") {
+		t.Fatalf("create via tool: out=%q err=%v", out.Content.Text(), err)
 	}
-	if _, err := tool.Execute(context.Background(), map[string]any{"action": "create"}); err == nil {
+	if _, err := tool.Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"action": "create"})}); err == nil {
 		t.Fatal("missing name should error")
 	}
 }

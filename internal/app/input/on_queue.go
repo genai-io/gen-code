@@ -18,7 +18,7 @@ const maxQueueSize = 50
 type QueueItem struct {
 	ID      int
 	Content string
-	Images  []core.Image
+	Images  []core.Attachment
 }
 
 type Queue struct {
@@ -32,7 +32,7 @@ func NewQueue() Queue {
 	return Queue{SelectIdx: -1}
 }
 
-func (q *Queue) Enqueue(content string, images []core.Image) int {
+func (q *Queue) Enqueue(content string, images []core.Attachment) int {
 	if len(q.items) >= maxQueueSize {
 		return -1
 	}
@@ -74,7 +74,7 @@ func (q *Queue) LastIndex() int {
 	return len(q.items) - 1
 }
 
-func (q *Queue) UpdateAt(idx int, content string, images []core.Image) bool {
+func (q *Queue) UpdateAt(idx int, content string, images []core.Attachment) bool {
 	if idx < 0 || idx >= len(q.items) {
 		return false
 	}

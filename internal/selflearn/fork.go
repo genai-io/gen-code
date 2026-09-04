@@ -103,7 +103,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 	end := len(msgs)
 	for end > 0 {
-		if msgs[end-1].Role != core.RoleUser {
+		if msgs[end-1].Role != ai.RoleUser {
 			break
 		}
 		end--
@@ -117,7 +117,7 @@ func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 func allowOnly(allowed core.Tools) perm.PermissionFunc {
 	names := make(map[string]bool)
 	for _, t := range allowed.All() {
-		names[t.Name()] = true
+		names[t.Schema().Name] = true
 	}
 	return func(_ context.Context, name string, _ map[string]any) (bool, string) {
 		if names[name] {

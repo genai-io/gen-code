@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func flushTestModel(msg core.ChatMessage) *model {
@@ -101,7 +102,7 @@ func TestTakeWelcomeBannerFreezesAndClears(t *testing.T) {
 // offset advances only once it lands.
 func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:     core.RoleAssistant,
+		Role:     core.ChatAssistant,
 		Thinking: "first paragraph of reasoning\n\n",
 	})
 
@@ -319,11 +320,11 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 
 	bashCall := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"git status"}`}
 	m.conv.Messages = append(m.conv.Messages,
-		core.ChatMessage{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{bashCall}},
-		core.ChatMessage{Role: core.RoleUser, Expanded: true, ToolResult: &core.ToolResult{
+		core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{bashCall}},
+		core.ChatMessage{Role: core.ChatUser, Expanded: true, ToolResult: &core.ToolResult{
 			ToolCallID: bashCall.ID,
 			ToolName:   "Bash",
-			Content:    "BASH_RESULT_SENTINEL",
+			Content:    ai.TextContent("BASH_RESULT_SENTINEL"),
 		}},
 	)
 	firstCmds := m.CommitMessages()
@@ -333,18 +334,17 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 
 	editCall := core.ToolCall{ID: "edit-1", Name: "Edit", Input: `{"file_path":"main.go","old_string":"old","new_string":"EDIT_RESULT_SENTINEL"}`}
 	m.conv.Messages = append(m.conv.Messages,
-		core.ChatMessage{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{editCall}},
-		core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{
+		core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{editCall}},
+		core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
 			ToolCallID: editCall.ID,
 			ToolName:   "Edit",
-			Content:    "Edited main.go",
-			Details: toolresult.FileChangeDetails{
-				Path:         "main.go",
-				EditCount:    1,
-				AddedLines:   1,
-				RemovedLines: 1,
-				UnifiedDiff:  "@@ -1 +1 @@\n-old\n+EDIT_RESULT_SENTINEL",
-			},
+			Content:    ai.TextContent("Edited main.go"),
+		}, ToolDetails: toolresult.FileChangeDetails{
+			Path:         "main.go",
+			EditCount:    1,
+			AddedLines:   1,
+			RemovedLines: 1,
+			UnifiedDiff:  "@@ -1 +1 @@\n-old\n+EDIT_RESULT_SENTINEL",
 		}},
 	)
 	secondCmds := m.CommitMessages()
@@ -414,7 +414,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 // the live view until it completes — exactly like content's trailing block.
 func TestFlushStreamingBlocksHoldsIncompleteThinking(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:     core.RoleAssistant,
+		Role:     core.ChatAssistant,
 		Thinking: "still streaming this paragraph",
 	})
 
@@ -430,7 +430,7 @@ func TestFlushStreamingBlocksHoldsIncompleteThinking(t *testing.T) {
 // trailing paragraph is flushed too, so nothing reasoning-side lingers.
 func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:     core.RoleAssistant,
+		Role:     core.ChatAssistant,
 		Thinking: "reasoning with no trailing blank line",
 		Content:  "Here",
 	})
@@ -448,7 +448,7 @@ func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
 // thread, a second flush is suppressed so the scrollback Printlns stay ordered.
 func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:    core.RoleAssistant,
+		Role:    core.ChatAssistant,
 		Content: "first block\n\nsecond block\n\n",
 	})
 
@@ -468,7 +468,7 @@ func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 // duplicate Println, and flush.rendering still clears.
 func TestHandleFlushResultDiscardsCommittedRow(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:    core.RoleAssistant,
+		Role:    core.ChatAssistant,
 		Content: "a block\n\n",
 	})
 
@@ -495,7 +495,7 @@ func TestHandleFlushResultDiscardsCommittedRow(t *testing.T) {
 // row (new message ID) is dropped rather than corrupting the new row's offsets.
 func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
-		Role:    core.RoleAssistant,
+		Role:    core.ChatAssistant,
 		ID:      "old",
 		Content: "a block\n\n",
 	})
@@ -507,7 +507,7 @@ func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 	br := cmds[0]().(flushResultMsg)
 
 	// Retry dropped the streaming row and appended a fresh one (new ID).
-	m.conv.Messages[0] = core.ChatMessage{Role: core.RoleAssistant, ID: "new", Content: "retried"}
+	m.conv.Messages[0] = core.ChatMessage{Role: core.ChatAssistant, ID: "new", Content: "retried"}
 	if cmd := m.handleFlushResult(br); cmd != nil {
 		t.Fatal("a render for a replaced row must be discarded")
 	}

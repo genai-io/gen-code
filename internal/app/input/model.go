@@ -75,7 +75,7 @@ type Model struct {
 
 type PendingImage struct {
 	ID   int
-	Data core.Image
+	Data core.Attachment
 }
 
 type ImageSelection struct {

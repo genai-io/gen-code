@@ -198,9 +198,9 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      dir,
 		},
-		Messages: []core.Message{
-			{ID: "u1", Role: core.RoleUser, Content: "original message"},
-			{ID: "a1", Role: core.RoleAssistant, Content: "original reply"},
+		Messages: []core.ChatMessage{
+			{ID: "u1", Role: core.ChatUser, Content: "original message"},
+			{ID: "a1", Role: core.ChatAssistant, Content: "original reply"},
 		},
 	}
 	if err := store.Save(original); err != nil {
@@ -232,9 +232,9 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 3. Append a new entry to the fork and save it.
-	forked.Messages = append(forked.Messages, core.Message{
+	forked.Messages = append(forked.Messages, core.ChatMessage{
 		ID:      "u2",
-		Role:    core.RoleUser,
+		Role:    core.ChatUser,
 		Content: "fork-only message",
 	})
 	if err := store.Save(forked); err != nil {

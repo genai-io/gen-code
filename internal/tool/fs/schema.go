@@ -20,7 +20,7 @@ func (t *ReadTool) Schema() core.ToolSchema {
 - Lines over %d characters end with “%s” and cannot be copied into an Edit
 - Do not re-read a file to verify your own Edit/Write — a failed change errors, and successful results keep your view current
 - Image files are recognized but cannot be displayed yet; ask the user to attach the image to a message instead`, maxReadLines, maxLineLength, lineTruncationMarker),
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"file_path": map[string]any{
@@ -51,7 +51,7 @@ func (t *EditTool) Schema() core.ToolSchema {
 - old_string must match the file exactly after stripping Read's line-number prefix (preserve indentation) and must be unique — add surrounding context if not, or set replace_all to change every occurrence. Trailing-whitespace-only mismatches apply automatically; other whitespace slips fail with the actual lines echoed.
 - Apply several changes to one file with multiple Edit calls in one message; they run in order.
 - Do not Read and Edit the same file in one message.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"file_path": map[string]any{
@@ -85,7 +85,7 @@ func (t *WriteTool) Schema() core.ToolSchema {
 - To overwrite, Read the file first unless successful Write/Edit already observed it this session; re-read after external changes.
 - Use Edit for every existing-file change; reserve Write for new files or wholesale regeneration.
 - Never create documentation or README files unless explicitly requested.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"file_path": map[string]any{
@@ -113,7 +113,7 @@ func (t *BashTool) Schema() core.ToolSchema {
 - For file contents use the dedicated tools: Read (not cat), Edit (not sed), Write (not echo/redirection).
 - No TTY and no stdin — anything awaiting interactive input hangs until timeout. Use non-interactive flags ("git commit -m", "npm init -y", "apt-get -y") or feed input via heredoc.
 - Optional timeout in ms (default 120000, max 600000). On Unix, run_in_background detaches the command and its result includes the process-group ID plus exact Bash commands for graceful or forced termination.`,
-		Parameters: map[string]any{
+		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"command": map[string]any{

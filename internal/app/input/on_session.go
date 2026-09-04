@@ -192,7 +192,7 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 
 	for _, msg := range slices.Backward(fullSession.Messages) {
 
-		if msg.Role != core.RoleUser && msg.Role != core.RoleAssistant {
+		if msg.Role != core.ChatUser && msg.Role != core.ChatAssistant {
 			continue
 		}
 		blocks := session.MessageToBlocks(msg)
@@ -235,7 +235,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 	}
 
 	for _, msg := range fullSession.Messages {
-		if msg.Role != core.RoleUser {
+		if msg.Role != core.ChatUser {
 			continue
 		}
 		blocks := session.MessageToBlocks(msg)

@@ -38,7 +38,7 @@ func (p *restartStubProvider) Stream(_ context.Context, req *ai.Request) iter.Se
 func flattenAI(msgs []ai.Message) []core.Message {
 	out := make([]core.Message, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, core.Message{Role: core.Role(m.Role), Content: m.Content.Text()})
+		out = append(out, core.Message{Role: ai.Role(m.Role), Content: m.Content})
 	}
 	return out
 }
@@ -54,8 +54,8 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	inferences := make(chan core.InferenceContext, 1)
 	live := []core.Message{
-		{ID: "u1", Role: core.RoleUser, Content: "survey internal/broker"},
-		{ID: "a1", Role: core.RoleAssistant, Content: "foreground result"},
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/broker")},
+		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("foreground result")},
 	}
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -73,7 +73,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	// A background completion is already represented in the UI when
 	// SubmitToAgent asks for a replacement. It is sent through the inbox after
 	// Start, so it must not displace the preserved seed.
-	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.RoleUser, Content: "background result"})
+	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
 	got := m.seedAgentMessages("background result")
 	if len(got) != len(live) {
 		t.Fatalf("seedAgentMessages() len = %d, want %d: %+v", len(got), len(live), got)
@@ -112,10 +112,10 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		if len(request) != 3 {
 			t.Fatalf("inference message count = %d, want 3: %+v", len(request), request)
 		}
-		if request[0].Content != live[0].Content || request[1].Content != live[1].Content {
+		if request[0].Text() != live[0].Text() || request[1].Text() != live[1].Text() {
 			t.Fatalf("inference lost preserved content: %+v", request)
 		}
-		if request[2].Role != core.RoleUser || request[2].Content != "background result" {
+		if request[2].Role != ai.RoleUser || request[2].Text() != "background result" {
 			t.Fatalf("inference trailing message = %+v, want background result", request[2])
 		}
 	case <-time.After(time.Second):
@@ -145,11 +145,11 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 		services: services{Agent: &agent.Session{}},
 		conv:     conv.NewModel(80),
 		agentRestartMessages: []core.Message{
-			{ID: "old-u1", Role: core.RoleUser, Content: "old session"},
+			{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")},
 		},
 	}
 	m.ResetAgentSession()
-	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.RoleUser, Content: "new session"})
+	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
 	if got := m.seedAgentMessages("new session"); len(got) != 0 {
 		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
@@ -165,13 +165,9 @@ func (*textOnlyStubProvider) SupportsImages(string) bool { return false }
 
 func chainWithImage() []core.Message {
 	return []core.Message{
-		{
-			ID:      "u1",
-			Role:    core.RoleUser,
-			Content: "what is in this screenshot?",
-			Images:  []core.Image{{MediaType: "image/png", Data: "aW1n", FileName: "shot.png", Size: 3}},
-		},
-		{ID: "a1", Role: core.RoleAssistant, Content: "a terminal"},
+		withID("u1", core.UserMessage("what is in this screenshot?",
+			[]core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n", FileName: "shot.png"}}})),
+		withID("a1", core.AssistantMessage("a terminal", "", nil)),
 	}
 }
 
@@ -187,15 +183,15 @@ func TestSeedAgentMessagesDropsImagesForTextOnlyModel(t *testing.T) {
 	if len(seeded) != len(original) {
 		t.Fatalf("seedAgentMessages() length = %d, want %d", len(seeded), len(original))
 	}
-	if len(seeded[0].Images) != 0 {
-		t.Errorf("seeded user message kept %d image(s), want none", len(seeded[0].Images))
+	if n := imageBlocks(seeded[0]); n != 0 {
+		t.Errorf("seeded user message kept %d image(s), want none", n)
 	}
-	if seeded[0].Content != original[0].Content {
-		t.Errorf("seeded user message content = %q, want %q", seeded[0].Content, original[0].Content)
+	if seeded[0].Text() != original[0].Text() {
+		t.Errorf("seeded user message content = %q, want %q", seeded[0].Text(), original[0].Text())
 	}
 	// The retained snapshot must survive intact: switching back to a
 	// vision-capable model has to restore the images.
-	if len(m.agentRestartMessages[0].Images) != 1 {
+	if imageBlocks(m.agentRestartMessages[0]) != 1 {
 		t.Error("stripping mutated the retained restart chain")
 	}
 }
@@ -206,7 +202,22 @@ func TestSeedAgentMessagesKeepsImagesForVisionModel(t *testing.T) {
 	m.env.LLMProvider = &restartStubProvider{}
 
 	seeded := m.seedAgentMessages("")
-	if len(seeded[0].Images) != 1 {
-		t.Errorf("seeded user message has %d image(s), want the original 1", len(seeded[0].Images))
+	if imageBlocks(seeded[0]) != 1 {
+		t.Errorf("seeded user message has %d image(s), want the original 1", imageBlocks(seeded[0]))
 	}
+}
+
+func withID(id string, m core.Message) core.Message {
+	m.ID = id
+	return m
+}
+
+func imageBlocks(m core.Message) int {
+	n := 0
+	for _, b := range m.Content {
+		if b.Type == ai.BlockImage {
+			n++
+		}
+	}
+	return n
 }

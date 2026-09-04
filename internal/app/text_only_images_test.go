@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,13 +47,8 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	return m, provider
 }
 
-func chartImage() core.Image {
-	return core.Image{
-		MediaType: "image/png",
-		Data:      "ZmFrZQ==",
-		FileName:  "chart.png",
-		Path:      "/tmp/chart.png",
-	}
+func chartImage() core.Attachment {
+	return core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "chart.png"}, Path: "/tmp/chart.png"}
 }
 
 // brokenImagePath writes a broken.png the loader rejects, points the model's
@@ -74,7 +71,7 @@ func brokenImagePath(t *testing.T, m *model) string {
 func TestAdaptTurnForProviderWithholdsImagesFromTextOnlyModel(t *testing.T) {
 	m, _ := textOnlyModel(t)
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{chartImage()})
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{chartImage()})
 
 	if len(providerImages) != 0 {
 		t.Fatalf("provider images = %+v, want none — a text-only provider rejects image parts", providerImages)
@@ -91,7 +88,7 @@ func TestAdaptTurnForProviderLeavesVisionModelsAlone(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.env.LLMProvider = &restartStubProvider{} // no ImageSupportProvider — images supported
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{chartImage()})
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{chartImage()})
 
 	if len(providerImages) != 1 {
 		t.Fatalf("provider images = %d, want the attachment passed through", len(providerImages))
@@ -106,7 +103,7 @@ func TestAdaptTurnForProviderLeavesVisionModelsAlone(t *testing.T) {
 // then, so nothing downstream strips the images.
 func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	m, provider := textOnlyModel(t)
-	m.userInput.Queue.Enqueue("what does this show", []core.Image{chartImage()})
+	m.userInput.Queue.Enqueue("what does this show", []core.Attachment{chartImage()})
 
 	cmd, released := m.releaseQueuedMessage()
 	if !released {
@@ -118,10 +115,10 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	case chain := <-provider.requests:
 		sent := false
 		for _, msg := range chain {
-			if len(msg.Images) > 0 {
-				t.Fatalf("provider received %d image part(s) it rejects: %+v", len(msg.Images), msg)
+			if imgCount(msg) > 0 {
+				t.Fatalf("provider received %d image part(s) it rejects: %+v", imgCount(msg), msg)
 			}
-			if strings.Contains(msg.Content, "/tmp/chart.png") {
+			if strings.Contains(msg.Text(), "/tmp/chart.png") {
 				sent = true
 			}
 		}
@@ -147,7 +144,7 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 func TestReleasedQueuedMessageSplitsDisplayFromContent(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.env.LLMProvider = &restartStubProvider{}
-	m.userInput.Queue.Enqueue("look at [Image #1] please", []core.Image{chartImage()})
+	m.userInput.Queue.Enqueue("look at [Image #1] please", []core.Attachment{chartImage()})
 
 	if _, released := m.releaseQueuedMessage(); !released {
 		t.Fatal("queued message was not released")
@@ -168,9 +165,9 @@ func TestReleasedQueuedMessageSplitsDisplayFromContent(t *testing.T) {
 func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.conv.Append(core.ChatMessage{
-		Role:    core.RoleUser,
+		Role:    core.ChatUser,
 		Content: "what does this show",
-		Images:  []core.Image{chartImage()},
+		Images:  []core.Attachment{chartImage()},
 	})
 
 	req := m.BuildCompactRequest("", "manual")
@@ -179,8 +176,8 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 		t.Fatal("compact request has no messages, so the check below proves nothing")
 	}
 	for _, msg := range req.Messages {
-		if len(msg.Images) > 0 {
-			t.Fatalf("compact request carries %d image part(s) the provider rejects: %+v", len(msg.Images), msg)
+		if imgCount(msg) > 0 {
+			t.Fatalf("compact request carries %d image part(s) the provider rejects: %+v", imgCount(msg), msg)
 		}
 	}
 	// The conversation keeps its own copy — only the request is stripped.
@@ -197,7 +194,7 @@ func TestQueuedImageErrorLeavesTheNextMessageAlone(t *testing.T) {
 	brokenImagePath(t, m)
 	m.userInput.Queue.Enqueue("look at @broken.png", nil)
 	// What the user is typing right now, while the turn streams.
-	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: core.Image{FileName: "next.png"}}}
+	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: core.Attachment{Image: ai.Image{FileName: "next.png"}}}}
 
 	if _, released := m.releaseQueuedMessage(); !released {
 		t.Fatal("queued message was not released")
@@ -240,9 +237,9 @@ func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
 // instead.
 func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	m, _ := textOnlyModel(t)
-	pasted := core.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}
+	pasted := core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}}
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Image{pasted})
+	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{pasted})
 	if len(providerImages) != 0 {
 		t.Fatalf("provider images = %+v, want none", providerImages)
 	}
@@ -261,4 +258,14 @@ func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
 	}
+}
+
+func imgCount(m core.Message) int {
+	n := 0
+	for _, b := range m.Content {
+		if b.Type == ai.BlockImage {
+			n++
+		}
+	}
+	return n
 }

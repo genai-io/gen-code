@@ -1,6 +1,8 @@
 package loop_test
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -58,10 +60,10 @@ func TestAgent_MultiTurn_ToolUse(t *testing.T) {
 	hasToolCall := false
 	hasToolResult := false
 	for _, m := range msgs {
-		if m.Role == core.RoleAssistant && len(m.ToolCalls) > 0 {
+		if m.Role == ai.RoleAssistant && len(m.ToolCalls()) > 0 {
 			hasToolCall = true
 		}
-		if m.ToolResult != nil {
+		if len(m.ToolResults()) > 0 {
 			hasToolResult = true
 		}
 	}
@@ -124,7 +126,7 @@ func TestAgent_UnknownTool(t *testing.T) {
 
 	hasError := false
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
+		if len(m.ToolResults()) > 0 && m.ToolResults()[0].IsError {
 			hasError = true
 			break
 		}
@@ -153,7 +155,7 @@ func TestAgent_MultipleToolCalls(t *testing.T) {
 
 	toolResults := 0
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && !m.ToolResult.IsError {
+		if m.ToolResults() != nil && !m.ToolResults()[0].IsError {
 			toolResults++
 		}
 	}

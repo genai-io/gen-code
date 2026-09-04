@@ -683,7 +683,7 @@ func (r *Registry) GetToolSchemas() []core.ToolSchema {
 			tools = append(tools, core.ToolSchema{
 				Name:        fmt.Sprintf("mcp__%s__%s", serverName, mcpTool.Name),
 				Description: mcpTool.Description,
-				Parameters:  parseInputSchema(mcpTool.InputSchema),
+				Definition:  parseInputSchema(mcpTool.InputSchema),
 			})
 		}
 	}

@@ -29,7 +29,7 @@ type Agent interface {
 	//
 	// Ownership: caller owns the channel and must close it when done sending.
 	// Sending to Inbox after Run() returns may block indefinitely.
-	Inbox() chan<- Message
+	Inbox() chan<- Inbound
 
 	// Outbox is the read channel — agent emits events to the external world.
 	// Events include streaming chunks, tool execution status, and turn results.
@@ -188,7 +188,7 @@ func NewAgent(cfg Config) Agent {
 		maxTurnRetries:    cfg.MaxTurnRetries,
 		firstChunkTimeout: cfg.StreamFirstChunkTimeout,
 		idleTimeout:       cfg.StreamIdleTimeout,
-		inbox:             make(chan Message, cfg.InboxBuf),
+		inbox:             make(chan Inbound, cfg.InboxBuf),
 		outbox:            outbox,
 		onEvent:           cfg.OnEvent,
 	}

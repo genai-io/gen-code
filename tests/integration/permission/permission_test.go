@@ -22,8 +22,8 @@ func TestPermission_PermitAll_AllowsWrite(t *testing.T) {
 	}
 
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
-			t.Errorf("unexpected error result: %s", m.ToolResult.Content)
+		if len(m.ToolResults()) > 0 && m.ToolResults()[0].IsError {
+			t.Errorf("unexpected error result: %s", m.ToolResults()[0].Content.Text())
 		}
 	}
 	if result.StopReason != core.StopEndTurn {
@@ -46,7 +46,7 @@ func TestPermission_ReadOnly_BlocksWrite(t *testing.T) {
 
 	hasError := false
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
+		if m.ToolResults() != nil && m.ToolResults()[0].IsError {
 			hasError = true
 			break
 		}
@@ -70,8 +70,8 @@ func TestPermission_ReadOnly_AllowsRead(t *testing.T) {
 	}
 
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
-			t.Errorf("unexpected error for Read tool: %s", m.ToolResult.Content)
+		if m.ToolResults() != nil && m.ToolResults()[0].IsError {
+			t.Errorf("unexpected error for Read tool: %s", m.ToolResults()[0].Content.Text())
 		}
 	}
 }
@@ -91,7 +91,7 @@ func TestPermission_DenyAll_BlocksNonSafeTools(t *testing.T) {
 
 	hasError := false
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
+		if m.ToolResults() != nil && m.ToolResults()[0].IsError {
 			hasError = true
 			break
 		}
@@ -116,7 +116,7 @@ func TestPermission_SafeToolGoesThroughPermission(t *testing.T) {
 
 	hasError := false
 	for _, m := range result.Messages {
-		if m.ToolResult != nil && m.ToolResult.IsError {
+		if m.ToolResults() != nil && m.ToolResults()[0].IsError {
 			hasError = true
 			break
 		}

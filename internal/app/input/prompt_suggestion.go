@@ -1,6 +1,8 @@
 package input
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 
 	tea "charm.land/bubbletea/v2"
@@ -91,7 +93,13 @@ func RecentSuggestionMessages(c *conv.ConversationModel) []core.Message {
 	// attachments buy it nothing, and a text-only provider rejects them
 	// outright. The conversion returns copies, so conv keeps its own.
 	for i := range msgs {
-		msgs[i].Images = nil
+		content := make(ai.Content, 0, len(msgs[i].Content))
+		for _, block := range msgs[i].Content {
+			if block.Type != ai.BlockImage {
+				content = append(content, block)
+			}
+		}
+		msgs[i].Content = content
 	}
 	return msgs
 }
@@ -131,7 +139,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 
 	assistantCount := 0
 	for _, msg := range deps.Conversation.Messages {
-		if msg.Role == core.RoleAssistant {
+		if msg.Role == core.ChatAssistant {
 			assistantCount++
 		}
 	}
@@ -139,7 +147,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 		return PromptSuggestionRequest{}, false
 	}
 	msgs := RecentSuggestionMessages(deps.Conversation)
-	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: SuggestionUserPrompt})
+	msgs = append(msgs, core.UserMessage(SuggestionUserPrompt, nil))
 
 	return PromptSuggestionRequest{
 		Client:       deps.BuildClient(),

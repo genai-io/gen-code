@@ -118,7 +118,7 @@ func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
 		Model:        r.model,
 		SystemPrompt: r.systemPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: userMessage}},
+		Messages:     []core.Message{core.UserMessage(userMessage, nil)},
 		MaxTokens:    maxVerdictTokens,
 	})
 	if err != nil {

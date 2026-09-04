@@ -208,7 +208,7 @@ func runPrint(userMessage, personaName string) error {
 		return err
 	}
 	for event, err := range client.Stream(ctx,
-		core.ToAIMessages(completionOpts.Messages, client.Model()),
+		completionOpts.Messages,
 		ai.WithSystem(sysPrompt), ai.WithTools(core.ToAITools(schemas)...),
 		ai.WithMaxTokens(setting.DefaultMaxTokens)) {
 		if err != nil {

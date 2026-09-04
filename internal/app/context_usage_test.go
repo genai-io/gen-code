@@ -59,13 +59,17 @@ func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
 }
 
 func TestMessageWireCoversEveryFieldSentToTheProvider(t *testing.T) {
+	// Every block kind that goes out, in one message: the conversation is one
+	// ordered sequence now, so a field that is not in it cannot be sent — and
+	// DisplayContent, which this used to include, is not in it any more.
 	msg := core.Message{
-		Role:           core.RoleAssistant,
-		Content:        "visible answer",
-		DisplayContent: "rendered for the TUI only",
-		Thinking:       "reasoning text",
-		ToolCalls:      []core.ToolCall{{ID: "1", Name: "Bash", Input: `{"command":"ls"}`}},
-		ToolResult:     &core.ToolResult{ToolCallID: "1", Content: "tool output"},
+		Role: ai.RoleAssistant,
+		Content: ai.Content{
+			ai.ThinkingBlock("reasoning text", ""),
+			ai.TextBlock("visible answer"),
+			ai.ToolCallBlock(core.ToolCall{ID: "1", Name: "Bash", Input: `{"command":"ls"}`}),
+			ai.ToolResultBlock(ai.ToolResult{ToolCallID: "1", Content: ai.TextContent("tool output")}),
+		},
 	}
 
 	wire := messageWire(msg)
@@ -83,10 +87,14 @@ func TestToolSchemaWireCoversTheWholeDefinition(t *testing.T) {
 	wire := toolSchemaWire(core.ToolSchema{
 		Name:        "Bash",
 		Description: "run a command",
-		Parameters:  map[string]any{"type": "object"},
+		Definition:  map[string]any{"type": "object"},
 	})
 
-	for _, want := range []string{"Bash", "run a command", "input_schema"} {
+	// What the estimate has to cover is the whole definition, not just the
+	// prose: a dozen schemas can outweigh the conversation. The JSON key the
+	// definition lands under is the encoder's business — no provider ever sees
+	// this string, and each driver builds its own payload from Schema fields.
+	for _, want := range []string{"Bash", "run a command", `"type":"object"`} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("schema text is missing %q: %q", want, wire)
 		}

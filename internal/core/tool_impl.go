@@ -24,7 +24,7 @@ func NewTools(tools ...Tool) Tools {
 		dirty: true,
 	}
 	for _, t := range tools {
-		ts.tools[t.Name()] = t
+		ts.tools[t.Schema().Name] = t
 	}
 	return ts
 }
@@ -42,13 +42,13 @@ func (s *toolSet) All() []Tool {
 	for _, t := range s.tools {
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
+	sort.Slice(out, func(i, j int) bool { return out[i].Schema().Name < out[j].Schema().Name })
 	return out
 }
 
 func (s *toolSet) Add(tool Tool, caller string) {
 	s.mu.Lock()
-	s.tools[tool.Name()] = tool
+	s.tools[tool.Schema().Name] = tool
 	s.dirty = true
 	obs := s.observer
 	s.mu.Unlock()
@@ -88,7 +88,7 @@ func (s *toolSet) SetObserver(fn func(ToolsChange)) {
 		return
 	}
 	// Stable order so replay is reproducible across processes.
-	sort.Slice(snapshot, func(i, j int) bool { return snapshot[i].Name() < snapshot[j].Name() })
+	sort.Slice(snapshot, func(i, j int) bool { return snapshot[i].Schema().Name < snapshot[j].Schema().Name })
 	for _, t := range snapshot {
 		fn(ToolsChange{Schema: t.Schema(), Caller: "tools:init"})
 	}

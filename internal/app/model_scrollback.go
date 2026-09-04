@@ -10,6 +10,8 @@
 package app
 
 import (
+	"github.com/genai-io/san/internal/core"
+
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,7 +19,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/core"
 )
 
 type scrollbackPrintReadyMsg struct{ id uint64 }
@@ -110,7 +111,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		return nil
 	}
 	msg := &m.conv.Messages[idx]
-	if msg.Role != core.RoleAssistant {
+	if msg.Role != core.ChatAssistant {
 		return nil
 	}
 
@@ -197,7 +198,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 	if msg.index >= len(m.conv.Messages) ||
 		msg.index < m.conv.CommittedCount ||
 		m.conv.Messages[msg.index].ID != msg.msgID ||
-		m.conv.Messages[msg.index].Role != core.RoleAssistant {
+		m.conv.Messages[msg.index].Role != core.ChatAssistant {
 		return nil
 	}
 
@@ -253,7 +254,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		msg := m.conv.Messages[i]
 
 		if checkReady {
-			if i == lastIdx && msg.Role == core.RoleAssistant && m.conv.Stream.Active {
+			if i == lastIdx && msg.Role == core.ChatAssistant && m.conv.Stream.Active {
 				break
 			}
 		}

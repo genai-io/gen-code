@@ -1,6 +1,8 @@
 package selflearn
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -27,7 +29,7 @@ func TestSnapshotIsCopiedBeforeGoroutine(t *testing.T) {
 	}
 	r := New(Config{MemoryEnabled: true}, review)
 
-	original := []core.Message{{Role: core.RoleUser, Content: "a"}}
+	original := []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("a")}}
 	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original}, false, true)
 
 	// Truncate the caller's slice while the goroutine is blocked. If

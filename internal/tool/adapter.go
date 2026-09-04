@@ -7,6 +7,8 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // sideEffects stores HookResponse values keyed by tool call ID.
@@ -111,11 +113,10 @@ type toolAdapter struct {
 	promptResponder BashPromptResponderProvider
 }
 
-func (a *toolAdapter) Name() string            { return a.inner.Name() }
-func (a *toolAdapter) Description() string     { return a.inner.Description() }
 func (a *toolAdapter) Schema() core.ToolSchema { return a.schema }
 
-func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string, error) {
+func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	input, _ := core.ParseToolInput(call.Input)
 	cwd := ""
 	if a.cwd != nil {
 		cwd = a.cwd()
@@ -157,15 +158,15 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 	if it, ok := a.inner.(InteractiveTool); ok && it.RequiresInteraction() && a.askFn != nil {
 		request, err := it.PrepareInteraction(ctx, input, cwd)
 		if err != nil {
-			return "", err
+			return agent.Result{}, err
 		}
 		qr, ok := request.(*QuestionRequest)
 		if !ok {
-			return "", fmt.Errorf("unexpected interaction type")
+			return agent.Result{}, fmt.Errorf("unexpected interaction type")
 		}
 		resp, err := a.askFn(ctx, qr)
 		if err != nil {
-			return "", err
+			return agent.Result{}, err
 		}
 		result = it.ExecuteWithResponse(ctx, input, resp, cwd)
 	} else {
@@ -183,7 +184,7 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 
 	text := result.FormatForLLM()
 	if !result.Success {
-		return text, fmt.Errorf("%s", text)
+		return agent.TextResult(text), fmt.Errorf("%s", text)
 	}
-	return text, nil
+	return agent.TextResult(text), nil
 }

@@ -636,7 +636,7 @@ func TestRenderActiveContentShowsRunningStateForPendingWebFetch(t *testing.T) {
 	}
 	params := RenderContext{
 		Messages: []core.ChatMessage{{
-			Role:      core.RoleAssistant,
+			Role:      core.ChatAssistant,
 			ToolCalls: []core.ToolCall{call},
 		}},
 		PendingCalls: []core.ToolCall{call},
@@ -656,10 +656,10 @@ func TestPrecomputeInlinedResultsFromScopesToActiveRange(t *testing.T) {
 	// assistant(0) with a tool call, then its result(1), then a fresh
 	// assistant(2) with a call and its result(3).
 	msgs := []core.ChatMessage{
-		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "a", Name: "Bash"}}},
-		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
-		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "b", Name: "Bash"}}},
-		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "b", ToolName: "Bash"}},
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "a", Name: "Bash"}}},
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "b", Name: "Bash"}}},
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "b", ToolName: "Bash"}},
 	}
 
 	// from=0 inlines both results with their owners.

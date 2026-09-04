@@ -3,6 +3,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"encoding/json"
 	"slices"
@@ -462,7 +464,7 @@ func (m *model) seedAgentMessages(pendingSend string) []core.Message {
 	}
 	if pendingSend != "" && len(coreMessages) > 0 {
 		last := coreMessages[len(coreMessages)-1]
-		if last.Role == core.RoleUser && last.Content == pendingSend {
+		if last.Role == ai.RoleUser && last.Text() == pendingSend {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}
@@ -482,13 +484,19 @@ func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Messa
 	}
 	stripped := make([]core.Message, len(msgs))
 	for i, msg := range msgs {
-		msg.Images = nil
+		content := make(ai.Content, 0, len(msg.Content))
+		for _, block := range msg.Content {
+			if block.Type != ai.BlockImage {
+				content = append(content, block)
+			}
+		}
+		msg.Content = content
 		stripped[i] = msg
 	}
 	return stripped
 }
 
-func (m *model) sendToAgent(content string, images []core.Image) tea.Cmd {
+func (m *model) sendToAgent(content string, images []core.Attachment) tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}

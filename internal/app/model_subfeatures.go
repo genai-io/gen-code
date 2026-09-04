@@ -48,7 +48,7 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 // plus the mission, asking for the single next instruction to give the agent.
 func (m *model) missionSuggestionRequest(mission string) input.PromptSuggestionRequest {
 	msgs := input.RecentSuggestionMessages(&m.conv.ConversationModel)
-	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: suggestTask + "\n\nMission:\n" + mission})
+	msgs = append(msgs, core.UserMessage(suggestTask+"\n\nMission:\n"+mission, nil))
 	return input.PromptSuggestionRequest{
 		Client:       m.buildLLMClient(),
 		Messages:     msgs,
@@ -129,7 +129,7 @@ func (m *model) triggerDeps() trigger.Deps {
 		InjectHook:   m.injectAsyncHookContinuation,
 		AppendNotice: func(text string) {
 			if text != "" {
-				m.conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: text})
+				m.conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: text})
 			}
 		},
 	}

@@ -73,9 +73,7 @@ func FakeDeltas(r llm.CompletionResponse) []ai.Delta {
 		out = append(out, ai.Delta{Block: ai.TextBlock(r.Content)}, ai.Delta{EndBlock: true})
 	}
 	for _, c := range r.ToolCalls {
-		out = append(out, ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{
-			ID: c.ID, Name: c.Name, Input: c.Input, Signature: c.ThoughtSignature,
-		})})
+		out = append(out, ai.Delta{Block: ai.ToolCallBlock(c)})
 	}
 	stop := ai.StopEndTurn
 	if len(r.ToolCalls) > 0 {
@@ -121,7 +119,9 @@ func buildAllRegisteredTools(cwd string) core.Tools {
 		if !ok {
 			continue
 		}
-		schema := core.ToolSchema{Name: name, Description: t.Description()}
+		// The tool's own name, not the registry's lookup key: List() lowercases
+		// for matching, and the schema is what the model is told to call.
+		schema := core.ToolSchema{Name: t.Name(), Description: t.Description()}
 		adapted = append(adapted, tool.AdaptTool(t, schema, func() string { return cwd }))
 	}
 	return core.NewTools(adapted...)
@@ -180,7 +180,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 	}()
 
 	select {
-	case ag.Inbox() <- core.Message{Role: core.RoleUser, Content: prompt}:
+	case ag.Inbox() <- core.Inbound{Msg: core.UserMessage(prompt, nil)}:
 	case <-ctx.Done():
 		<-done
 		return core.Result{}, ctx.Err()
@@ -195,7 +195,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 				hasResult = true
 			}
 			select {
-			case ag.Inbox() <- core.Message{Signal: core.SigStop}:
+			case ag.Inbox() <- core.Inbound{Signal: core.SigStop}:
 			case <-ctx.Done():
 			}
 		}

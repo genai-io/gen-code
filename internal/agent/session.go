@@ -62,7 +62,7 @@ func (s *Session) stopLocked() {
 		s.cancel = nil
 	}
 	select {
-	case s.agent.Inbox() <- core.Message{Signal: core.SigStop}:
+	case s.agent.Inbox() <- core.Inbound{Signal: core.SigStop}:
 	default:
 	}
 	s.agent = nil
@@ -91,14 +91,14 @@ func (s *Session) Messages() []core.Message {
 	return ag.Messages()
 }
 
-func (s *Session) Send(content string, images []core.Image) {
+func (s *Session) Send(content string, images []core.Attachment) {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()
 	if ag == nil {
 		return
 	}
-	ag.Inbox() <- core.Message{Role: core.RoleUser, Content: content, Images: images}
+	ag.Inbox() <- core.Inbound{Msg: core.UserMessage(content, images)}
 }
 
 // Compact asks the running agent to compact in place using the precomputed
@@ -114,7 +114,7 @@ func (s *Session) Compact(summary string) bool {
 	if ag == nil {
 		return false
 	}
-	ag.Inbox() <- core.Message{Signal: core.SigCompact, Content: summary}
+	ag.Inbox() <- core.Inbound{Signal: core.SigCompact, Summary: summary}
 	return true
 }
 

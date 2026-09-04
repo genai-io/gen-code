@@ -13,8 +13,10 @@ type postToolRuntime struct {
 	drainCalls int
 }
 
-func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult { return &tr }
-func (r *postToolRuntime) TakeReviewDecision(string) *core.ReviewDecision   { return nil }
+func (r *postToolRuntime) OnToolResult(tr core.ToolResult) (*core.ToolResult, any) {
+	return &tr, nil
+}
+func (r *postToolRuntime) TakeReviewDecision(string) *core.ReviewDecision { return nil }
 func (r *postToolRuntime) OnStepEnd() tea.Cmd {
 	r.drainCalls++
 	return nil

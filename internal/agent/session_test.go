@@ -34,8 +34,8 @@ func (stubProvider) Name() string                                        { retur
 func TestSessionMessagesReturnsLiveChainWithIDs(t *testing.T) {
 	sess := &Session{}
 	seed := []core.Message{
-		{ID: "u1", Role: core.RoleUser, Content: "survey internal/broker"},
-		{ID: "a1", Role: core.RoleAssistant, Content: "here is what I found"},
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/broker")},
+		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("here is what I found")},
 	}
 	if err := sess.Start(BuildParams{Provider: stubProvider{}, ModelID: "m"}, seed); err != nil {
 		t.Fatalf("Start: %v", err)

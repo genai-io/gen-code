@@ -168,7 +168,7 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 		callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
 	}
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
-	resp, err := client.Complete(ctx, core.ToAIMessages(opts.Messages, client.Model()), callOpts...)
+	resp, err := client.Complete(ctx, opts.Messages, callOpts...)
 	if err != nil {
 		return CompletionResponse{}, err
 	}

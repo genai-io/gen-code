@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // contextUsage measures the running agent wherever there is one: System() and
@@ -43,7 +44,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 		usage.SystemPrompt = kit.EstimateTokens(sys.Prompt())
 		for _, t := range tools.All() {
 			size := kit.EstimateTokens(toolSchemaWire(t.Schema()))
-			if mcp.IsMCPTool(t.Name()) {
+			if mcp.IsMCPTool(t.Schema().Name) {
 				usage.MCPTools += size
 				continue
 			}
@@ -161,14 +162,20 @@ func addContextUsage(usage *conv.ContextUsage, text string) {
 // images are not text and are not estimated.
 func messageWire(msg core.Message) string {
 	var b strings.Builder
-	b.WriteString(msg.Content)
-	b.WriteString(msg.Thinking)
-	for _, call := range msg.ToolCalls {
-		b.WriteString(call.Name)
-		b.WriteString(call.Input)
-	}
-	if msg.ToolResult != nil {
-		b.WriteString(msg.ToolResult.Content)
+	for _, block := range msg.Content {
+		switch block.Type {
+		case ai.BlockText, ai.BlockThinking:
+			b.WriteString(block.Text)
+		case ai.BlockToolCall:
+			if block.ToolCall != nil {
+				b.WriteString(block.ToolCall.Name)
+				b.WriteString(block.ToolCall.Input)
+			}
+		case ai.BlockToolResult:
+			if block.ToolResult != nil {
+				b.WriteString(block.ToolResult.Content.Text())
+			}
+		}
 	}
 	return b.String()
 }

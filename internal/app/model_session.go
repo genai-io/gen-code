@@ -91,7 +91,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 		return nil
 	}
 
-	msgs := session.MessagesFromChat(m.conv.Messages)
+	msgs := m.conv.Messages
 
 	var providerName, modelID string
 	if m.env.CurrentModel != nil {
@@ -154,7 +154,7 @@ func (m *model) loadSessionByID(id string) error {
 }
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
-	m.conv.Messages = session.MessagesToChat(sess.Messages)
+	m.conv.Messages = sess.Messages
 	m.services.Session.SetID(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 

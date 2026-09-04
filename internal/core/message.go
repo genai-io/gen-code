@@ -1,6 +1,8 @@
 package core
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -22,19 +24,53 @@ func NewMessageID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// Role identifies who produced a message in the conversation.
+// ChatRole says who put a row on the screen, which is a different question
+// from who spoke in the conversation and has a different answer set.
 //
-// A tool result is a RoleUser message carrying a non-nil ToolResult — that is
-// the wire shape every provider expects (tool_result blocks ride inside a
-// user turn), so it is also how we hold them in history. Distinguish a
-// tool-result turn from a user-typed turn by ToolResult != nil, never by Role.
-type Role string
+// The conversation has two producers, the person and the model, and that is
+// ai.Role. The interface has three: San writes rows of its own — a notice, a
+// status line, the summary shown after a compaction — that the model must
+// never see. Modelling that as a third ai.Role would put messages the model
+// cannot be shown into the type the model is sent, and leave every consumer
+// remembering that a role might not be one.
+//
+// A tool result is a ChatUser row carrying a non-nil ToolResult, which is the
+// wire shape every provider expects. Tell it from a typed turn by
+// ToolResult != nil, never by the role.
+type ChatRole string
 
 const (
-	RoleUser      Role = "user"
-	RoleAssistant Role = "assistant"
-	RoleNotice    Role = "notice"
+	ChatUser      ChatRole = "user"
+	ChatAssistant ChatRole = "assistant"
+	// ChatNotice is San talking to the person. It never reaches a model.
+	ChatNotice ChatRole = "notice"
 )
+
+// AIRole is the conversation role this row maps to. A notice has none: it is
+// not a turn, which is why ToAI drops it rather than translating it.
+func (r ChatRole) AIRole() (ai.Role, bool) {
+	switch r {
+	case ChatUser:
+		return ai.RoleUser, true
+	case ChatAssistant:
+		return ai.RoleAssistant, true
+	}
+	return "", false
+}
+
+// Inbound is what arrives on an agent's inbox: a message to add, or a signal
+// to act on. They ride one channel so that both land at a phase boundary on
+// the agent's own goroutine, in the order they were sent.
+//
+// It exists because ai.Message is the conversation and a signal is not part of
+// one. It goes away with the inbox itself, when the loop becomes pkg/agent's:
+// there a stop is Interrupt and a compaction is SetMessages, both methods.
+type Inbound struct {
+	Msg    Message
+	Signal Signal
+	// Summary carries SigCompact's precomputed replacement.
+	Summary string
+}
 
 // Signal represents control signals sent through channels.
 type Signal string
@@ -47,36 +83,11 @@ const (
 	SigCompact Signal = "compact"
 )
 
-// Message is the wire/agent-chain message: the unit the LLM provider and the
-// agent run loop exchange, append to history, and persist. It holds no
-// UI/display state — for the rendered TUI view-model, see ChatMessage.
-type Message struct {
-	ID             string  `json:"id,omitempty"`
-	Role           Role    `json:"role"`
-	Content        string  `json:"content,omitempty"`
-	DisplayContent string  `json:"display_content,omitempty"`
-	Images         []Image `json:"images,omitempty"`
-	// Reasoning is carried in one of two provider shapes; they are mutually
-	// exclusive on a given message.
-	//
-	// Thinking is the human-readable reasoning text shown in the UI. Nearly
-	// every reasoning provider populates it (Anthropic; DeepSeek/Alibaba/
-	// Moonshot/BigModel/Ollama via OpenAI-compat; OpenAI's reasoning summary).
-	//
-	// The other two carry provider-specific state for replaying reasoning on
-	// the next turn:
-	//   - ThinkingSignature: Anthropic's opaque token, paired with Thinking to
-	//     replay that one thinking block verbatim.
-	//   - Reasoning: OpenAI ChatGPT subscription (stateless store=false) —
-	//     ordered {id, encrypted_content} items echoed back before each
-	//     function_call. Here Thinking is display-only, not replayed.
-	Thinking          string          `json:"thinking,omitempty"`
-	ThinkingSignature string          `json:"thinking_signature,omitempty"`
-	Reasoning         []ReasoningItem `json:"reasoning,omitempty"`
-	ToolCalls         []ToolCall      `json:"tool_calls,omitempty"`
-	ToolResult        *ToolResult     `json:"tool_result,omitempty"`
-	Signal            Signal          `json:"-"`
-}
+// Message is the conversation, and it is the SDK's — one ordered sequence of
+// blocks, in the order the model produced them, which is the order every
+// protocol wants them replayed. San's own flat fields live on ChatMessage,
+// where the interface reads them; the conversion between the two is ToMessage.
+type Message = ai.Message
 
 // ReviewDecision is the auto-review judge's display-only outcome for one
 // gray-zone tool call: whether it was auto-approved (vs. escalated to the user)
@@ -101,19 +112,31 @@ type ChatMessage struct {
 	// across saves of the same message — empty IDs would trigger re-appends
 	// of the entire conversation on every persist.
 	ID                string
-	Role              Role
+	Role              ChatRole
 	Content           string
 	DisplayContent    string
 	Thinking          string
 	ThinkingSignature string
-	Images            []Image
+	// Reasoning is the opaque state a Responses model must have echoed back.
+	// It is unreadable and never drawn — it is here because a conversation
+	// that goes through the view and back must come out whole, and before
+	// this field it did not.
+	Reasoning         []ReasoningItem
+	Images            []Attachment
 	ToolCalls         []ToolCall
 	ToolResult        *ToolResult
 	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
 	Expanded          bool // UI: the tool-result block is expanded
 
+	// ToolDetails is the structured form of what a tool produced — the diff
+	// behind an edit, the exit code behind a command — kept so the interface
+	// can draw more than the text the model was given. The model never sees
+	// it, which is why it is here and not on ToolResult: a field the
+	// conversation carries is a field a provider is sent.
+	ToolDetails any
+
 	// Decision is the auto-review judge's decision for the tool call this message
-	// carries the result of — set only on a RoleUser/ToolResult message whose
+	// carries the result of — set only on a ai.RoleUser/ToolResult message whose
 	// call was judged, so the renderer can draw the decision inline under the
 	// tool call. Display-only: dropped by ToMessage, never persisted.
 	Decision *ReviewDecision
@@ -157,101 +180,164 @@ func (m *ChatMessage) ResetStreamCommit() {
 // consume the result without aliasing conv's copy. This is the single Chat →
 // Message field mapping — every converter (provider, transcript) routes through
 // it so a new field can never be forgotten in one path.
-func (c ChatMessage) ToMessage() Message {
-	msg := Message{
-		ID:                c.ID,
-		Role:              c.Role,
-		Content:           c.Content,
-		DisplayContent:    c.DisplayContent,
-		Images:            c.Images,
-		Thinking:          c.Thinking,
-		ThinkingSignature: c.ThinkingSignature,
-		ToolCalls:         c.ToolCalls,
+//
+// A notice is not a turn and has no conversation role, so it converts to
+// nothing and says so. Callers that were filtering notices by role now ask
+// here instead, which is the one place that knows.
+func (c ChatMessage) ToMessage() (Message, bool) {
+	role, ok := c.Role.AIRole()
+	if !ok {
+		return Message{}, false
 	}
 	if c.ToolResult != nil {
-		tr := *c.ToolResult
-		msg.ToolResult = &tr
+		msg := ToolResultMessage(*c.ToolResult)
+		msg.ID = c.ID
+		return msg, true
 	}
-	return msg
+	msg := Message{ID: c.ID, Role: role}
+	if role == ai.RoleAssistant {
+		msg.Content = c.assistantContent()
+	} else {
+		msg.Content = c.userContent()
+	}
+	return msg, true
 }
 
-// ToChat wraps a wire/agent Message as a fresh view-model with no display state
-// set (expand toggles collapsed, streaming offsets zero). The single Message →
-// Chat field mapping, mirroring ToMessage.
-func (m Message) ToChat() ChatMessage {
-	return ChatMessage{
-		ID:                m.ID,
-		Role:              m.Role,
-		Content:           m.Content,
-		DisplayContent:    m.DisplayContent,
-		Images:            m.Images,
-		Thinking:          m.Thinking,
-		ThinkingSignature: m.ThinkingSignature,
-		ToolCalls:         m.ToolCalls,
-		ToolResult:        m.ToolResult,
+// userContent keeps text and pictures in the order they were typed where the
+// row records one, which the [Image #N] tokens in DisplayContent are.
+func (c ChatMessage) userContent() ai.Content {
+	parts := InterleavedContentParts(c)
+	if parts == nil {
+		content := ai.TextContent(c.Content)
+		for _, img := range c.Images {
+			content = append(content, ai.ImageBlock(img.Image))
+		}
+		return content
 	}
+	content := make(ai.Content, 0, len(parts))
+	for _, part := range parts {
+		switch part.Type {
+		case ContentPartText:
+			if part.Text != "" {
+				content = append(content, ai.TextBlock(part.Text))
+			}
+		case ContentPartImage:
+			if part.Image != nil {
+				content = append(content, ai.ImageBlock(part.Image.Image))
+			}
+		}
+	}
+	return content
 }
 
-// Image represents an image attachment.
-type Image struct {
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-	FileName  string `json:"file_name"`
-	// Path is the absolute source path on disk, when the image came from a
-	// file. Empty for images that have no backing file (e.g. clipboard pastes).
+// assistantContent lays a model turn down in replay order: reasoning first —
+// Anthropic rejects a thinking block that does not lead, and a Responses call
+// whose reasoning item does not precede it — then the answer, then the calls.
+// Which of the reasoning the endpoint can take back is ai.Model's to decide.
+func (c ChatMessage) assistantContent() ai.Content {
+	content := make(ai.Content, 0, 2+len(c.Reasoning)+len(c.ToolCalls))
+	if c.Thinking != "" {
+		content = append(content, ai.ThinkingBlock(c.Thinking, c.ThinkingSignature))
+	}
+	for _, item := range c.Reasoning {
+		content = append(content, ai.ReasoningBlock(ai.ReasoningItem(item)))
+	}
+	if c.Content != "" {
+		content = append(content, ai.TextBlock(c.Content))
+	}
+	for _, call := range c.ToolCalls {
+		content = append(content, ai.ToolCallBlock(call))
+	}
+	return content
+}
+
+// ChatOf projects a conversation turn onto the flat fields the interface
+// reads, with no display state set. The mirror of ToMessage, and the reason
+// both live here: a block kind that gains a field has one place to gain it.
+func ChatOf(m Message) ChatMessage {
+	c := ChatMessage{ID: m.ID, Role: ChatRole(m.Role), Content: m.Text()}
+	for _, block := range m.Content {
+		switch block.Type {
+		case ai.BlockThinking:
+			c.Thinking += block.Text
+			if block.Signature != "" {
+				c.ThinkingSignature = block.Signature
+			}
+		case ai.BlockReasoning:
+			if block.Reasoning != nil {
+				c.Reasoning = append(c.Reasoning, ReasoningItem(*block.Reasoning))
+			}
+		case ai.BlockImage:
+			if block.Image != nil {
+				c.Images = append(c.Images, Attachment{Image: *block.Image})
+			}
+		case ai.BlockToolCall:
+			if block.ToolCall != nil {
+				c.ToolCalls = append(c.ToolCalls, *block.ToolCall)
+			}
+		case ai.BlockToolResult:
+			if block.ToolResult != nil {
+				tr := *block.ToolResult
+				c.ToolResult = &tr
+			}
+		}
+	}
+	return c
+}
+
+// Attachment is a picture a person attached, and where it came from.
+//
+// The picture itself is ai.Image — bytes and a media type — and that is all the
+// model is ever sent. Path is San's: the absolute source path when the file
+// came from disk, empty for a clipboard paste. It is provenance, a fact about
+// the act of attaching rather than about the image, which is why it lives out
+// here and not on the conversation.
+//
+// It buys two things. A model that cannot see pictures is handed a path to
+// open instead, and a pasted image is not written to a temp file twice.
+type Attachment struct {
+	ai.Image
 	Path string `json:"path,omitempty"`
-	Size int    `json:"size"`
 }
 
 // ToolCall represents a tool call from the model.
-type ToolCall struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Input            string `json:"input"`
-	ThoughtSignature []byte `json:"thought_signature,omitempty"` // Google Gemini: opaque signature to echo back
-}
+type ToolCall = ai.ToolCall
 
-// ReasoningItem is an opaque reasoning block emitted by a model and echoed back
-// on the next request. Used by OpenAI's stateless (store=false) ChatGPT
-// subscription backend, where a reasoning model's function_call must be preceded
-// by its reasoning item; EncryptedContent lets the model restore the reasoning
-// without server-side state.
-type ReasoningItem struct {
-	ID               string `json:"id"`
-	EncryptedContent string `json:"encrypted_content,omitempty"`
-	Summary          string `json:"summary,omitempty"`
-}
+// ReasoningItem is the SDK's: opaque provider reasoning state, replayed
+// untouched or a reasoning model starts over.
+type ReasoningItem = ai.ReasoningItem
 
-// ToolResult is the outcome of a tool execution.
-type ToolResult struct {
-	ToolCallID   string `json:"tool_call_id"`
-	ToolName     string `json:"tool_name,omitempty"`
-	Content      string `json:"content"`
-	IsError      bool   `json:"is_error,omitempty"`
-	HookResponse any    `json:"-"`
-	Details      any    `json:"-"`
-}
+// ToolResult is what a tool call came to say, as the model is told it. It is
+// ai.ToolResult: the same four things, with Content an ordered sequence rather
+// than a string, so a tool that looked at something can answer with it — a
+// screenshot, a rendered chart — on the protocols that carry one.
+type ToolResult = ai.ToolResult
 
 // --- Constructors ---
 
-// UserMessage creates a user message with optional images.
-func UserMessage(text string, images []Image) Message {
-	return Message{
-		Role:           RoleUser,
-		Content:        text,
-		DisplayContent: text,
-		Images:         images,
+// UserMessage creates a user turn: the text, then any pictures attached to it.
+func UserMessage(text string, images []Attachment) Message {
+	content := ai.TextContent(text)
+	for _, img := range images {
+		content = append(content, ai.ImageBlock(img.Image))
 	}
+	return Message{Role: ai.RoleUser, Content: content}
 }
 
-// AssistantMessage creates an assistant message.
+// AssistantMessage creates a model turn in replay order: what it thought,
+// what it said, then what it asked to run.
 func AssistantMessage(text, thinking string, calls []ToolCall) Message {
-	return Message{
-		Role:      RoleAssistant,
-		Content:   text,
-		Thinking:  thinking,
-		ToolCalls: calls,
+	content := make(ai.Content, 0, 2+len(calls))
+	if thinking != "" {
+		content = append(content, ai.ThinkingBlock(thinking, ""))
 	}
+	if text != "" {
+		content = append(content, ai.TextBlock(text))
+	}
+	for _, call := range calls {
+		content = append(content, ai.ToolCallBlock(call))
+	}
+	return Message{Role: ai.RoleAssistant, Content: content}
 }
 
 // ErrorResult creates an error ToolResult for a tool call.
@@ -259,17 +345,14 @@ func ErrorResult(tc ToolCall, content string) *ToolResult {
 	return &ToolResult{
 		ToolCallID: tc.ID,
 		ToolName:   tc.Name,
-		Content:    content,
+		Content:    ai.TextContent(content),
 		IsError:    true,
 	}
 }
 
 // ToolResultMessage creates a tool result message.
 func ToolResultMessage(result ToolResult) Message {
-	return Message{
-		Role:       RoleUser,
-		ToolResult: &result,
-	}
+	return ai.ToolResultsMessage(result)
 }
 
 // --- Utilities ---
@@ -368,15 +451,17 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 
 	for _, msg := range msgs {
 		switch msg.Role {
-		case RoleUser:
-			if msg.ToolResult != nil {
-				content := msg.ToolResult.Content
-				if len(content) > 500 {
-					content = content[:500] + "...[truncated]"
+		case ai.RoleUser:
+			if results := msg.ToolResults(); len(results) > 0 {
+				for _, tr := range results {
+					content := tr.Content.Text()
+					if len(content) > 500 {
+						content = content[:500] + "...[truncated]"
+					}
+					fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", tr.ToolName, content)
 				}
-				fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", msg.ToolResult.ToolName, content)
 			} else {
-				content := msg.Content
+				content := msg.Text()
 				if stripReminders {
 					content = stripSystemReminders(content)
 					if content == "" {
@@ -386,14 +471,14 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 				fmt.Fprintf(w, "User: %s\n\n", content)
 			}
 
-		case RoleAssistant:
-			if msg.Content != "" {
-				fmt.Fprintf(w, "Assistant: %s\n\n", msg.Content)
+		case ai.RoleAssistant:
+			if text := msg.Text(); text != "" {
+				fmt.Fprintf(w, "Assistant: %s\n\n", text)
 			}
-			if len(msg.ToolCalls) > 0 {
-				counts := make(map[string]int, len(msg.ToolCalls))
-				order := make([]string, 0, len(msg.ToolCalls))
-				for _, tc := range msg.ToolCalls {
+			if calls := msg.ToolCalls(); len(calls) > 0 {
+				counts := make(map[string]int, len(calls))
+				order := make([]string, 0, len(calls))
+				for _, tc := range calls {
 					if counts[tc.Name] == 0 {
 						order = append(order, tc.Name)
 					}
@@ -417,7 +502,7 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.
 func LastAssistantChatContent(msgs []ChatMessage) string {
 	for _, msg := range slices.Backward(msgs) {
-		if msg.Role == RoleAssistant && msg.Content != "" {
+		if msg.Role == ChatAssistant && msg.Content != "" {
 			return msg.Content
 		}
 	}
@@ -455,7 +540,7 @@ const (
 type ContentPart struct {
 	Type  ContentPartType
 	Text  string
-	Image *Image
+	Image *Attachment
 }
 
 // InlineImageTokenRe matches the "[Image #N]" placeholder tokens that stand in
@@ -466,7 +551,7 @@ var InlineImageTokenRe = regexp.MustCompile(`\[Image #(\d+)\]`)
 
 // InterleavedContentParts parses [Image #N] tokens from display content and returns
 // interleaved text and image parts.
-func InterleavedContentParts(msg Message) []ContentPart {
+func InterleavedContentParts(msg ChatMessage) []ContentPart {
 	if len(msg.Images) == 0 || msg.DisplayContent == "" || !InlineImageTokenRe.MatchString(msg.DisplayContent) {
 		return nil
 	}

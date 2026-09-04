@@ -101,7 +101,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 	}
 	for i := from; i < len(messages); i++ {
 		msg := messages[i]
-		if msg.Role != core.RoleAssistant || len(msg.ToolCalls) == 0 {
+		if msg.Role != core.ChatAssistant || len(msg.ToolCalls) == 0 {
 			continue
 		}
 		owned := make(map[string]struct{}, len(msg.ToolCalls))
@@ -110,7 +110,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 		}
 		for j := i + 1; j < len(messages); j++ {
 			next := messages[j]
-			if next.Role == core.RoleNotice {
+			if next.Role == core.ChatNotice {
 				continue
 			}
 			if next.ToolResult == nil {
@@ -128,11 +128,11 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 			}
 			results[callID] = ToolResultData{
 				ToolName: next.ToolResult.ToolName,
-				Content:  next.ToolResult.Content,
+				Content:  next.ToolResult.Content.Text(),
 				IsError:  next.ToolResult.IsError,
 				Expanded: next.Expanded,
 				Decision: next.Decision,
-				Details:  next.ToolResult.Details,
+				Details:  next.ToolDetails,
 			}
 		}
 	}
@@ -176,24 +176,24 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	// <note>" annotation hugging its "❭" line from below (no blank between) so
 	// the trailer corner hangs it under the instruction; the normal blank line
 	// above still separates it from the turn before.
-	autopilotDriven := msg.Role == core.RoleUser && msg.ToolResult == nil && msg.AutopilotNote != ""
+	autopilotDriven := msg.Role == core.ChatUser && msg.ToolResult == nil && msg.AutopilotNote != ""
 
 	if msg.ToolResult == nil {
 		sb.WriteString("\n")
 	}
 
 	switch msg.Role {
-	case core.RoleUser:
+	case core.ChatUser:
 		switch {
 		case msg.ToolResult != nil:
 			sb.WriteString(RenderToolResultInline(ToolResultData{
 				ToolName:    msg.ToolResult.ToolName,
-				Content:     msg.ToolResult.Content,
+				Content:     msg.ToolResult.Content.Text(),
 				IsError:     msg.ToolResult.IsError,
 				Expanded:    msg.Expanded,
 				Interactive: p.Interactive,
 				Width:       p.Width,
-				Details:     msg.ToolResult.Details,
+				Details:     msg.ToolDetails,
 			}, p.MDRenderer))
 		case core.IsCompactSummary(msg.Content):
 			// The post-compaction summary is injected as a user message (the
@@ -213,13 +213,13 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 				sb.WriteString(RenderAutopilotMark(msg.AutopilotNote))
 			}
 		}
-	case core.RoleNotice:
+	case core.ChatNotice:
 		if msg.AgentNotice {
 			sb.WriteString(RenderAgentNotice(msg.Content))
 		} else {
 			sb.WriteString(RenderSystemMessage(msg.Content))
 		}
-	case core.RoleAssistant:
+	case core.ChatAssistant:
 		sb.WriteString(renderAssistantWithTools(p, msg, idx, isStreaming))
 	}
 
@@ -291,7 +291,7 @@ func RenderMessageRange(p RenderContext, startIdx, endIdx int, includeSpinner bo
 	var sb strings.Builder
 
 	lastIdx := endIdx - 1
-	isLastStreaming := p.StreamActive && lastIdx >= 0 && p.Messages[lastIdx].Role == core.RoleAssistant
+	isLastStreaming := p.StreamActive && lastIdx >= 0 && p.Messages[lastIdx].Role == core.ChatAssistant
 
 	for i := startIdx; i < endIdx; i++ {
 		// Skip a ToolResult that will be drawn inline with its owning

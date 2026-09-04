@@ -49,7 +49,7 @@ func (m *model) cancelPendingToolCalls() {
 	toolCalls := m.conv.Tool.DrainPendingCalls()
 	if toolCalls == nil && len(m.conv.Messages) > 0 {
 		lastMsg := m.conv.Messages[len(m.conv.Messages)-1]
-		if lastMsg.Role == core.RoleAssistant {
+		if lastMsg.Role == core.ChatAssistant {
 			toolCalls = lastMsg.ToolCalls
 		}
 	}
@@ -61,7 +61,7 @@ func (m *model) cancelPendingToolCalls() {
 func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 	imgData, err := image.ReadClipboard()
 	if err != nil {
-		m.conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: "Image paste error: " + err.Error()})
+		m.conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Image paste error: " + err.Error()})
 		return tea.Batch(m.CommitMessages()...), true
 	}
 	if imgData == nil {

@@ -12,9 +12,9 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: core.RoleUser, Content: "hello"},
-		{Role: core.RoleAssistant, Content: "world"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "hello"},
+		{Role: core.ChatAssistant, Content: "world"},
 	}
 
 	// Save with a custom title
@@ -49,8 +49,8 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: core.RoleUser, Content: "hello"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "hello"},
 	}
 
 	// Save with initial title
@@ -88,8 +88,8 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.Message{
-		{Role: core.RoleUser, Content: "first message"},
+	msgs := []core.ChatMessage{
+		{Role: core.ChatUser, Content: "first message"},
 	}
 
 	sess := &Snapshot{

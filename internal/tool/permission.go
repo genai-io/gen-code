@@ -6,6 +6,8 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // WithPermission wraps core.Tools with permission checking.
@@ -44,13 +46,12 @@ type permissionTool struct {
 	check perm.PermissionFunc
 }
 
-func (pt *permissionTool) Name() string            { return pt.inner.Name() }
-func (pt *permissionTool) Description() string     { return pt.inner.Description() }
 func (pt *permissionTool) Schema() core.ToolSchema { return pt.inner.Schema() }
 
-func (pt *permissionTool) Execute(ctx context.Context, input map[string]any) (string, error) {
-	if allow, reason := pt.check(ctx, pt.inner.Name(), input); !allow {
-		return "", fmt.Errorf("blocked: %s", reason)
+func (pt *permissionTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	input, _ := core.ParseToolInput(call.Input)
+	if allow, reason := pt.check(ctx, call.Name, input); !allow {
+		return agent.Result{}, fmt.Errorf("blocked: %s", reason)
 	}
-	return pt.inner.Execute(ctx, input)
+	return pt.inner.Run(ctx, call)
 }

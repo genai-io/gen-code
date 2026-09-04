@@ -1,6 +1,8 @@
 package input
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
@@ -65,7 +67,7 @@ func TestQueueUpdateAtRemovesEmpty(t *testing.T) {
 
 func TestQueueItems(t *testing.T) {
 	var q Queue
-	q.Enqueue("a", []core.Image{{FileName: "test.png"}})
+	q.Enqueue("a", []core.Attachment{{Image: ai.Image{FileName: "test.png"}}})
 	q.Enqueue("b", nil)
 	items := q.Items()
 	if len(items) != 2 {

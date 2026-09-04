@@ -66,7 +66,7 @@ func taskNotice() mainNotice {
 func assertNoticeShown(t *testing.T, m *model) {
 	t.Helper()
 	for _, msg := range m.conv.Messages {
-		if msg.Role == core.RoleNotice && strings.Contains(msg.Content, "research completed") {
+		if msg.Role == core.ChatNotice && strings.Contains(msg.Content, "research completed") {
 			return
 		}
 	}
@@ -80,7 +80,7 @@ func assertAgentRead(t *testing.T, provider *restartStubProvider) {
 	select {
 	case chain := <-provider.requests:
 		for _, msg := range chain {
-			if strings.Contains(msg.Content, "task-notification") {
+			if strings.Contains(msg.Text(), "task-notification") {
 				return
 			}
 		}
@@ -96,7 +96,7 @@ func assertAgentRead(t *testing.T, provider *restartStubProvider) {
 func TestNoticeDuringToolExecutionIsNotParked(t *testing.T) {
 	m, _ := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 
 	m.onMainNotice(taskNotice()) // cmds unused: the routing decision is synchronous
 
@@ -124,7 +124,7 @@ func TestDeliveryToRunningTurnReachesTheNextInference(t *testing.T) {
 func TestNoticeParkedWhileStreamingIsReleasedAtTheNextStep(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
-	m.conv.Append(core.ChatMessage{Role: core.RoleAssistant, Content: "thinking out loud"})
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "thinking out loud"})
 
 	m.onMainNotice(taskNotice()) // cmds unused: the routing decision is synchronous
 	if len(m.pendingNotices) != 1 {
@@ -132,7 +132,7 @@ func TestNoticeParkedWhileStreamingIsReleasedAtTheNextStep(t *testing.T) {
 	}
 
 	// The tool batch completes: its result lands, leaving an appendable tail.
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 	runCmd(m.OnStepEnd())
 
 	if len(m.pendingNotices) != 0 {

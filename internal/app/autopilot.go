@@ -243,7 +243,7 @@ func (m *model) missionRefine(ctx context.Context, draft string) (string, error)
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        modelID,
 		SystemPrompt: missionRefinePrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: "Mission draft payload (JSON; rewrite only the draft value):\n" + string(payload)}},
+		Messages:     []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
 		MaxTokens:    600,
 	})
 	if err != nil {
@@ -422,13 +422,13 @@ func autopilotRecentTranscript(messages []core.ChatMessage, budget int) string {
 		case core.IsCompactSummary(msg.Content):
 			label, text = "session summary", strings.TrimPrefix(msg.Content, core.CompactSummaryPrefix)
 		case msg.ToolResult != nil:
-			label, text, limit = "tool "+msg.ToolResult.ToolName+" result", msg.ToolResult.Content, toolCap
+			label, text, limit = "tool "+msg.ToolResult.ToolName+" result", msg.ToolResult.Content.Text(), toolCap
 			if msg.ToolResult.IsError {
 				label += " (error)"
 			}
-		case msg.Role == core.RoleUser:
+		case msg.Role == core.ChatUser:
 			label, text = "you", msg.Content
-		case msg.Role == core.RoleAssistant:
+		case msg.Role == core.ChatAssistant:
 			label, text = "agent", msg.Content
 		default:
 			continue
@@ -779,7 +779,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	resp, err := llm.Complete(ctx, call.provider, llm.CompletionOptions{
 		Model:        call.model,
 		SystemPrompt: call.system,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: call.user}},
+		Messages:     []core.Message{core.UserMessage(call.user, nil)},
 		MaxTokens:    call.maxTokens,
 	})
 	if err != nil {

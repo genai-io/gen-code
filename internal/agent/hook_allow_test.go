@@ -1,6 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
+
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"testing"
 
@@ -17,12 +22,10 @@ import (
 
 type recordingTool struct{ ran bool }
 
-func (r *recordingTool) Name() string            { return "Bash" }
-func (r *recordingTool) Description() string     { return "" }
 func (r *recordingTool) Schema() core.ToolSchema { return core.ToolSchema{Name: "Bash"} }
-func (r *recordingTool) Execute(context.Context, map[string]any) (string, error) {
+func (r *recordingTool) Run(context.Context, ai.ToolCall) (agent.Result, error) {
 	r.ran = true
-	return "executed", nil
+	return agent.TextResult("executed"), nil
 }
 
 // allowingHook answers every PreToolUse with "allow", the way a permissive user
@@ -60,7 +63,7 @@ func runBash(t *testing.T, tools core.Tools, gate *PermissionGate, command strin
 	t.Helper()
 	done := make(chan error, 1)
 	go func() {
-		_, execErr := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": command})
+		_, execErr := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": command})})
 		done <- execErr
 	}()
 
@@ -121,4 +124,13 @@ func TestHookAllowWaivesRoutinePrompt(t *testing.T) {
 	if !inner.ran {
 		t.Error("the waived call should have run")
 	}
+}
+
+// mustJSON renders a tool's arguments the way a model sends them: raw JSON.
+func mustJSON(v map[string]any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // TokenLimitDeps holds the state needed by token limit commands.
@@ -181,7 +182,7 @@ func getTokenLimitAgentTools() []llm.ToolSchema {
 		{
 			Name:        "WebSearch",
 			Description: "Search the web for information about model token limits",
-			Parameters: map[string]any{
+			Definition: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string", "description": "The search query"},
@@ -192,7 +193,7 @@ func getTokenLimitAgentTools() []llm.ToolSchema {
 		{
 			Name:        "WebFetch",
 			Description: "Fetch content from a URL to read documentation",
-			Parameters: map[string]any{
+			Definition: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"url": map[string]any{"type": "string", "description": "The URL to fetch"},
@@ -216,7 +217,7 @@ func appendToolCallMessages(ctx context.Context, messages []core.Message, toolCa
 		messages = append(messages, core.ToolResultMessage(core.ToolResult{
 			ToolCallID: tc.ID,
 			ToolName:   tc.Name,
-			Content:    result.Output,
+			Content:    ai.TextContent(result.Output),
 			IsError:    !result.Success,
 		}))
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
@@ -45,23 +46,29 @@ func (m *model) persistOverflow(result *core.ToolResult) {
 	const overflowThreshold = 100_000
 	const previewSize = 10_000
 
-	if len(result.Content) <= overflowThreshold {
+	// Paging applies to what a tool wrote, which is text. A picture a tool
+	// returned is bounded by what the protocol accepts and is not what makes a
+	// result outgrow the window.
+	full := result.Content.Text()
+	if len(full) <= overflowThreshold {
 		return
 	}
-	cutoff := min(previewSize, len(result.Content))
-	for cutoff > 0 && !utf8.RuneStart(result.Content[cutoff]) {
+	cutoff := min(previewSize, len(full))
+	for cutoff > 0 && !utf8.RuneStart(full[cutoff]) {
 		cutoff--
 	}
-	preview := result.Content[:cutoff]
+	preview := full[:cutoff]
 	persisted := false
 	if err := m.services.Session.EnsureStore(m.env.CWD); err == nil && m.services.Session.ID() != "" {
-		if err := m.services.Session.GetStore().PersistToolResult(m.services.Session.ID(), result.ToolCallID, result.Content); err == nil {
+		if err := m.services.Session.GetStore().PersistToolResult(m.services.Session.ID(), result.ToolCallID, full); err == nil {
 			persisted = true
 		}
 	}
 	if persisted {
-		result.Content = fmt.Sprintf("%s\n\n[Full output persisted to blobs/tool-result/%s/%s]", preview, m.services.Session.ID(), result.ToolCallID)
+		result.Content = ai.TextContent(fmt.Sprintf("%s\n\n[Full output persisted to blobs/tool-result/%s/%s]",
+			preview, m.services.Session.ID(), result.ToolCallID))
 	} else {
-		result.Content = fmt.Sprintf("%s\n\n[Output truncated from %d bytes — full content not persisted]", preview, len(result.Content))
+		result.Content = ai.TextContent(fmt.Sprintf("%s\n\n[Output truncated from %d bytes — full content not persisted]",
+			preview, len(full)))
 	}
 }

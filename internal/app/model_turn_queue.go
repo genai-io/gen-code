@@ -25,7 +25,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if msg.Blocked {
 		log.QueueLog("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason
-		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: blockMsg})
+		m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg})
 		return m.sendToAgent(blockMsg, nil)
 	}
 	log.QueueLog("handleStopHookResult: hooks done, persisting")
@@ -79,7 +79,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	// Images the user attached travel on the item — they were moved off the
 	// textarea when it was queued. Anything pending in the textarea now belongs
 	// to the next message, so it must not be picked up here.
-	images := make([]core.Image, 0, len(item.Images)+len(fileImages))
+	images := make([]core.Attachment, 0, len(item.Images)+len(fileImages))
 	images = append(images, item.Images...)
 	images = append(images, fileImages...)
 	// Split display from content the way buildUserMessage does: the queued text
@@ -91,7 +91,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	// the model can decide how to use it (e.g. via an MCP tool).
 	content, providerImages := m.adaptTurnForProvider(content, images)
 	m.conv.Append(core.ChatMessage{
-		Role:           core.RoleUser,
+		Role:           core.ChatUser,
 		Content:        content,
 		DisplayContent: displayContent,
 		Images:         images,
@@ -246,7 +246,7 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // handles provider/agent state.
 func (m *model) injectCronPrompt(prompt string) tea.Cmd {
 	m.conv.AddNotice("Scheduled task fired")
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: prompt})
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt})
 	return m.SubmitToAgent(prompt, nil)
 }
 
@@ -261,7 +261,7 @@ func (m *model) injectAsyncHookContinuation(item trigger.AsyncHookRewake) tea.Cm
 		return tea.Batch(m.CommitMessages()...)
 	}
 	for _, ctx := range item.Context {
-		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: ctx})
+		m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: ctx})
 	}
 	return m.SubmitToAgent(item.ContinuationPrompt, nil)
 }

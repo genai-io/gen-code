@@ -50,21 +50,21 @@ func (o CompletionOptions) LogFormatMessages(sb *strings.Builder) {
 	for i, msg := range o.Messages {
 		switch msg.Role {
 		case "user":
-			if msg.Content != "" {
-				fmt.Fprintf(sb, "      [%d] User: %s\n", i, log.EscapeForLog(msg.Content))
+			if text := msg.Text(); text != "" {
+				fmt.Fprintf(sb, "      [%d] User: %s\n", i, log.EscapeForLog(text))
 			}
-			if msg.ToolResult != nil {
+			for _, tr := range msg.ToolResults() {
 				label := "ToolResult"
-				if msg.ToolResult.IsError {
+				if tr.IsError {
 					label = "ToolResult ERROR"
 				}
-				fmt.Fprintf(sb, "      [%d] %s[%s]: %s\n", i, label, msg.ToolResult.ToolCallID, log.EscapeForLog(msg.ToolResult.Content))
+				fmt.Fprintf(sb, "      [%d] %s[%s]: %s\n", i, label, tr.ToolCallID, log.EscapeForLog(tr.Content.Text()))
 			}
 		case "assistant":
-			if msg.Content != "" {
-				fmt.Fprintf(sb, "      [%d] Assistant: %s\n", i, log.EscapeForLog(msg.Content))
+			if text := msg.Text(); text != "" {
+				fmt.Fprintf(sb, "      [%d] Assistant: %s\n", i, log.EscapeForLog(text))
 			}
-			for _, tc := range msg.ToolCalls {
+			for _, tc := range msg.ToolCalls() {
 				fmt.Fprintf(sb, "      [%d] ToolCall: %s(%s)\n", i, tc.Name, log.EscapeForLog(tc.Input))
 			}
 		}

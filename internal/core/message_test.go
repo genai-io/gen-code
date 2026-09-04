@@ -3,6 +3,8 @@ package core
 import (
 	"strings"
 	"testing"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // The counting path must match the materialized conversation text.
@@ -15,8 +17,8 @@ func TestConversationTextLenMatchesBuild(t *testing.T) {
 			{ID: "2", Name: "Bash"},
 			{ID: "3", Name: "Read"},
 		}),
-		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "1", ToolName: "Bash", Content: "ok"}},
-		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "2", ToolName: "Bash", Content: long}},
+		ToolResultMessage(ToolResult{ToolCallID: "1", ToolName: "Bash", Content: ai.TextContent("ok")}),
+		ToolResultMessage(ToolResult{ToolCallID: "2", ToolName: "Bash", Content: ai.TextContent(long)}),
 		AssistantMessage("final answer", "", nil),
 	}
 

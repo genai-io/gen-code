@@ -134,10 +134,10 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	for _, t := range p.MCPTools {
 		// Built-in tools are filtered by tool.Set{Disabled}, but MCP tools are
 		// registered here directly — honor the /tool panel's disable for them too.
-		if p.DisabledTools[t.Name()] {
+		if p.DisabledTools[t.Schema().Name] {
 			continue
 		}
-		tools.Add(t, "mcp:"+t.Name())
+		tools.Add(t, "mcp:"+t.Schema().Name)
 	}
 
 	compactClient := client

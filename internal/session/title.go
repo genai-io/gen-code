@@ -12,7 +12,7 @@ const (
 	MinSubstantiveLength = 6
 )
 
-func GenerateTitle(msgs []core.Message) string {
+func GenerateTitle(msgs []core.ChatMessage) string {
 	var fallback string
 	for _, msg := range msgs {
 		text, ok := extractUserText(msg)

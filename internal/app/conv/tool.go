@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	coretool "github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // --- Tool state ---
@@ -203,15 +204,19 @@ func (e DefaultMCPExecutor) ExecuteMCP(ctx context.Context, name string, params 
 }
 
 type ExecResultMsg struct {
-	Index    int
-	Result   core.ToolResult
+	Index  int
+	Result core.ToolResult
+	// Details is the structured form of the answer, for the interface only —
+	// it rides beside Result rather than inside it, because Result is what the
+	// model is told.
+	Details  any
 	ToolName string
 }
 
 func newExecResult(tc core.ToolCall, index int, content string, isError bool) ExecResultMsg {
 	return ExecResultMsg{
 		Index:    index,
-		Result:   core.ToolResult{ToolCallID: tc.ID, Content: content, IsError: isError},
+		Result:   core.ToolResult{ToolCallID: tc.ID, Content: ai.TextContent(content), IsError: isError},
 		ToolName: tc.Name,
 	}
 }
@@ -219,7 +224,8 @@ func newExecResult(tc core.ToolCall, index int, content string, isError bool) Ex
 func newExecResultFromOutput(tc core.ToolCall, index int, output toolresult.ToolResult) ExecResultMsg {
 	return ExecResultMsg{
 		Index:    index,
-		Result:   core.ToolResult{ToolCallID: tc.ID, Content: output.FormatForLLM(), IsError: !output.Success, HookResponse: output.HookResponse, Details: output.Details},
+		Result:   core.ToolResult{ToolCallID: tc.ID, Content: ai.TextContent(output.FormatForLLM()), IsError: !output.Success},
+		Details:  output.Details,
 		ToolName: tc.Name,
 	}
 }

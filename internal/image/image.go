@@ -2,6 +2,8 @@
 package image
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -27,57 +29,58 @@ var supportedTypes = map[string]string{
 }
 
 // Load reads, validates, and base64-encodes an image from the given path.
-func Load(path string) (core.Image, error) {
+func Load(path string) (core.Attachment, error) {
 	// Resolve path
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return core.Image{}, fmt.Errorf("invalid path: %w", err)
+		return core.Attachment{}, fmt.Errorf("invalid path: %w", err)
 	}
 
 	// Check if file exists
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return core.Image{}, fmt.Errorf("file not found: %s", path)
+			return core.Attachment{}, fmt.Errorf("file not found: %s", path)
 		}
-		return core.Image{}, fmt.Errorf("cannot access file: %w", err)
+		return core.Attachment{}, fmt.Errorf("cannot access file: %w", err)
 	}
 
 	// Check file size
 	if info.Size() > maxImageSize {
-		return core.Image{}, fmt.Errorf("image too large: %d bytes (max %d)", info.Size(), maxImageSize)
+		return core.Attachment{}, fmt.Errorf("image too large: %d bytes (max %d)", info.Size(), maxImageSize)
 	}
 
 	// Check extension
 	ext := strings.ToLower(filepath.Ext(absPath))
 	mediaType, ok := supportedTypes[ext]
 	if !ok {
-		return core.Image{}, fmt.Errorf("unsupported image format: %s", ext)
+		return core.Attachment{}, fmt.Errorf("unsupported image format: %s", ext)
 	}
 
 	// Read file
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return core.Image{}, fmt.Errorf("failed to read file: %w", err)
+		return core.Attachment{}, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	// Detect actual content type to verify
 	detectedType := http.DetectContentType(data)
 	if !strings.HasPrefix(detectedType, "image/") {
-		return core.Image{}, fmt.Errorf("file is not a valid image")
+		return core.Attachment{}, fmt.Errorf("file is not a valid image")
 	}
 
 	return newImage(mediaType, filepath.Base(absPath), absPath, data), nil
 }
 
-// newImage builds a core.Image from raw bytes, base64-encoding the data.
-func newImage(mediaType, fileName, path string, data []byte) core.Image {
-	return core.Image{
-		MediaType: mediaType,
-		Data:      base64.StdEncoding.EncodeToString(data),
-		FileName:  fileName,
-		Path:      path,
-		Size:      len(data),
+// newImage builds a core.Attachment from raw bytes, base64-encoding the data.
+func newImage(mediaType, fileName, path string, data []byte) core.Attachment {
+	return core.Attachment{
+		Image: ai.Image{
+			MediaType: mediaType,
+			Data:      base64.StdEncoding.EncodeToString(data),
+			FileName:  fileName,
+		},
+		Path: path,
 	}
 }
 
@@ -87,7 +90,7 @@ func newImage(mediaType, fileName, path string, data []byte) core.Image {
 // path and temp is false. A clipboard paste has no backing file, so its bytes
 // go to a temp file and temp is true: that one belongs to the caller, who must
 // os.Remove it once the model is done with it.
-func EnsureFilePath(img core.Image) (path string, temp bool, err error) {
+func EnsureFilePath(img core.Attachment) (path string, temp bool, err error) {
 	if img.Path != "" {
 		return img.Path, false, nil
 	}

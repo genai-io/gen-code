@@ -1,6 +1,8 @@
 package session
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"bufio"
 	"context"
 	"encoding/json"
@@ -228,8 +230,8 @@ func TestRecorderWritesCompactionBoundary(t *testing.T) {
 	})
 
 	// A pre-compaction message, then the summary append + compaction boundary.
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "m1", Role: core.RoleUser, Content: "hi"}})
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "sum-1", Role: core.RoleUser, Content: "Previous context:\nsummary"}})
+	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
+	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
 	rec.OnAgentEvent(core.Event{Type: core.OnCompact, Data: core.CompactInfo{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"}})
 
 	records := readAllRecords(t, dir, "sess-c")

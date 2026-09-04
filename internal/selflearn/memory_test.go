@@ -1,6 +1,10 @@
 package selflearn
 
 import (
+	"encoding/json"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"context"
 	"os"
 	"path/filepath"
@@ -183,21 +187,21 @@ func TestMemoryWriteToolDispatch(t *testing.T) {
 	store := newTestStore(t)
 	tool := newMemoryWriteTool(store)
 
-	out, err := tool.Execute(context.Background(), map[string]any{
+	out, err := tool.Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{
 		"action":  "add",
 		"content": "tool-added fact",
-	})
+	})})
 	if err != nil {
 		t.Fatalf("execute add: %v", err)
 	}
-	if !strings.Contains(out, "ok") {
-		t.Fatalf("add result = %q", out)
+	if !strings.Contains(out.Content.Text(), "ok") {
+		t.Fatalf("add result = %q", out.Content.Text())
 	}
 	if c := indexContent(t, store); !strings.Contains(c, "tool-added fact") {
 		t.Fatalf("tool add not persisted:\n%s", c)
 	}
 
-	if _, err := tool.Execute(context.Background(), map[string]any{"action": "bogus"}); err == nil {
+	if _, err := tool.Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"action": "bogus"})}); err == nil {
 		t.Fatal("unknown action should error")
 	}
 }
@@ -221,4 +225,13 @@ func mustAdd(t *testing.T, store *MemoryStore, content string) {
 	if _, err := store.Add("", content, ""); err != nil {
 		t.Fatalf("add %q: %v", content, err)
 	}
+}
+
+// mustJSON renders a tool's arguments the way a model sends them: raw JSON.
+func mustJSON(v map[string]any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

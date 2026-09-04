@@ -237,37 +237,3 @@ func (l *Client) completionOpts(msgs []core.Message, tools []ToolSchema, sysProm
 		ThinkingEffort: l.ThinkingEffort(),
 	}
 }
-
-// toProviderMessages converts core messages for provider consumption, keeping
-// only the fields a provider needs. A tool result is a RoleUser message with a
-// non-nil ToolResult; user-typed text is a RoleUser message without one.
-func toProviderMessages(msgs []core.Message) []core.Message {
-	out := make([]core.Message, 0, len(msgs))
-	for _, m := range msgs {
-		switch m.Role {
-		case core.RoleUser:
-			if m.ToolResult != nil {
-				out = append(out, core.Message{
-					Role:       core.RoleUser,
-					ToolResult: m.ToolResult,
-				})
-			} else {
-				out = append(out, core.Message{
-					Role:    core.RoleUser,
-					Content: m.Content,
-					Images:  m.Images,
-				})
-			}
-		case core.RoleAssistant:
-			out = append(out, core.Message{
-				Role:              core.RoleAssistant,
-				Content:           m.Content,
-				Thinking:          m.Thinking,
-				ThinkingSignature: m.ThinkingSignature,
-				Reasoning:         m.Reasoning,
-				ToolCalls:         m.ToolCalls,
-			})
-		}
-	}
-	return out
-}
