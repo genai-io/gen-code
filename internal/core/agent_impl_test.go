@@ -45,9 +45,9 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 		UserMessage("tell me more", nil),
 	})
 
-	shorter, err := a.summarise(context.Background(), a.Messages(), "auto")
+	shorter, err := a.shorten(context.Background(), a.Messages(), "auto")
 	if err != nil || shorter == nil {
-		t.Fatalf("summarise() gave nothing: %v", err)
+		t.Fatalf("shorten() gave nothing: %v", err)
 	}
 	a.SetMessages(shorter)
 
