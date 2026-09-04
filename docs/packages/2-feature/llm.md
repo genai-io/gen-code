@@ -77,7 +77,7 @@ Worth knowing beyond the names:
   cached listings by, and a `Provider` reports as its own `Name()`. One
   function, so the three cannot drift.
 - **Classification lives in `core`, not here.** The failure the loop has to
-  read is the one leaving its own stream, so `core/classify.go` tags it there —
+  read is the one leaving its own stream, so `ai.StreamError` classifies it there —
   a package boundary in between is a place for it to arrive untagged. The SDK
   still makes the decision, from the provider's typed error; San keeps no
   second copy of its tables.

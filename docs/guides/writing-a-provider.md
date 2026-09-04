@@ -44,8 +44,8 @@ the Vertex deployment, the Coding Plan path and the interactive sign-ins live.
 Three things a provider used to be responsible for, which now belong elsewhere:
 
 - **Error classification.** The SDK decides a failure's kind from the vendor's
-  own typed error; `internal/core/classify.go` translates that kind onto
-  `core.RetryableError` and `core.ContextExceededError` as the failure leaves
+  own typed error; `ai.IsRetryable` and `ai.IsContextExceeded` read that kind
+  directly, so nothing in San restates the table as the failure leaves
   the stream. Do not add message matching — the SDK's table already excludes
   the throttles that are worded like a context overflow.
 - **History repair.** `ai.Client` runs `RepairHistory` on every request, so an

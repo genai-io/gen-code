@@ -104,9 +104,9 @@ func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Durat
 }
 
 // stalled is what a driver reports when a stream goes quiet: the loop replays
-// what ai.IsRetryable admits, and a network failure is one. San's own
-// RetryableError is still the llm layer's — its one-shot Complete has a retry
-// of its own — but the agent loop reads the SDK's classification now.
+// what ai.IsRetryable admits, and a network failure is one. The backoff below
+// it is San's only because two retry loops that are not the agent's still
+// need one.
 var stalled = &ai.Error{Kind: ai.KindNetwork, Message: "stream stalled"}
 
 func TestThinkActRetriesTransientStreamError(t *testing.T) {

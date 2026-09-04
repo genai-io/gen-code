@@ -98,9 +98,10 @@ CallOptions func() []ai.Option
 InputLimit func() int
 ```
 
-`aiconv.go` translates between San's parallel-field messages and the SDK's
-ordered blocks; `classify.go` tags a provider failure as retryable or
-context-exceeded as it leaves the stream.
+There is nothing left to translate: a message, a tool, a tool result and a
+response are all the SDK's types, and `ai.IsRetryable` / `ai.IsContextExceeded`
+answer about a failure directly. What core still converts is one thing —
+`ToAITools`, in `tool.go`, because San holds a schema without a Run.
 
 ### Known Violations
 
@@ -133,9 +134,14 @@ in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
 `System`), `internal/tool/` (for `Tool`/`Tools`), and
 `internal/llm` (for `LLM`).
 
-The single implementation file here is `agent_impl.go` (the `*agent`
-struct backing `NewAgent`) — kept inside `core` because the run loop is
-inseparable from the contract.
+Two implementation files back `NewAgent`, kept inside `core` because the
+mailbox is inseparable from the contract:
+
+- `run.go` — the mailbox itself: an inbox, an outbox, and the loop that waits
+  on one and reports to the other. San's own shape, which is why it stays.
+- `exchange.go` — one exchange: driving `sdkagent.Agent`, translating what it
+  reports into San's events, and the three hooks San gets between the loop and
+  the model.
 
 ## Lifecycle
 
@@ -149,7 +155,16 @@ received. After `Run` returns, sending to the inbox blocks indefinitely.
 ## Tests
 
 ```
-internal/core/agent_impl_test.go    — agent loop behavior, signals, drains.
+internal/core/run_test.go           — mailbox behaviour: signals, drains, the
+                                      interrupt latch.
+internal/core/exchange_test.go      — one exchange: compaction, the toolset it
+                                      offers, the client it asks for.
+internal/core/agent_content_test.go — what one exchange produces and reports.
+internal/core/aidriver_test.go      — a scripted driver, so a test says what
+                                      the endpoint sends and nothing between
+                                      has to be stubbed.
+internal/core/backoff_test.go       — the backoff the two non-agent retry
+                                      loops share.
 internal/core/message_test.go       — message value equality and copying.
 ```
 

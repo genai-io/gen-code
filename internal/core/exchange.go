@@ -161,14 +161,20 @@ func stopReasonOf(r sdkagent.StopReason) StopReason {
 	}
 }
 
-// sequenced marks the tools that must not run beside others, which is how the
-// SDK is told what may go in parallel.
+// offered is what the model may call this exchange, with the ones that must
+// not run beside others marked — which is how the SDK is told what may go in
+// parallel.
 //
-// San's rule used to be a property of the batch — all read-only, or all
-// agent-spawning — checked in the loop against a list of names. It is the same
-// rule said where it belongs: a tool that may touch shared state declares it,
-// and one such tool makes its whole batch sequential, because a batch is only
-// safe to parallelize when every member is.
+// The rule is the one San always had, moved off the batch and onto the tool.
+// It used to be checked when a batch arrived: all read-only, or all
+// agent-spawning, or run them one at a time. Now each tool carries the answer
+// into the loop, so a batch is parallel exactly when every member of it says
+// it may be — and the loop never has to ask about the batch as a whole.
+//
+// Which tools those are is still this list. The SDK's Sequential is the only
+// way to say it, and nothing about a tool's schema distinguishes reading a
+// file from writing one, so the knowledge stays here rather than being
+// invented somewhere it would also be a list.
 func (a *agent) offered() []Tool {
 	all := a.tools.All()
 	out := make([]Tool, 0, len(all))

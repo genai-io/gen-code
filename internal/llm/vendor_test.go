@@ -542,9 +542,9 @@ func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
 }
 
 // A vendor's transient failure has to reach the agent loop as one. The SDK
-// classifies it from the provider's typed error; San's job is to carry that
-// answer across onto core.RetryableError, which is the only thing the loop
-// reads. Assert the whole path, because a break anywhere in it turns a
+// classifies it from the provider's typed error and the loop reads that
+// classification directly — there is no San vocabulary in between any more.
+// Assert the whole path anyway, because a break anywhere in it turns a
 // retryable overload into a failed turn.
 func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -175,7 +175,7 @@ changed), but reminders are deliberately rebuilt.
 
 | Concern | Location |
 |---|---|
-| Trigger + in-loop compaction | `internal/core/agent_impl.go` (`ThinkAct`, `compact`) |
+| Trigger + in-loop compaction | `internal/core/exchange.go` (`preStep`, `onInferError`, `shorten`) |
 | Summary text (reminders stripped) | `internal/core/message.go` (`BuildCompactionText`) |
 | Compaction LLM call | `internal/agent/build.go`, `internal/app/conv/compact.go` |
 | Boundary recording | `internal/session/recorder.go` (`onCompact`) → `transcript.FileStore.Compact` |
