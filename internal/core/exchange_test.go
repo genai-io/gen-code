@@ -468,7 +468,7 @@ func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
 		{sdkagent.StopEndTurn, StopEndTurn},
 		{sdkagent.StopRefusal, StopEndTurn},
 		{sdkagent.StopSequence, StopEndTurn},
-		{sdkagent.StopMaxTokens, StopMaxOutputRecoveryExhausted},
+		{sdkagent.StopMaxTokens, StopTruncated},
 		{sdkagent.StopMaxSteps, StopMaxSteps},
 		{sdkagent.StopCanceled, StopCancelled},
 		{sdkagent.StopTerminated, StopHook},

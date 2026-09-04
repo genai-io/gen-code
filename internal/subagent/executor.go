@@ -532,8 +532,8 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 	switch result.StopReason {
 	case core.StopMaxSteps:
 		errMsg = fmt.Sprintf("reached maximum steps (%d)", maxSteps)
-	case core.StopMaxOutputRecoveryExhausted:
-		errMsg = "output was repeatedly truncated and recovery was exhausted"
+	case core.StopTruncated:
+		errMsg = "the answer was cut off, and carrying on did not finish it"
 	case core.StopCancelled:
 		errMsg = "agent cancelled"
 	case core.StopHook, core.StopError:

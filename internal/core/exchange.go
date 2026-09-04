@@ -134,7 +134,7 @@ func inferenceContextOf(inf *sdkagent.Inference) InferenceContext {
 
 // stopReasonOf maps the SDK's reasons onto San's.
 //
-// max_tokens becomes MaxOutputRecoveryExhausted because by the time the loop
+// max_tokens becomes Truncated because by the time the loop
 // reports it, WithContinuation has already asked the model to carry on as often
 // as it was allowed to: the answer is still cut off, and that is what San's
 // name says. Terminated is a tool voting to end the turn, which in San is only
@@ -142,7 +142,7 @@ func inferenceContextOf(inf *sdkagent.Inference) InferenceContext {
 func stopReasonOf(r sdkagent.StopReason) StopReason {
 	switch r {
 	case sdkagent.StopMaxTokens:
-		return StopMaxOutputRecoveryExhausted
+		return StopTruncated
 	case sdkagent.StopMaxSteps:
 		return StopMaxSteps
 	case sdkagent.StopCanceled:

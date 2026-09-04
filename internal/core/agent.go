@@ -131,7 +131,7 @@ type Config struct {
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
-	MaxOutputRecovery       int                                                       // max retries on truncated output, 0 = use default (3)
+	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
 	MaxTurnRetries          int                                                       // max retries per inference step on transient stream errors, 0 = use default (2)
 	StreamFirstChunkTimeout time.Duration                                             // abort if no first chunk arrives within this long, 0 = use default (5m)
 	StreamIdleTimeout       time.Duration                                             // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
@@ -146,10 +146,10 @@ type Config struct {
 // dropped connection — not to mask a sustained outage.
 const (
 	defaultMaxTurnRetries = 2
-	// defaultMaxOutputRecovery bounds how many times a model cut off by the
+	// defaultMaxContinuations bounds how many times a model cut off by the
 	// output cap is asked to carry on. Three, because a fourth continuation of
 	// the same answer is a prompt problem rather than a budget one.
-	defaultMaxOutputRecovery = 3
+	defaultMaxContinuations = 3
 	// defaultFirstChunkTimeout bounds time-to-first-chunk. It is generous
 	// because a reasoning model may think for a while (and emit nothing) before
 	// the first token; it exists only to catch a connection that hangs at open.
@@ -183,8 +183,8 @@ func NewAgent(cfg Config) Agent {
 	if cfg.MaxTurnRetries <= 0 {
 		cfg.MaxTurnRetries = defaultMaxTurnRetries
 	}
-	if cfg.MaxOutputRecovery <= 0 {
-		cfg.MaxOutputRecovery = defaultMaxOutputRecovery
+	if cfg.MaxContinuations <= 0 {
+		cfg.MaxContinuations = defaultMaxContinuations
 	}
 	if cfg.StreamFirstChunkTimeout <= 0 {
 		cfg.StreamFirstChunkTimeout = defaultFirstChunkTimeout
@@ -217,7 +217,7 @@ func NewAgent(cfg Config) Agent {
 	// is the handle the agent is built on and is replaced on every call before
 	// it is ever used — and if the application cannot produce one, the turn
 	// fails with its reason rather than construction panicking with it.
-	inner, err := sdkagent.New(unconfigured,
+	inner, err := sdkagent.New(clientFromPreInfer,
 		sdkagent.WithMaxSteps(cfg.MaxSteps),
 		// Two budgets that used to be one. WithRetry replays a call the loop
 		// knows how to replay; WithContinuation asks a model cut off by the
@@ -226,7 +226,7 @@ func NewAgent(cfg Config) Agent {
 		// The +1 is the difference between the two words: San's setting counts
 		// retries, the SDK's counts attempts, and two retries is three goes.
 		sdkagent.WithRetry(cfg.MaxTurnRetries+1, backoffBase),
-		sdkagent.WithContinuation(cfg.MaxOutputRecovery, TruncatedResumePrompt),
+		sdkagent.WithContinuation(cfg.MaxContinuations, TruncatedResumePrompt),
 		sdkagent.WithStreamTimeout(cfg.StreamFirstChunkTimeout, cfg.StreamIdleTimeout),
 		// Every message in the conversation gets a name, which is what the
 		// session's append-only writer dedupes by.
@@ -445,11 +445,15 @@ func ToolsChangeEvent(agentID string, c ToolsChange) Event {
 	return Event{Type: OnToolsChange, Source: agentID, Data: c}
 }
 
-// unconfigured is the client an agent is built on before it has a real one.
-// Every call replaces it in PreInfer; reaching it at all would mean San handed
-// the loop an agent it never configured, so it says exactly that rather than
-// failing as though a model had been asked and had not answered.
-var unconfigured = ai.NewClientWithDriver(unconfiguredDriver{}, ai.Model{ID: "unconfigured", API: "stub"})
+// clientFromPreInfer is the client the agent is built on, named for where the
+// real one comes from: San cannot supply it here, because which client answers
+// a turn depends on what that turn sends, so PreInfer resolves it per call with
+// the conversation in hand and replaces this every time.
+//
+// Reaching it therefore means San handed the loop an agent it never configured,
+// and it says exactly that rather than failing as though a model had been asked
+// and had not answered.
+var clientFromPreInfer = ai.NewClientWithDriver(unconfiguredDriver{}, ai.Model{ID: "unconfigured", API: "stub"})
 
 type unconfiguredDriver struct{}
 

@@ -324,8 +324,8 @@ func autopilotStopEvidence(reason core.StopReason) (resumable bool, situation st
 		return true, ""
 	case core.StopMaxSteps:
 		return true, "the previous turn hit its step limit and stopped mid-work — it was not finished"
-	case core.StopMaxOutputRecoveryExhausted:
-		return true, "the previous turn's output was truncated and could not be recovered — it was not finished"
+	case core.StopTruncated:
+		return true, "the previous turn's answer was cut off, and carrying on did not finish it"
 	default:
 		return false, ""
 	}

@@ -9,11 +9,11 @@ import "github.com/genai-io/sdk-go/pkg/ai"
 type StopReason string
 
 const (
-	StopEndTurn                    StopReason = "end_turn"
-	StopMaxSteps                   StopReason = "max_steps"
-	StopCancelled                  StopReason = "cancelled"
-	StopHook                       StopReason = "stop_hook"
-	StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"
+	StopEndTurn   StopReason = "end_turn"
+	StopMaxSteps  StopReason = "max_steps"
+	StopCancelled StopReason = "cancelled"
+	StopHook      StopReason = "stop_hook"
+	StopTruncated StopReason = "truncated"
 	// StopError marks a turn that died on an inference failure — the retry
 	// budget ran out, or the error was not retryable. The turn still produced
 	// messages and token usage, so it reports an outcome like any other stop
