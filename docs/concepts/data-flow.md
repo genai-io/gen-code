@@ -596,7 +596,7 @@ follow-up user message resumes the same session via the inbox channel.
        │
        │                          inner break (turn cancel detected),
        │                          interruptPending.Store(false),
-       │                          TurnEvent(StopCancelled) emitted
+       │                          TurnEvent(StopCanceled) emitted
        │
        │   ◀── TurnEvent ─────────┤
        │   OnTurnEnd: StopReason==Cancelled
