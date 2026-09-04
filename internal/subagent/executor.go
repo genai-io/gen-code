@@ -256,7 +256,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
 				}
 				agentTask.SetIdentity(identity, result.AgentID)
-				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
+				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
 			agentTask.Complete(err)
@@ -269,7 +269,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 
 		agentTask.SetIdentity(identity, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
-		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
+		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 
 		if result.Success {
 			agentTask.Complete(nil)
@@ -475,7 +475,7 @@ func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Messag
 		if err != nil {
 			return "", err
 		}
-		summary := strings.TrimSpace(resp.Content)
+		summary := strings.TrimSpace(resp.Content.Text())
 		if summary == "" {
 			return "", fmt.Errorf("compaction produced empty summary")
 		}

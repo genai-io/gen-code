@@ -138,12 +138,12 @@ func autoFetchTokenLimits(ctx context.Context, deps autoFetchTokenLimitsDeps) (s
 			return "", fmt.Errorf("agent error: %w", err)
 		}
 
-		if len(response.ToolCalls) > 0 {
-			messages = appendToolCallMessages(ctx, messages, response.ToolCalls, deps.Cwd, deps.ToolSvc)
+		if calls := response.Content.ToolCalls(); len(calls) > 0 {
+			messages = appendToolCallMessages(ctx, messages, calls, deps.Cwd, deps.ToolSvc)
 			continue
 		}
 
-		content := strings.TrimSpace(response.Content)
+		content := strings.TrimSpace(response.Content.Text())
 		if result, done := parseTokenLimitResponse(content, modelID, deps.Store); done {
 			return result, nil
 		}

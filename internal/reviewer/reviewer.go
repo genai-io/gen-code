@@ -124,7 +124,7 @@ func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return resp.Content, nil
+	return resp.Content.Text(), nil
 }
 
 // BashPromptReply is the judge's decision on an interactive prompt a running,

@@ -251,6 +251,19 @@ func (c ChatMessage) assistantContent() ai.Content {
 	return content
 }
 
+// ThinkingSignature is the provider token that came with this turn's thinking,
+// or empty. ai.Content has readers for the text of every block kind but not
+// for the proof that rides with one, and San replays it: the conversation
+// carries it forward, and the interface holds it so a resumed turn keeps it.
+func ThinkingSignature(c ai.Content) string {
+	for _, b := range c {
+		if b.Type == ai.BlockThinking && b.Signature != "" {
+			return b.Signature
+		}
+	}
+	return ""
+}
+
 // ChatOf projects a conversation turn onto the flat fields the interface
 // reads, with no display state set. The mirror of ToMessage, and the reason
 // both live here: a block kind that gains a field has one place to gain it.
@@ -487,7 +500,7 @@ const AutoCompactThresholdPercent = 90
 // NeedsCompaction reports whether the prompt has reached
 // AutoCompactThresholdPercent of the model's input limit. promptTokens must be
 // the FULL prompt size — including any cache-read/cache-creation portion, i.e.
-// InferResponse.TotalInputTokens — not just the uncached delta.
+// ai.Usage.TotalInput — not just the uncached delta.
 func NeedsCompaction(promptTokens, inputLimit int) bool {
 	if inputLimit == 0 || promptTokens == 0 {
 		return false

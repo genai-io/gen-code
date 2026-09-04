@@ -79,10 +79,9 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 			return
 		}
 		out.Steps++
-		resp := FromAIResponse(e.Response)
-		out.InputTokens += resp.InputTokens
-		out.OutputTokens += resp.OutputTokens
-		a.emit(ctx, PostInferEvent(a.id, resp))
+		out.InputTokens += e.Response.Usage.Input
+		out.OutputTokens += e.Response.Usage.Output
+		a.emit(ctx, PostInferEvent(a.id, e.Response))
 
 	case sdkagent.MessageAdded:
 		a.emit(ctx, AppendEvent(a.id, e.Message))

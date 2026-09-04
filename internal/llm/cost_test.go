@@ -12,13 +12,13 @@ func TestEstimateCostDispatchesToRegisteredProvider(t *testing.T) {
 		if modelID != "m1" {
 			t.Fatalf("modelID = %q, want m1", modelID)
 		}
-		if usage.InputTokens != 10 {
-			t.Fatalf("usage.InputTokens = %d, want 10", usage.InputTokens)
+		if usage.Input != 10 {
+			t.Fatalf("usage.Input = %d, want 10", usage.Input)
 		}
 		return want, true
 	})
 
-	got, ok := EstimateCost(fake, "m1", Usage{InputTokens: 10})
+	got, ok := EstimateCost(fake, "m1", Usage{Input: 10})
 	if !ok || got != want {
 		t.Fatalf("EstimateCost = (%+v, %v), want (%+v, true)", got, ok, want)
 	}

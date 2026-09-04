@@ -249,7 +249,7 @@ func (m *model) missionRefine(ctx context.Context, draft string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(resp.Content), nil
+	return strings.TrimSpace(resp.Content.Text()), nil
 }
 
 // ── TurnEnd steer (#5): auto-continuation ───────────────────────────────
@@ -784,7 +784,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(resp.Content), nil
+	return strings.TrimSpace(resp.Content.Text()), nil
 }
 
 // autopilotAsync runs one steer inference off the UI goroutine on a shared 60s

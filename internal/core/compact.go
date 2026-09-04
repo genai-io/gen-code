@@ -21,7 +21,7 @@ import (
 //
 // The figure it measures is the SDK's, taken fresh at every boundary — the
 // whole prompt, tool schemas included. San used to measure the previous
-// response's TotalInputTokens instead, which had to be cleared by hand after a
+// response's total input instead, which had to be cleared by hand after a
 // compaction or the stale figure would still read "full" and compact again on
 // the very next step, forever. There is nothing to clear now.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {

@@ -256,7 +256,7 @@ func (b *blockingLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.De
 		case <-ctx.Done():
 			yield(ai.Delta{}, ctx.Err())
 		case <-b.release:
-			for _, d := range deltas(InferResponse{Content: "released", StopReason: StopEndTurn}) {
+			for _, d := range deltas(ai.Response{Content: ai.TextContent("released"), StopReason: ai.StopEndTurn}) {
 				if !yield(d, nil) {
 					return
 				}
@@ -515,12 +515,12 @@ type batchLLM struct{}
 func (batchLLM) Name() string { return "batch" }
 
 func (batchLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	return yieldAll(deltas(InferResponse{
-		StopReason: StopToolUse,
-		ToolCalls: []ToolCall{
-			{ID: "c1", Name: "first", Input: "{}"},
-			{ID: "c2", Name: "second", Input: "{}"},
-			{ID: "c3", Name: "third", Input: "{}"},
+	return yieldAll(deltas(ai.Response{
+		StopReason: ai.StopToolUse,
+		Content: ai.Content{
+			ai.ToolCallBlock(ToolCall{ID: "c1", Name: "first", Input: "{}"}),
+			ai.ToolCallBlock(ToolCall{ID: "c2", Name: "second", Input: "{}"}),
+			ai.ToolCallBlock(ToolCall{ID: "c3", Name: "third", Input: "{}"}),
 		},
 	}))
 }
@@ -568,7 +568,7 @@ func (requestRecordingDriver) Name() string { return "recording" }
 
 func (d *requestRecordingDriver) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	d.req = req
-	return yieldAll(deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}))
+	return yieldAll(deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}))
 }
 
 // The reasoning rung and the output cap are the application's, not the

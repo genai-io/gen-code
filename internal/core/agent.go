@@ -270,7 +270,7 @@ const (
 	OnStart   EventType = "AgentStart" // agent begins
 	OnStop    EventType = "AgentStop"  // agent ends (error or nil in Data)
 	PreInfer  EventType = "PreInfer"   // before LLM call
-	PostInfer EventType = "PostInfer"  // after LLM response (*InferResponse in Data)
+	PostInfer EventType = "PostInfer"  // after LLM response (*ai.Response in Data)
 	OnChunk   EventType = "Chunk"      // one streamed fragment (ai.Event in Data)
 
 	// OnStreamReset fires when a transient stream failure is about to be
@@ -325,7 +325,7 @@ func (e Event) ToolCall() (ToolCall, bool)         { tc, ok := e.Data.(ToolCall)
 func (e Event) ToolResult() (ToolResult, bool)     { tr, ok := e.Data.(ToolResult); return tr, ok }
 func (e Event) Message() (Message, bool)           { m, ok := e.Data.(Message); return m, ok }
 func (e Event) Result() (Result, bool)             { r, ok := e.Data.(Result); return r, ok }
-func (e Event) Response() (*InferResponse, bool)   { r, ok := e.Data.(*InferResponse); return r, ok }
+func (e Event) Response() (*ai.Response, bool)     { r, ok := e.Data.(*ai.Response); return r, ok }
 func (e Event) Chunk() (ai.Event, bool)            { c, ok := e.Data.(ai.Event); return c, ok }
 func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
 func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
@@ -423,7 +423,7 @@ func TurnEvent(agentID string, r Result) Event { return Event{Type: OnTurn, Sour
 func PreInferEvent(agentID string, ctx InferenceContext) Event {
 	return Event{Type: PreInfer, Source: agentID, Data: ctx}
 }
-func PostInferEvent(agentID string, r *InferResponse) Event {
+func PostInferEvent(agentID string, r *ai.Response) Event {
 	return Event{Type: PostInfer, Source: agentID, Data: r}
 }
 func PreToolEvent(tc ToolCall) Event    { return Event{Type: PreTool, Source: tc.Name, Data: tc} }

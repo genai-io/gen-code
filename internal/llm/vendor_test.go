@@ -123,7 +123,7 @@ func legacyStream(ctx context.Context, p Provider, opts CompletionOptions) <-cha
 			case event.Type == ai.EventBlockDelta && event.Block.Type == ai.BlockThinking:
 				ch <- StreamChunk{Type: ChunkTypeThinking, Text: event.Block.Text}
 			case event.Type == ai.EventDone:
-				ch <- StreamChunk{Type: ChunkTypeDone, Response: core.FromAIResponse(event.Response)}
+				ch <- StreamChunk{Type: ChunkTypeDone, Response: event.Response}
 			}
 		}
 	}()
@@ -174,20 +174,20 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 	if resp == nil {
 		t.Fatal("no final response")
 	}
-	if resp.Content != "reading it now" || resp.Thinking != "weighing it" {
+	if resp.Content.Text() != "reading it now" || resp.Content.Thinking() != "weighing it" {
 		t.Errorf("response = %+v", resp)
 	}
-	if resp.ThinkingSignature != "sig-1" {
-		t.Errorf("ThinkingSignature = %q, want the token that replays the block", resp.ThinkingSignature)
+	if core.ThinkingSignature(resp.Content) != "sig-1" {
+		t.Errorf("ThinkingSignature = %q, want the token that replays the block", core.ThinkingSignature(resp.Content))
 	}
-	if resp.StopReason != core.StopToolUse {
+	if resp.StopReason != ai.StopToolUse {
 		t.Errorf("StopReason = %q", resp.StopReason)
 	}
-	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "Read" ||
-		resp.ToolCalls[0].Input != `{"path":"main.go"}` {
-		t.Errorf("ToolCalls = %+v", resp.ToolCalls)
+	if len(resp.Content.ToolCalls()) != 1 || resp.Content.ToolCalls()[0].Name != "Read" ||
+		resp.Content.ToolCalls()[0].Input != `{"path":"main.go"}` {
+		t.Errorf("ToolCalls = %+v", resp.Content.ToolCalls())
 	}
-	want := Usage{InputTokens: 11, OutputTokens: 9, CacheCreationInputTokens: 3, CacheReadInputTokens: 5}
+	want := Usage{Input: 11, Output: 9, CacheWrite: 3, CacheRead: 5}
 	if resp.Usage != want {
 		t.Errorf("Usage = %+v, want %+v", resp.Usage, want)
 	}

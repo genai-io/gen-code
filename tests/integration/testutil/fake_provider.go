@@ -106,7 +106,7 @@ func (f *FakeProvider) injectError() bool {
 // next pops the head of the queue. Callers hold f.mu.
 func (f *FakeProvider) next() llm.CompletionResponse {
 	if len(f.Responses) == 0 {
-		return llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+		return llm.CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
 	}
 	resp := f.Responses[0]
 	f.Responses = f.Responses[1:]

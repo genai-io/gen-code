@@ -249,12 +249,12 @@ func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	// suppress these setters for normal text-only completions, since
 	// applyChunk flips Stream.Active=false on the Done chunk that arrives
 	// just before this PostInfer — silently dropping ThinkingSignature.
-	if resp.ThinkingSignature != "" {
-		m.SetLastThinkingSignature(resp.ThinkingSignature)
+	if sig := core.ThinkingSignature(resp.Content); sig != "" {
+		m.SetLastThinkingSignature(sig)
 	}
-	if len(resp.ToolCalls) > 0 {
-		m.SetLastToolCalls(resp.ToolCalls)
-		m.Tool.Track(resp.ToolCalls)
+	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
+		m.SetLastToolCalls(calls)
+		m.Tool.Track(calls)
 	}
 	m.Stream.BuildingTool = ""
 	return nil

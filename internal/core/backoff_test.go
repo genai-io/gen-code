@@ -61,7 +61,7 @@ func (s *scriptedLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, e
 			yield(ai.Delta{}, s.failErr)
 			return
 		}
-		for _, d := range deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}) {
+		for _, d := range deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}) {
 			if !yield(d, nil) {
 				return
 			}

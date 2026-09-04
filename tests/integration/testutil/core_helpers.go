@@ -48,7 +48,7 @@ type FakeLLM struct {
 func (f *FakeLLM) Name() string { return "fake" }
 
 func (f *FakeLLM) Stream(_ context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
-	resp := llm.CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+	resp := llm.CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
 	if f.callIdx < len(f.Responses) {
 		resp = f.Responses[f.callIdx]
 		f.callIdx++
@@ -62,25 +62,27 @@ func (f *FakeLLM) Stream(_ context.Context, _ *ai.Request) iter.Seq2[ai.Delta, e
 	}
 }
 
-// FakeDeltas renders one answer as the stream a driver would produce.
+// FakeDeltas renders one answer as the stream a driver would produce. The
+// answer is already an ordered block sequence, so this walks it rather than
+// reassembling one from parallel fields.
 func FakeDeltas(r llm.CompletionResponse) []ai.Delta {
 	var out []ai.Delta
-	if r.Thinking != "" {
-		out = append(out, ai.Delta{Block: ai.ThinkingBlock(r.Thinking, r.ThinkingSignature)},
-			ai.Delta{EndBlock: true})
-	}
-	if r.Content != "" {
-		out = append(out, ai.Delta{Block: ai.TextBlock(r.Content)}, ai.Delta{EndBlock: true})
-	}
-	for _, c := range r.ToolCalls {
-		out = append(out, ai.Delta{Block: ai.ToolCallBlock(c)})
+	calls := 0
+	for _, b := range r.Content {
+		switch b.Type {
+		case ai.BlockToolCall:
+			calls++
+			out = append(out, ai.Delta{Block: b})
+		default:
+			out = append(out, ai.Delta{Block: b}, ai.Delta{EndBlock: true})
+		}
 	}
 	stop := ai.StopEndTurn
-	if len(r.ToolCalls) > 0 {
+	if calls > 0 {
 		stop = ai.StopToolUse
 	}
 	return append(out, ai.Delta{StopReason: stop, Usage: &ai.Usage{
-		Input: r.Usage.InputTokens, Output: r.Usage.OutputTokens,
+		Input: r.Usage.Input, Output: r.Usage.Output,
 	}})
 }
 

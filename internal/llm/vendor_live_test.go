@@ -79,10 +79,10 @@ func TestLiveTurn(t *testing.T) {
 				t.Fatal("no final response")
 			}
 			t.Logf("text=%q stop=%s usage=%+v", text, resp.StopReason, resp.Usage)
-			if resp.Content == "" {
+			if resp.Content.Text() == "" {
 				t.Error("the turn produced no text")
 			}
-			if resp.TotalInputTokens() == 0 || resp.OutputTokens == 0 {
+			if resp.Usage.TotalInput() == 0 || resp.Usage.Output == 0 {
 				t.Error("the turn reported no usage")
 			}
 		})
@@ -158,23 +158,16 @@ func TestLiveToolRoundTrip(t *testing.T) {
 
 			history := []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("What is the weather in Paris right now?")}}
 			asked := turn(history)
-			if len(asked.ToolCalls) == 0 {
+			if len(asked.Content.ToolCalls()) == 0 {
 				// Whether a model reaches for a tool is its own decision, not
 				// something this exercise establishes. What is being tested is
 				// the round trip once it does.
-				t.Skipf("the model answered without calling the tool: %q", asked.Content)
+				t.Skipf("the model answered without calling the tool: %q", asked.Content.Text())
 			}
-			call := asked.ToolCalls[0]
+			call := asked.Content.ToolCalls()[0]
 			t.Logf("call %s(%s)", call.Name, call.Input)
 
-			row := core.ChatMessage{
-				Role:              core.ChatAssistant,
-				Content:           asked.Content,
-				Thinking:          asked.Thinking,
-				ThinkingSignature: asked.ThinkingSignature,
-				Reasoning:         asked.Reasoning,
-				ToolCalls:         asked.ToolCalls,
-			}
+			row := core.ChatOf(core.Message{Role: ai.RoleAssistant, Content: asked.Content})
 			replay, _ := row.ToMessage()
 			history = append(history, replay, core.ToolResultMessage(core.ToolResult{
 				ToolCallID: call.ID,
@@ -183,8 +176,8 @@ func TestLiveToolRoundTrip(t *testing.T) {
 			}))
 
 			answered := turn(history)
-			t.Logf("answer=%q stop=%s", answered.Content, answered.StopReason)
-			if answered.Content == "" {
+			t.Logf("answer=%q stop=%s", answered.Content.Text(), answered.StopReason)
+			if answered.Content.Text() == "" {
 				t.Error("the model produced no answer from the tool result")
 			}
 		})

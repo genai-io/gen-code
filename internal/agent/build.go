@@ -147,7 +147,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		if err != nil {
 			return "", err
 		}
-		summary := strings.TrimSpace(resp.Content)
+		summary := strings.TrimSpace(resp.Content.Text())
 		if summary == "" {
 			return "", fmt.Errorf("compaction produced empty summary")
 		}

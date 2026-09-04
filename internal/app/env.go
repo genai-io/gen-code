@@ -30,7 +30,7 @@ type env struct {
 	// recent prompt/output size rather than a turn or session aggregate.
 	// InputTokens is the FULL prompt size (fresh + cached tokens) so the
 	// context readout matches window occupancy even when prompt caching is
-	// active — see InferResponse.TotalInputTokens.
+	// active — see ai.Usage.TotalInput.
 	InputTokens  int
 	OutputTokens int
 	// CachedPrefixTokens is the latest infer call's cached prompt prefix
