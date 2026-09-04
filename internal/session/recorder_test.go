@@ -1,6 +1,7 @@
 package session
 
 import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"bufio"
@@ -36,10 +37,11 @@ func TestRecorderWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.OnAgentEvent(core.Event{Type: core.PreInfer, Source: "main", Data: core.InferenceContext{
-		SystemDigest: "sha256:sys", ToolsDigest: "sha256:tools", MessageIDs: []string{"m1", "m2"},
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+		System:   "you are san",
+		Messages: []core.Message{{ID: "m1"}, {ID: "m2"}},
 	}})
-	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &ai.Response{
+	rec.OnAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 42, Output: 8, CacheRead: 10},
 	}})
 
@@ -78,8 +80,14 @@ func TestRecorderWritesRequestedAndRespondedPerTurn(t *testing.T) {
 	if req.Turn != 1 {
 		t.Fatalf("requested.Turn = %d, want 1", req.Turn)
 	}
-	if req.SystemDigest != "sha256:sys" || req.ToolsDigest != "sha256:tools" {
-		t.Fatalf("requested digests = %+v", req)
+	// The digests are the recorder's own now, taken from the inference rather
+	// than handed to it. What they must be is content-addressed: the same
+	// system prompt digests the same way, and a different one does not.
+	if req.SystemDigest != sha256Hex([]byte("you are san")) {
+		t.Fatalf("requested.SystemDigest = %q, want the digest of what was sent", req.SystemDigest)
+	}
+	if req.ToolsDigest != toolsDigest(nil) {
+		t.Fatalf("requested.ToolsDigest = %q, want the digest of an empty toolset", req.ToolsDigest)
 	}
 	if len(req.MessageIDs) != 2 || req.MessageIDs[0] != "m1" {
 		t.Fatalf("requested.MessageIDs = %+v", req.MessageIDs)
@@ -120,15 +128,15 @@ func TestRecorderWritesSystemSectionEvents(t *testing.T) {
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.OnAgentEvent(core.Event{Type: core.OnSystemChange, Data: core.SystemChange{
+	rec.OnAgentEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
-	}})
-	rec.OnAgentEvent(core.Event{Type: core.OnSystemChange, Data: core.SystemChange{
+	})
+	rec.OnAgentEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are Y", Caller: "command:/identity",
-	}})
-	rec.OnAgentEvent(core.Event{Type: core.OnSystemChange, Data: core.SystemChange{
+	})
+	rec.OnAgentEvent(core.SystemChange{
 		Name: "policy", Removed: true, Caller: "test:teardown",
-	}})
+	})
 
 	records := readAllRecords(t, dir, "sess-sys")
 	var added, removed []transcript.Record
@@ -173,17 +181,17 @@ func TestRecorderWritesToolsChangeEvents(t *testing.T) {
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.OnAgentEvent(core.Event{Type: core.OnToolsChange, Data: core.ToolsChange{
+	rec.OnAgentEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Read", Description: "read a file"},
 		Caller: "tools:init",
-	}})
-	rec.OnAgentEvent(core.Event{Type: core.OnToolsChange, Data: core.ToolsChange{
+	})
+	rec.OnAgentEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Bash", Description: "run shell"},
 		Caller: "mcp:Bash",
-	}})
-	rec.OnAgentEvent(core.Event{Type: core.OnToolsChange, Data: core.ToolsChange{
+	})
+	rec.OnAgentEvent(core.ToolsChange{
 		Name: "Bash", Removed: true, Caller: "mode:plan",
-	}})
+	})
 
 	records := readAllRecords(t, dir, "sess-tools")
 	var added, removed []transcript.Record
@@ -230,9 +238,9 @@ func TestRecorderWritesCompactionBoundary(t *testing.T) {
 	})
 
 	// A pre-compaction message, then the summary append + compaction boundary.
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
-	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
-	rec.OnAgentEvent(core.Event{Type: core.OnCompact, Data: core.CompactInfo{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"}})
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
+	rec.OnAgentEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
 
 	records := readAllRecords(t, dir, "sess-c")
 	var summaryAppended bool
@@ -256,10 +264,10 @@ func TestRecorderWritesCompactionBoundary(t *testing.T) {
 // A nil-safe recorder (no FileStore) must accept events without panicking.
 func TestRecorderNilSafe(t *testing.T) {
 	var rec *Recorder
-	rec.OnAgentEvent(core.Event{Type: core.PreInfer})
+	rec.OnAgentEvent(sdkagent.MessageStart{})
 
 	empty := NewRecorder(RecorderOptions{})
-	empty.OnAgentEvent(core.Event{Type: core.PreInfer})
+	empty.OnAgentEvent(sdkagent.MessageStart{})
 }
 
 func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record {

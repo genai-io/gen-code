@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // Update routes all output-path messages: agent outbox, permission gate,
@@ -56,21 +57,18 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 // --- Agent event dispatch ---
 
 func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	log.QueueLog("handleAgentEvent: %s", ev.Type)
-	switch ev.Type {
-	case core.OnTurn:
-		result, _ := ev.Result()
+	log.QueueLog("handleAgentEvent: %T", ev)
+	switch e := ev.(type) {
+	case core.TurnEnded:
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		return rt.OnTurnEnd(result)
-	case core.OnStop:
-		err, _ := ev.Error()
+		return rt.OnTurnEnd(e.Result)
+	case core.AgentStopped:
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		return rt.OnAgentStop(err)
-	case core.OnCompact:
-		info, _ := ev.CompactInfo()
-		return rt.OnCompacted(info)
+		return rt.OnAgentStop(e.Err)
+	case core.Compacted:
+		return rt.OnCompacted(e)
 	default:
 		// A single event emits at most one scrollback write (extra), and
 		// ContinueOutbox never writes scrollback, so there's nothing to order —
@@ -88,23 +86,20 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 	needsContinue := true
 
 	for _, ev := range events {
-		log.QueueLog("handleAgentEventBatch: %s", ev.Type)
-		switch ev.Type {
-		case core.OnTurn:
-			result, _ := ev.Result()
+		log.QueueLog("handleAgentEventBatch: %T", ev)
+		switch e := ev.(type) {
+		case core.TurnEnded:
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			effects = append(effects, rt.OnTurnEnd(result))
+			effects = append(effects, rt.OnTurnEnd(e.Result))
 			needsContinue = false
-		case core.OnStop:
-			err, _ := ev.Error()
+		case core.AgentStopped:
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			effects = append(effects, rt.OnAgentStop(err))
+			effects = append(effects, rt.OnAgentStop(e.Err))
 			needsContinue = false
-		case core.OnCompact:
-			info, _ := ev.CompactInfo()
-			effects = append(effects, rt.OnCompacted(info))
+		case core.Compacted:
+			effects = append(effects, rt.OnCompacted(e))
 			needsContinue = false
 		default:
 			if extra := applyAgentEvent(rt, m, ev); extra != nil {
@@ -146,39 +141,39 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 // --- Event side-effect handlers (no ContinueOutbox) ---
 
 func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	switch ev.Type {
-	case core.OnStart:
-		return nil
-	case core.OnCompactStart:
-		cs, _ := ev.CompactStart()
-		return rt.OnCompactStart(cs.Count)
-	case core.OnCompactEnd:
-		ce, _ := ev.CompactEnd()
-		return rt.OnCompactEnd(ce)
-	case core.OnMessage:
-		// Nothing to do: every path that hands a user message to the agent —
-		// idle submit, queue release, cron prompt, async hook, a notice
-		// delivered mid-turn — appends it to the conversation at the call site,
-		// so acting on the agent's echo here would double-display it.
-		return nil
-	case core.PreInfer:
+	switch e := ev.(type) {
+	case sdkagent.CompactionStart:
+		return rt.OnCompactStart(len(e.Messages))
+	case sdkagent.CompactionEnd:
+		return rt.OnCompactEnd(e)
+	case sdkagent.MessageStart:
+		// A retry announces itself by the attempt number, not by an event of
+		// its own: what was drawn for the previous attempt is void, and the
+		// next one re-streams from scratch.
+		if e.Attempt > 1 {
+			m.Stream.Stop()
+			m.DropStreamingAssistant()
+		}
 		return applyPreInfer(rt, m)
-	case core.OnChunk:
-		return applyChunk(rt, m, ev)
-	case core.OnStreamReset:
-		// Transient failure about to be retried: drop the partial assistant
-		// row and stop streaming so the retry's PreInfer starts a clean one.
-		m.Stream.Stop()
-		m.DropStreamingAssistant()
+	case sdkagent.MessageUpdate:
+		return applyChunk(rt, m, e.Delta)
+	case sdkagent.MessageEnd:
+		return applyPostInfer(rt, m, e.Response)
+	case sdkagent.ToolStart:
+		applyPreTool(m, core.ToolCall{ID: e.ID, Name: e.Name, Input: e.Args})
 		return nil
-	case core.PostInfer:
-		return applyPostInfer(rt, m, ev)
-	case core.PreTool:
-		applyPreTool(m, ev)
-		return nil
-	case core.PostTool:
-		return applyPostTool(rt, m, ev)
+	case sdkagent.ToolEnd:
+		return applyPostTool(rt, m, core.ToolResult{
+			ToolCallID: e.ID,
+			ToolName:   e.Name,
+			Content:    sdkagent.ResultContent(e.Result, e.Err),
+			IsError:    e.Err != nil,
+		})
 	default:
+		// AgentStarted, MessageReceived, and the loop's events the interface
+		// has nothing to draw for. A message entering the inbox is already on
+		// screen: every path that hands one to the agent appends it at the call
+		// site, so acting on the echo would draw it twice.
 		return nil
 	}
 }
@@ -196,11 +191,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	chunk, ok := ev.Chunk()
-	if !ok {
-		return nil
-	}
+func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// Late chunks after handleStreamCancel has flipped Stream off and
 	// appended the [Interrupted] marker would otherwise call AppendToLast
 	// and bleed text past the marker. RenderAssistantMessage's suffix
@@ -235,9 +226,8 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	return nil
 }
 
-func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	resp, ok := ev.Response()
-	if !ok {
+func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
+	if resp == nil {
 		return nil
 	}
 	rt.OnInference(resp)
@@ -260,19 +250,13 @@ func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	return nil
 }
 
-func applyPreTool(m *Model, ev core.Event) {
-	if tc, ok := ev.ToolCall(); ok {
-		m.Stream.BuildingTool = tc.Name
-		m.Tool.MarkCurrent(tc.ID)
-		m.Tool.MarkStarted(tc.ID)
-	}
+func applyPreTool(m *Model, tc core.ToolCall) {
+	m.Stream.BuildingTool = tc.Name
+	m.Tool.MarkCurrent(tc.ID)
+	m.Tool.MarkStarted(tc.ID)
 }
 
-func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	tr, ok := ev.ToolResult()
-	if !ok {
-		return nil
-	}
+func applyPostTool(rt Runtime, m *Model, tr core.ToolResult) tea.Cmd {
 	m.Stream.BuildingTool = ""
 	if tool.IsAgentToolName(tr.ToolName) {
 		m.TaskActivity = nil

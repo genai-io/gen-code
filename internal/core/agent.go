@@ -28,104 +28,62 @@ type Agent interface {
 	System() System
 	Tools() Tools
 
-	// Inbox is the write channel — external world sends messages to the agent.
-	// Messages are integrated into the conversation at turn boundaries.
-	//
-	// Ownership: caller owns the channel and must close it when done sending.
-	// Sending to Inbox after Run() returns may block indefinitely.
+	// Inbox is where the world sends messages. The caller owns it and closes
+	// it when done; sending after Run returns may block forever.
 	Inbox() chan<- Inbound
 
-	// Outbox is the read channel — agent emits events to the external world.
-	// Events include streaming chunks, tool execution status, and turn results.
-	//
-	// Ownership: agent owns the channel and closes it when Run() returns.
-	// Outbox is single-consumer; for multiple consumers, build a fan-out on top.
+	// Outbox is where the agent reports. The agent owns it and closes it when
+	// Run returns. Single-consumer — fan out on top if you need more.
 	Outbox() <-chan Event
 
-	// Messages returns a snapshot of the conversation history.
-	// The returned slice is a shallow copy — do not mutate Message fields
-	// that contain slices or pointers (Images, ToolCalls, ToolResult).
+	// Messages is a shallow copy: do not mutate a Message's slices or
+	// pointers.
 	Messages() []Message
 
-	// SetMessages replaces the conversation history.
-	// Used by compaction (shrink context) and session restore (load saved state).
-	// The provided slice is shallow-copied; same mutation caveats as Messages().
+	// SetMessages replaces the conversation — compaction and session restore.
+	// Shallow-copied, with the same caveat as Messages.
 	SetMessages(msgs []Message)
 
-	// Append adds a message to the conversation and fires the OnMessage hook.
-	// This is the unified entry point for both paths:
-	//   Run path:   inbox → ingest (Append internally)
-	//   Direct path: caller → Append → ThinkAct
+	// Append puts a message into the conversation the next exchange opens
+	// with, whether it came from the inbox or straight from a caller.
 	Append(ctx context.Context, msg Message)
 
-	// ThinkAct runs one full inference-action cycle: PreInfer → LLM stream →
-	// tool execution → repeat until end_turn. Returns the result directly.
-	//
-	// This is the agent's atomic operation. Two callers drive it differently:
-	//   Run():   loop { waitForInput → ThinkAct }, emits TurnEvent to Outbox
-	//   Direct:  Append(msg) → ThinkAct(ctx), returns *Result synchronously
+	// ThinkAct runs one exchange and returns what it produced. Run loops on
+	// it; a subagent calls it directly after Append.
 	ThinkAct(ctx context.Context) (*Result, error)
 
-	// Run starts the agent's main loop. Blocks until context cancellation or SigStop.
-	//
-	// The run loop has three phases per cycle:
-	//
-	//   Phase 1 — WAIT (blocking):
-	//     Block on Inbox until a message arrives. This is the idle state.
-	//     On SigStop or ctx.Done(): fire OnStop hooks and return.
-	//
-	//   Phase 2 — DRAIN (non-blocking):
-	//     Drain any additional messages that accumulated in Inbox.
-	//     All drained messages are appended to the conversation.
-	//
-	//   Phase 3 — THINK + ACT (inference loop):
-	//     Loop: LLM inference → tool execution → LLM inference → ...
-	//     Between each step, non-blocking drain of Inbox for new messages.
-	//     Emit streaming chunks and tool results to Outbox.
-	//     Loop until LLM returns end_turn.
-	//     Then go back to Phase 1 (wait for next message).
-	//
-	// Signals (SigStop) are checked at every phase boundary.
+	// Run is the mailbox loop: wait on the inbox, drain what accumulated, hand
+	// the batch to one exchange, repeat. Returns on ctx cancellation or
+	// SigStop, which are checked at every boundary.
 	Run(ctx context.Context) error
 
-	// InterruptCurrentTurn cancels the in-flight ThinkAct without ending
-	// Run. After interruption the run loop returns to waitForInput and
-	// resumes normally on the next inbox message. Use this for
-	// user-initiated mid-stream cancellation; use SigStop / ctx cancel
-	// for full shutdown.
+	// InterruptCurrentTurn cancels the in-flight ThinkAct without ending Run,
+	// which is user-initiated mid-stream cancellation; SigStop or ctx cancel
+	// is full shutdown.
 	//
-	// Returns a channel that closes when the in-flight ThinkAct has
-	// actually returned, so callers that need to mutate shared state
-	// right after the interrupt can serialize against the agent
-	// goroutine. When called between turns the channel is already
-	// closed and the interrupt is latched so the next iteration of the
-	// inner loop bails before starting an unwanted ThinkAct.
+	// The returned channel closes once that ThinkAct has actually unwound, so
+	// a caller can serialize against the agent goroutine. Called between
+	// turns, it is already closed and the interrupt is latched, so the next
+	// iteration bails instead of starting a turn nobody wanted.
 	InterruptCurrentTurn() <-chan struct{}
 }
 
-// Config holds construction parameters for an agent.
-//
-// Required fields: LLM, System, Tools. NewAgent panics if any is nil.
-// Optional fields: ID, CWD, MaxSteps, InboxBuf, OutboxBuf, CompactFunc.
-//
-// Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
-// before passing them to NewAgent. See docs/concepts/permission-model.md.
+// Config builds an agent. Client, System and Tools are required; NewAgent
+// panics without them. Permission is the tool layer's — wrap Tools with
+// tool.WithPermission first. See docs/concepts/permission-model.md.
 type Config struct {
 	ID string
-	// Client hands over the model to talk to for one turn. Required. A function
-	// of the conversation because an endpoint's headers can depend on what the
-	// turn sends (see llm.TurnHeaders), which only the application knows.
+	// Client is the model for one turn. A function of the conversation because
+	// an endpoint's headers can depend on what the turn sends — see
+	// llm.TurnHeaders.
 	Client func(msgs []Message) (*ai.Client, error)
-	// CallOptions are the per-call settings — the output cap, the reasoning
-	// rung — asked for fresh on every inference, so a person changing the rung
-	// mid-session takes effect on the next call. Nil leaves the model's own
-	// defaults.
+	// CallOptions are per-call settings — the output cap, the reasoning rung —
+	// asked for fresh each inference, so a change mid-session lands on the next
+	// call. Nil leaves the model's defaults.
 	CallOptions func() []ai.Option
-	// InputLimit is the prompt budget auto-compaction measures against, as a
-	// function because the application may let a person change it. Nil, or a
-	// zero return, turns auto-compaction off. It is not read off the client:
-	// the figure San uses is the model's window unless a setting overrides it,
-	// and that setting is the application's.
+	// InputLimit is the prompt budget auto-compaction measures against. Nil or
+	// zero turns it off. Not read off the client: the window is the model's
+	// unless a setting overrides it, and the setting is the application's.
 	InputLimit              func() int
 	System                  System                                                    // required: system prompt layers
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
@@ -141,21 +99,18 @@ type Config struct {
 	OnEvent func(Event)
 }
 
-// Defaults for the exchange the SDK runs on San's behalf. Deliberately small:
-// the goal is to ride out a brief blip — provider overload, a rate limit, a
-// dropped connection — not to mask a sustained outage.
+// Deliberately small: ride out a brief blip — overload, a rate limit, a
+// dropped connection — not a sustained outage.
 const (
 	defaultMaxTurnRetries = 2
-	// defaultMaxContinuations bounds how many times a model cut off by the
-	// output cap is asked to carry on. Three, because a fourth continuation of
-	// the same answer is a prompt problem rather than a budget one.
+	// Three, because a fourth continuation of the same answer is a prompt
+	// problem rather than a budget one.
 	defaultMaxContinuations = 3
-	// defaultFirstChunkTimeout bounds time-to-first-chunk. It is generous
-	// because a reasoning model may think for a while (and emit nothing) before
-	// the first token; it exists only to catch a connection that hangs at open.
+	// Generous, because a reasoning model may think a long time before its
+	// first token. It only catches a connection that hangs at open.
 	defaultFirstChunkTimeout = 5 * time.Minute
-	// defaultStreamIdleTimeout bounds the gap *between* chunks once a response
-	// has started — a much tighter signal that an in-flight stream has stalled.
+	// The gap *between* chunks once a response has started — a much tighter
+	// signal that an in-flight stream has stalled.
 	defaultStreamIdleTimeout = 60 * time.Second
 )
 
@@ -211,12 +166,11 @@ func NewAgent(cfg Config) Agent {
 		onEvent:     cfg.OnEvent,
 	}
 
-	// The SDK agent cannot exist without a client, and San does not have one
-	// yet: which client answers a turn depends on what that turn sends, so it
-	// is asked for in PreInfer with the conversation in hand. This placeholder
-	// is the handle the agent is built on and is replaced on every call before
-	// it is ever used — and if the application cannot produce one, the turn
-	// fails with its reason rather than construction panicking with it.
+	// The SDK agent needs a client and San has none yet: which one answers a
+	// turn depends on what the turn sends, so PreInfer resolves it per call.
+	// The placeholder is replaced before it is ever used, and if the
+	// application cannot produce one the turn fails with its reason rather
+	// than construction panicking.
 	inner, err := sdkagent.New(clientFromPreInfer,
 		sdkagent.WithMaxSteps(cfg.MaxSteps),
 		// Two budgets that used to be one. WithRetry replays a call the loop
@@ -241,10 +195,10 @@ func NewAgent(cfg Config) Agent {
 	// construction so each registry replays its initial members back to the
 	// observer — the recorder sees a complete event chain from t0.
 	cfg.System.SetObserver(func(c SystemChange) {
-		a.emitTelemetry(SystemChangeEvent(a.id, c))
+		a.emitTelemetry(c)
 	})
 	cfg.Tools.SetObserver(func(c ToolsChange) {
-		a.emitTelemetry(ToolsChangeEvent(a.id, c))
+		a.emitTelemetry(c)
 	})
 	return a
 }
@@ -262,187 +216,61 @@ type Result struct {
 }
 
 // EventType identifies an agent lifecycle event.
-type EventType string
+// Event is one thing that happened: the SDK's twelve, verbatim, plus the six
+// below. San adds only what the loop has no concept of, because it is about
+// the mailbox and the registries rather than one exchange.
+//
+//	sdkagent.MessageAdded   MessagesReplaced                 the conversation changing
+//	sdkagent.MessageStart   MessageUpdate     MessageEnd     one inference
+//	sdkagent.ToolStart      ToolUpdate        ToolEnd        one tool call
+//	sdkagent.CompactionStart                  CompactionEnd  the shortening span
+//	sdkagent.TurnStart                        TurnEnd        one exchange
+type Event any
 
-// Agent lifecycle events — emitted to the Outbox for TUI rendering.
-const (
-	OnStart   EventType = "AgentStart" // agent begins
-	OnStop    EventType = "AgentStop"  // agent ends (error or nil in Data)
-	PreInfer  EventType = "PreInfer"   // before LLM call
-	PostInfer EventType = "PostInfer"  // after LLM response (*ai.Response in Data)
-	OnChunk   EventType = "Chunk"      // one streamed fragment (ai.Event in Data)
+// AgentStarted and AgentStopped bracket Run — the agent's life, however many
+// turns wide. The loop is handed one exchange and never learns there was a
+// mailbox.
+type AgentStarted struct{}
 
-	// OnStreamReset fires when a transient stream failure is about to be
-	// retried: the partial assistant output streamed so far must be discarded
-	// before the next attempt re-streams from scratch (no payload).
-	OnStreamReset EventType = "StreamReset"
-	PreTool       EventType = "PreTool"  // before tool execution (ToolCall in Data)
-	PostTool      EventType = "PostTool" // after tool execution (ToolResult in Data)
-	OnMessage     EventType = "Message"  // message received on inbox (Message in Data)
-	OnAppend      EventType = "Append"   // message appended to conversation chain (Message in Data)
-	OnTurn        EventType = "Turn"     // think+act cycle completed (Result in Data)
-	OnCompact     EventType = "Compact"  // conversation compacted (CompactInfo in Data)
+type AgentStopped struct{ Err error }
 
-	// OnCompactStart fires when auto-compaction begins, before the (blocking,
-	// non-streaming) summarization call. It lets the UI show a "Compacting…"
-	// progress line for the several-second window that would otherwise look
-	// frozen. Data is CompactStart. Manual /compact drives this indicator from
-	// the UI side and does not emit it.
-	OnCompactStart EventType = "CompactStart"
+// MessageReceived is a message reaching the inbox, before an exchange opened
+// for it.
+type MessageReceived struct{ Message Message }
 
-	// OnCompactEnd closes what OnCompactStart opened, however it went: a
-	// conversation shortened, one the summarizer decided to leave alone, or a
-	// summarizer that failed. Data is CompactEnd.
-	//
-	// It is not OnCompact, which fires only when there is a summary. A consumer
-	// that drew a progress line on the start has to be told to stop on all
-	// three — and on the path where the prompt was already too long, a failed
-	// shortening ends the turn, so there is no later event to be told by.
-	OnCompactEnd EventType = "CompactEnd"
+// TurnEnded closes a San turn: however many exchanges the mailbox drained into
+// it, not sdkagent.TurnEnd, which closes one.
+type TurnEnded struct{ Result Result }
 
-	// OnSystemChange fires when a system-prompt section is added, replaced,
-	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
-	// the outbox on backpressure.
-	OnSystemChange EventType = "SystemChange"
-
-	// OnToolsChange fires when a tool is registered or unregistered. Data is
-	// ToolsChange. Like OnSystemChange, non-blocking telemetry.
-	OnToolsChange EventType = "ToolsChange"
-)
-
-// Event carries context for an agent lifecycle point.
-// Emitted to Outbox for TUI observation.
-type Event struct {
-	Type   EventType // which event
-	Source string    // who triggered (agent ID, tool name, "user")
-	Data   any       // payload — type depends on EventType (see above)
-}
-
-// Event.Data type helpers — reduce boilerplate in handlers.
-
-func (e Event) ToolCall() (ToolCall, bool)         { tc, ok := e.Data.(ToolCall); return tc, ok }
-func (e Event) ToolResult() (ToolResult, bool)     { tr, ok := e.Data.(ToolResult); return tr, ok }
-func (e Event) Message() (Message, bool)           { m, ok := e.Data.(Message); return m, ok }
-func (e Event) Result() (Result, bool)             { r, ok := e.Data.(Result); return r, ok }
-func (e Event) Response() (*ai.Response, bool)     { r, ok := e.Data.(*ai.Response); return r, ok }
-func (e Event) Chunk() (ai.Event, bool)            { c, ok := e.Data.(ai.Event); return c, ok }
-func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
-func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
-func (e Event) CompactStart() (CompactStart, bool) { cs, ok := e.Data.(CompactStart); return cs, ok }
-func (e Event) CompactEnd() (CompactEnd, bool)     { ce, ok := e.Data.(CompactEnd); return ce, ok }
-
-// CompactStart carries the pre-compaction message count for the OnCompactStart
-// event so the progress line can read "Compacting N messages…".
-type CompactStart struct {
-	Count int
-}
-
-// CompactEnd carries what the conversation was left holding, and why it was
-// left that way when it was not shortened.
-type CompactEnd struct {
-	Count int
-	Err   error
-}
-
-// CompactInfo carries compaction details for the OnCompact event.
-type CompactInfo struct {
+// Compacted is what a compaction collapsed to. The loop reports the span; the
+// summary and its ID are the application's.
+type Compacted struct {
 	Summary       string
 	OriginalCount int
-	// SummaryMessageID is the ID of the synthetic summary message that replaces
-	// the pre-compaction chain. The session recorder writes it as the transcript
-	// compaction boundary so replay truncates history at the summary instead of
-	// resurrecting the summarized-away messages.
+	// SummaryMessageID names the summary that replaced the chain. The recorder
+	// writes it as the transcript boundary, so replay truncates there instead
+	// of resurrecting the summarized-away messages.
 	SummaryMessageID string
-	// Trigger is "auto" (proactive/reactive in-loop compaction) or "manual"
-	// (user /compact). Observers use it to vary post-compaction behavior.
+	// Trigger is "auto" or "manual" (/compact).
 	Trigger string
 }
 
-// InferenceContext is the PreInfer payload — what was about to be sent to the
-// LLM, expressed as content-addressed digests so consumers (trace recorder,
-// debug logger) can reference inputs without copying them on every turn.
-type InferenceContext struct {
-	SystemDigest string   // sha256 of rendered system prompt
-	ToolsDigest  string   // sha256 of canonicalized tool schemas
-	MessageIDs   []string // active chain at request time, in send order
-}
-
-func (e Event) InferenceContext() (InferenceContext, bool) {
-	ic, ok := e.Data.(InferenceContext)
-	return ic, ok
-}
-
-// SystemChange describes one mutation to the system prompt's section map.
-// Emitted on Use/Drop. The recorder translates these into
-// system.section.added / system.section.removed records.
+// SystemChange is one mutation to the system prompt's section map, emitted on
+// Use/Drop. The recorder writes these as system.section.added / .removed.
 type SystemChange struct {
-	Name    string // section name (stable across mutations)
-	Slot    int    // render slot
-	Content string // rendered content; empty when Removed
-	Removed bool   // true on Drop, false on Use
-	Caller  string // who triggered the mutation (e.g. "system:init", "command:/identity")
+	Name    string // stable across mutations
+	Slot    int
+	Content string // empty when Removed
+	Removed bool
+	Caller  string // e.g. "system:init", "command:/identity"
 }
 
-func (e Event) SystemChange() (SystemChange, bool) {
-	c, ok := e.Data.(SystemChange)
-	return c, ok
-}
-
-// ToolsChange describes one mutation to the tool registry. On removal,
-// Schema.Name carries the dropped tool's name and other fields are zero.
+// ToolsChange is one mutation to the tool registry.
 type ToolsChange struct {
-	Schema  ToolSchema // populated on Add (zero on Remove)
-	Name    string     // populated on Remove (empty on Add)
-	Removed bool       // true on Remove, false on Add
-	Caller  string     // who triggered the mutation
-}
-
-func (e Event) ToolsChange() (ToolsChange, bool) {
-	c, ok := e.Data.(ToolsChange)
-	return c, ok
-}
-
-// Typed event constructors — enforce correct Data types at construction.
-
-func StartEvent(agentID string) Event { return Event{Type: OnStart, Source: agentID} }
-func StopEvent(agentID string, err error) Event {
-	return Event{Type: OnStop, Source: agentID, Data: err}
-}
-func ChunkEvent(agentID string, e ai.Event) Event {
-	return Event{Type: OnChunk, Source: agentID, Data: e}
-}
-func StreamResetEvent(agentID string) Event { return Event{Type: OnStreamReset, Source: agentID} }
-func MessageEvent(agentID string, msg Message) Event {
-	return Event{Type: OnMessage, Source: agentID, Data: msg}
-}
-func AppendEvent(agentID string, msg Message) Event {
-	return Event{Type: OnAppend, Source: agentID, Data: msg}
-}
-func TurnEvent(agentID string, r Result) Event { return Event{Type: OnTurn, Source: agentID, Data: r} }
-func PreInferEvent(agentID string, ctx InferenceContext) Event {
-	return Event{Type: PreInfer, Source: agentID, Data: ctx}
-}
-func PostInferEvent(agentID string, r *ai.Response) Event {
-	return Event{Type: PostInfer, Source: agentID, Data: r}
-}
-func PreToolEvent(tc ToolCall) Event    { return Event{Type: PreTool, Source: tc.Name, Data: tc} }
-func PostToolEvent(tr ToolResult) Event { return Event{Type: PostTool, Source: tr.ToolName, Data: tr} }
-func CompactEvent(agentID string, info CompactInfo) Event {
-	return Event{Type: OnCompact, Source: agentID, Data: info}
-}
-func CompactStartEvent(agentID string, cs CompactStart) Event {
-	return Event{Type: OnCompactStart, Source: agentID, Data: cs}
-}
-func CompactEndEvent(agentID string, ce CompactEnd) Event {
-	return Event{Type: OnCompactEnd, Source: agentID, Data: ce}
-}
-
-func SystemChangeEvent(agentID string, c SystemChange) Event {
-	return Event{Type: OnSystemChange, Source: agentID, Data: c}
-}
-
-func ToolsChangeEvent(agentID string, c ToolsChange) Event {
-	return Event{Type: OnToolsChange, Source: agentID, Data: c}
+	Schema  ToolSchema // set on Add
+	Name    string     // set on Remove
+	Removed bool
+	Caller  string
 }
 
 // clientFromPreInfer is the client the agent is built on, named for where the

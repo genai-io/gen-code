@@ -17,6 +17,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
@@ -46,7 +47,7 @@ func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 // — a summarizer that fails there ends the turn, so there is no next inference
 // to fall through to, and the indicator that gates the composer and autopilot
 // would stay up with nothing left to take it down.
-func (m *model) OnCompactEnd(end core.CompactEnd) tea.Cmd {
+func (m *model) OnCompactEnd(sdkagent.CompactionEnd) tea.Cmd {
 	m.conv.Compact.Clear()
 	return nil
 }
@@ -65,7 +66,7 @@ func (m *model) OnCompactStart(count int) tea.Cmd {
 // compaction boundary — here we mirror that in the UI and refresh
 // session-level reminders. The agent is NOT torn down, so the system prompt
 // and tools are reused from cache (no rebuild).
-func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
+func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	scrollbackCmds := m.commitAllMessages()
 
 	m.conv.Clear()
@@ -139,7 +140,7 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	if m.services.Agent.Compact(msg.Summary) {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.OnCompacted(core.CompactInfo{
+	return m.OnCompacted(core.Compacted{
 		Summary:       msg.Summary,
 		OriginalCount: msg.OriginalCount,
 		Trigger:       "manual",

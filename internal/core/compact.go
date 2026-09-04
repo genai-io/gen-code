@@ -8,27 +8,21 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// Shortening a conversation that has outgrown its window, and the vocabulary
-// for what that leaves behind.
+// Shortening a conversation that has outgrown its window.
 //
-// It is not the exchange's, which is why it is not in exchange.go: the loop
-// asks for it at a step boundary and again when a provider calls the prompt
-// too long, and the person asks for it through the inbox with /compact. The
-// two automatic paths hand the replacement to the loop; the manual one sets it
-// in place. All three collapse to the same one message, announced the same way.
+// Neither the exchange's nor the mailbox's: the loop asks at a step boundary
+// and again when a provider calls the prompt too long, and the person asks
+// through the inbox with /compact. All three collapse to the same one message,
+// announced the same way.
 
-// shortestCompactable is the conversation below which summarising buys
-// nothing: an opening turn and the reply to it. Collapsing that into a summary
-// of itself would cost a model call to make the prompt no shorter.
+// shortestCompactable: an opening turn and its reply. Summarising that costs a
+// model call to make the prompt no shorter.
 const shortestCompactable = 3
 
-// preStep shortens the conversation before it outgrows the window.
-//
-// The figure it measures is the SDK's, taken fresh at every boundary — the
-// whole prompt, tool schemas included. San used to measure the previous
-// response's total input instead, which had to be cleared by hand after a
-// compaction or the stale figure would still read "full" and compact again on
-// the very next step, forever. There is nothing to clear now.
+// preStep shortens the conversation before it outgrows the window. The figure
+// is the SDK's, measured fresh at every boundary — the whole prompt, tool
+// schemas included. San used to keep the previous response's, which had to be
+// cleared by hand after a compaction or it would read "full" forever.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
 	if a.compactFunc == nil || len(c.Messages) < shortestCompactable {
 		return nil, nil
@@ -42,10 +36,8 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 
 // onInferError answers the one failure the loop cannot: a prompt the provider
 // called too long. Replaying it unchanged fails the same way, so the
-// conversation is shortened and the step taken again.
-//
-// Attempt is the budget: two goes, because a summary that is still too long is
-// a summarizer problem and a third attempt will not fix it.
+// conversation is shortened and the step taken again. Two goes — a summary
+// that is still too long is a summarizer problem.
 func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Retry, error) {
 	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
@@ -88,23 +80,20 @@ func (a *agent) applyCompaction(ctx context.Context, summary string, originalCou
 }
 
 // summaryMessage builds the message a compaction collapses to and announces
-// the compaction itself, so both paths record identically: a stable ID the
-// transcript can reference, and a CompactEvent carrying it as the boundary
-// replay truncates at.
+// it, so both paths record identically: a stable ID, and a Compacted carrying
+// it as the boundary replay truncates at.
 func (a *agent) summaryMessage(ctx context.Context, summary string, originalCount int, trigger string) Message {
 	msg := UserMessage(FormatCompactSummary(summary), nil)
 	msg.ID = NewMessageID()
-	// The summary is announced as an appended message before the boundary that
-	// truncates at it, so transcript replay can resolve the ID the next
-	// inference references. A compaction always collapses to exactly this one
-	// message, which is why one append says all of it.
-	a.emit(ctx, AppendEvent(a.id, msg))
-	a.emit(ctx, CompactEvent(a.id, CompactInfo{
+	// Announced as an append before the boundary that truncates at it, so
+	// replay can resolve the ID the next inference references.
+	a.emit(ctx, sdkagent.MessageAdded{Message: msg})
+	a.emit(ctx, Compacted{
 		Summary:          summary,
 		OriginalCount:    originalCount,
 		SummaryMessageID: msg.ID,
 		Trigger:          trigger,
-	}))
+	})
 	return msg
 }
 
@@ -120,18 +109,17 @@ func (a *agent) promptBudget() int {
 // CompactMaxTokens is the max output tokens for compaction LLM calls.
 const CompactMaxTokens = 4096
 
-// CompactSummaryPrefix marks a user message as the post-compaction summary.
-// The UI uses it to render that message as a system notice rather than a normal
-// user turn, while the model and session store keep the full text.
+// CompactSummaryPrefix marks a user message as the post-compaction summary, so
+// the UI draws a notice rather than a user turn. The model and the store keep
+// the full text.
 const CompactSummaryPrefix = "Previous context:\n"
 
-// FormatCompactSummary formats a compaction summary for injection as a user message.
+// FormatCompactSummary marks a summary for injection as a user message.
 func FormatCompactSummary(summary string) string {
 	return CompactSummaryPrefix + summary
 }
 
-// IsCompactSummary reports whether content is a post-compaction summary message
-// (produced by FormatCompactSummary).
+// IsCompactSummary reports whether content came from FormatCompactSummary.
 func IsCompactSummary(content string) bool {
 	return strings.HasPrefix(content, CompactSummaryPrefix)
 }

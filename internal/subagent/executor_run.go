@@ -9,6 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
 )
@@ -96,8 +97,8 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 		}
 	}
 	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, func(ev core.Event) {
-		if resp, ok := ev.Response(); ok && ev.Type == core.PostInfer {
-			run.recordUsage(resp)
+		if e, ok := ev.(sdkagent.MessageEnd); ok {
+			run.recordUsage(e.Response)
 		}
 	})
 	if err != nil {

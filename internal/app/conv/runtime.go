@@ -5,6 +5,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -38,8 +39,8 @@ type Runtime interface {
 	OnTurnEnd(result core.Result) tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnCompactStart(count int) tea.Cmd
-	OnCompactEnd(end core.CompactEnd) tea.Cmd
-	OnCompacted(info core.CompactInfo) tea.Cmd
+	OnCompactEnd(end sdkagent.CompactionEnd) tea.Cmd
+	OnCompacted(info core.Compacted) tea.Cmd
 
 	// ── Handle*: system messages ────────────────────────────────
 	HandlePermGate(req *PermGateRequest) tea.Cmd
@@ -98,6 +99,12 @@ func DrainAgentOutbox(outbox <-chan core.Event) tea.Cmd {
 	}
 }
 
+// isTerminalEvent says a batch should be flushed to the UI now rather than
+// waiting for more.
 func isTerminalEvent(ev core.Event) bool {
-	return ev.Type == core.OnTurn || ev.Type == core.OnStop || ev.Type == core.OnCompact
+	switch ev.(type) {
+	case core.TurnEnded, core.AgentStopped, core.Compacted:
+		return true
+	}
+	return false
 }
