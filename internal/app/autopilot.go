@@ -316,8 +316,10 @@ const continueWithoutMissionTask = `No mission was briefed: steer toward the obj
 // (the step budget, exhausted output-truncation recovery) parked the agent
 // mid-work, which is exactly when an unattended run most needs picking back up.
 // A cancel is the human taking the helm and a stop hook is a configured halt —
-// neither is the copilot's to overrule. One switch, so a stop reason can never
-// be resumable without also saying why.
+// neither is the copilot's to overrule, and a refusal is the model declining —
+// asking it to carry on gets another refusal. One switch, so a stop reason can
+// never be resumable without also saying why, and anything the SDK grows that
+// San has not thought about lands on "not resumable", which is the safe half.
 func autopilotStopEvidence(reason core.StopReason) (resumable bool, situation string) {
 	switch reason {
 	case core.StopEndTurn:

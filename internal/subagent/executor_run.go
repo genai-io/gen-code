@@ -188,7 +188,7 @@ func (e *Executor) buildUnfinishedAgentResult(run *preparedRun, result *core.Res
 	if result == nil {
 		return nil
 	}
-	if result.StopReason != core.StopCancelled && result.StopReason != core.StopError {
+	if result.StopReason != core.StopCanceled && result.StopReason != core.StopError {
 		return nil
 	}
 	_, errMsg := interpretStopReason(result, run.cfg.maxSteps)

@@ -124,8 +124,8 @@ func TestThinkActPreservesPartialOutputOnCancel(t *testing.T) {
 	if result == nil {
 		t.Fatal("ThinkAct returned nil Result on cancel; observers need the turn boundary")
 	}
-	if result.StopReason != StopCancelled {
-		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
+	if result.StopReason != StopCanceled {
+		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCanceled)
 	}
 	// subagent.buildUnfinishedAgentResult documents that a cancelled run's
 	// partial content travels back with the error, and RunBackground gates that

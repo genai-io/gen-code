@@ -332,8 +332,8 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ThinkAct err = %v, want context.Canceled", err)
 	}
-	if result.StopReason != StopCancelled {
-		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
+	if result.StopReason != StopCanceled {
+		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCanceled)
 	}
 	if n := ranOnDead.Load(); n != 0 {
 		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
@@ -456,27 +456,25 @@ func TestStreamInferReportsAnUnconfiguredModel(t *testing.T) {
 	}
 }
 
-// A refusal and a stop sequence end a turn. Only a failed inference is
-// StopError, because Run reads that one to mean the agent died and skips the
-// TurnEvent — so anything else landing there would leave the interface waiting
-// on a boundary that never comes.
+// Only a failed inference is StopError, because Run reads that one to mean the
+// agent died and skips the TurnEvent — so anything else equal to it would
+// leave the interface waiting on a boundary that never comes. Nothing maps
+// onto these any more, which is the point: the check is that San's words are
+// distinct values of the SDK's, not a transcription of them.
 func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
-	for _, tc := range []struct {
-		sdk  sdkagent.StopReason
-		want StopReason
-	}{
-		{sdkagent.StopEndTurn, StopEndTurn},
-		{sdkagent.StopRefusal, StopEndTurn},
-		{sdkagent.StopSequence, StopEndTurn},
-		{sdkagent.StopMaxTokens, StopTruncated},
-		{sdkagent.StopMaxSteps, StopMaxSteps},
-		{sdkagent.StopCanceled, StopCancelled},
-		{sdkagent.StopTerminated, StopHook},
-		{sdkagent.StopError, StopError},
+	for _, r := range []StopReason{
+		StopEndTurn, StopTruncated, StopRefused, StopSequence,
+		StopMaxSteps, StopCanceled, StopHook,
 	} {
-		if got := stopReasonOf(tc.sdk); got != tc.want {
-			t.Errorf("stopReasonOf(%q) = %q, want %q", tc.sdk, got, tc.want)
+		if r == StopError {
+			t.Errorf("%q equals StopError, which Run reads as the agent dying", r)
 		}
+		if r == "" {
+			t.Error("a stop reason with no value would read as a turn that never ended")
+		}
+	}
+	if StopTruncated != sdkagent.StopMaxTokens || StopHook != sdkagent.StopTerminated {
+		t.Error("San's words must be the SDK's values, not a copy of them")
 	}
 }
 

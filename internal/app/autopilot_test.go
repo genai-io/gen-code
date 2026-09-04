@@ -287,7 +287,7 @@ func TestAutopilotStopEvidence(t *testing.T) {
 		core.StopEndTurn:   true,
 		core.StopMaxSteps:  true,
 		core.StopTruncated: true,
-		core.StopCancelled: false, // the human took the helm
+		core.StopCanceled:  false, // the human took the helm
 		core.StopHook:      false, // a configured halt
 	}
 	for reason, want := range resumable {

@@ -534,7 +534,9 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 		errMsg = fmt.Sprintf("reached maximum steps (%d)", maxSteps)
 	case core.StopTruncated:
 		errMsg = "the answer was cut off, and carrying on did not finish it"
-	case core.StopCancelled:
+	case core.StopRefused:
+		errMsg = "the model declined to answer"
+	case core.StopCanceled:
 		errMsg = "agent cancelled"
 	case core.StopHook, core.StopError:
 		errMsg = result.StopDetail

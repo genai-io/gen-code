@@ -108,7 +108,7 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 
 	case sdkagent.TurnEnd:
 		out.Content = e.Message.Text()
-		out.StopReason = stopReasonOf(e.StopReason)
+		out.StopReason = e.StopReason
 		if e.Err != nil {
 			out.StopDetail = e.Err.Error()
 		}
@@ -129,35 +129,6 @@ func inferenceContextOf(inf *sdkagent.Inference) InferenceContext {
 		SystemDigest: sha256Hex([]byte(inf.System)),
 		ToolsDigest:  toolsDigest(schemas),
 		MessageIDs:   messageIDs(inf.Messages),
-	}
-}
-
-// stopReasonOf maps the SDK's reasons onto San's.
-//
-// max_tokens becomes Truncated because by the time the loop
-// reports it, WithContinuation has already asked the model to carry on as often
-// as it was allowed to: the answer is still cut off, and that is what San's
-// name says. Terminated is a tool voting to end the turn, which in San is only
-// ever a hook doing it.
-func stopReasonOf(r sdkagent.StopReason) StopReason {
-	switch r {
-	case sdkagent.StopMaxTokens:
-		return StopTruncated
-	case sdkagent.StopMaxSteps:
-		return StopMaxSteps
-	case sdkagent.StopCanceled:
-		return StopCancelled
-	case sdkagent.StopTerminated:
-		return StopHook
-	case sdkagent.StopError:
-		return StopError
-	default:
-		// StopEndTurn, and the two reasons the SDK names that San does not:
-		// a refusal and a stop sequence both end a turn the model was allowed
-		// to finish. Only a failed inference is StopError, and only because
-		// Run reads that one to mean the agent died — anything else landing
-		// there would swallow the turn boundary the interface waits on.
-		return StopEndTurn
 	}
 }
 

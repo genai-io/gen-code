@@ -131,7 +131,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 
-	// User-initiated cancel surfaces here as a Result with StopCancelled now
+	// User-initiated cancel surfaces here as a Result with StopCanceled now
 	// that ThinkAct returns a phantom Result on context.Canceled. It precedes
 	// the queue drain because draining submits a fresh turn — the input queue,
 	// a cron prompt, an async hook or a parked agent notice — which is how Esc
@@ -143,7 +143,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// is empty for a cancelled turn). We still persist so the [Interrupted]
 	// marker and cancelled tool_result rows survive a crash/quit, and
 	// re-arm prompt suggestions for the now-idle textarea.
-	if result.StopReason == core.StopCancelled {
+	if result.StopReason == core.StopCanceled {
 		log.QueueLog("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
 		if cmd := m.persistAfterTurn(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
