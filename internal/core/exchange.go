@@ -174,14 +174,14 @@ func (a *agent) offered() []Tool {
 	all := a.tools.All()
 	out := make([]Tool, 0, len(all))
 	for _, t := range all {
-		named := withCallID{inner: t}
-		if name := t.Schema().Name; isReadOnlyToolCall(name) || isAgentSpawnToolCall(name) {
-			out = append(out, named)
+		tagged := withCallID{inner: t}
+		if name := t.Schema().Name; isReadOnlyTool(name) || spawnsAnAgent(name) {
+			out = append(out, tagged)
 			continue
 		}
 		// Sequential must be outermost: the mark is on the value the loop
 		// holds, and a wrapper outside it would hide the mark.
-		out = append(out, sdkagent.Sequential(named))
+		out = append(out, sdkagent.Sequential(tagged))
 	}
 	return out
 }
@@ -250,7 +250,7 @@ func ToolCallIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func isReadOnlyToolCall(name string) bool {
+func isReadOnlyTool(name string) bool {
 	switch name {
 	case "Read", "WebFetch", "WebSearch", "LSP":
 		return true
@@ -259,6 +259,6 @@ func isReadOnlyToolCall(name string) bool {
 	}
 }
 
-func isAgentSpawnToolCall(name string) bool {
+func spawnsAnAgent(name string) bool {
 	return name == "Agent" || name == "SendMessage"
 }

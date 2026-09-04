@@ -17,6 +17,11 @@ import (
 // two automatic paths hand the replacement to the loop; the manual one sets it
 // in place. All three collapse to the same one message, announced the same way.
 
+// shortestCompactable is the conversation below which summarising buys
+// nothing: an opening turn and the reply to it. Collapsing that into a summary
+// of itself would cost a model call to make the prompt no shorter.
+const shortestCompactable = 3
+
 // preStep shortens the conversation before it outgrows the window.
 //
 // The figure it measures is the SDK's, taken fresh at every boundary — the
@@ -25,7 +30,7 @@ import (
 // compaction or the stale figure would still read "full" and compact again on
 // the very next step, forever. There is nothing to clear now.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
-	if a.compactFunc == nil || len(c.Messages) < 3 {
+	if a.compactFunc == nil || len(c.Messages) < shortestCompactable {
 		return nil, nil
 	}
 	limit := a.promptBudget()
@@ -45,7 +50,7 @@ func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) 
 	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
 	}
-	if len(c.Messages) < 3 {
+	if len(c.Messages) < shortestCompactable {
 		return nil, nil
 	}
 	shorter, err := a.summarise(ctx, c.Messages, "auto")
