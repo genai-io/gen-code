@@ -158,12 +158,9 @@ func (l *Client) Complete(ctx context.Context,
 		if resp, err = Complete(ctx, l.provider, opts); err == nil {
 			return resp, nil
 		}
-		// Classified on the way out, not just for the retry decision: an error
-		// leaving this package is always an *ai.Error, so a caller cannot get a
-		// different answer about the same failure by reaching for a different
-		// helper. StreamError is Classify plus the rule a transport needs — an
-		// unrecognized terminal failure is a transport failure.
-		err = ai.StreamError("", 0, nil, "", "", err)
+		// No wrapping first: ai.IsRetryable answers about a bare error too, and
+		// a dropped connection is worth another go whether or not it passed a
+		// driver on the way here.
 		if !ai.IsRetryable(err) || attempt == completeMaxAttempts {
 			return resp, err
 		}

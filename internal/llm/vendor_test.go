@@ -177,8 +177,8 @@ func TestStreamCarriesEveryContentKind(t *testing.T) {
 	if resp.Content.Text() != "reading it now" || resp.Content.Thinking() != "weighing it" {
 		t.Errorf("response = %+v", resp)
 	}
-	if core.ThinkingSignature(resp.Content) != "sig-1" {
-		t.Errorf("ThinkingSignature = %q, want the token that replays the block", core.ThinkingSignature(resp.Content))
+	if resp.Content.ThinkingSignature() != "sig-1" {
+		t.Errorf("ThinkingSignature = %q, want the token that replays the block", resp.Content.ThinkingSignature())
 	}
 	if resp.StopReason != ai.StopToolUse {
 		t.Errorf("StopReason = %q", resp.StopReason)
