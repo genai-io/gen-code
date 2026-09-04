@@ -345,9 +345,9 @@ func sessionFormatRelativeTime(t time.Time) string {
 	case diff < time.Minute:
 		return "just now"
 	case diff < time.Hour:
-		return sessionPluralize(int(diff.Minutes()), "min") + " ago"
+		return kit.Plural(int(diff.Minutes()), "min") + " ago"
 	case diff < 24*time.Hour:
-		return sessionPluralize(int(diff.Hours()), "hour") + " ago"
+		return kit.Plural(int(diff.Hours()), "hour") + " ago"
 	case diff < 48*time.Hour:
 		return "yesterday"
 	case diff < 7*24*time.Hour:
@@ -355,13 +355,6 @@ func sessionFormatRelativeTime(t time.Time) string {
 	default:
 		return t.Format("Jan 2")
 	}
-}
-
-func sessionPluralize(n int, unit string) string {
-	if n == 1 {
-		return "1 " + unit
-	}
-	return fmt.Sprintf("%d %ss", n, unit)
 }
 
 // UpdateSession routes session selection messages.

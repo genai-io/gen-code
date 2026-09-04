@@ -90,8 +90,9 @@ func ResetDefaultRegistry()           // test-only
   `permission-mode`) alongside the canonical ones.
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
-- `activity_tools.go` — decorator around the worker's tools that streams
-  each call into the parent-visible activity trail.
+- `activity_tools.go` — the gate that streams each call into the
+  parent-visible activity trail. It refuses nothing; it is a gate rather than a
+  wrapper because that is what the loop asks once per call.
 
 ## Lifecycle
 

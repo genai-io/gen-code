@@ -2,8 +2,6 @@
 package app
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"context"
 	"fmt"
 	"os"
@@ -11,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	agentpkg "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
@@ -19,7 +18,6 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/tool"
 )
 
 // Run routes to either print mode or interactive TUI.
@@ -156,7 +154,7 @@ func runPrint(userMessage, personaName string) error {
 		return err
 	}
 
-	sysPrompt := setting.DefaultSystemPrompt
+	var personaParts system.Persona
 	var disabledTools map[string]bool
 	if personaName != "" {
 		cwd, _ := os.Getwd()
@@ -170,14 +168,7 @@ func runPrint(userMessage, personaName string) error {
 		merged := setting.ApplyPersonaOverlay(base, overlay)
 		disabledTools = setting.WithDefaultDisabledTools(merged.DisabledTools)
 
-		sys := system.Build(core.ScopeMain,
-			system.WithPersona(system.Persona{
-				Identity: p.Identity,
-				Behavior: p.Behavior,
-				Rules:    p.Rules,
-			}),
-		)
-		sysPrompt = sys.Prompt()
+		personaParts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
 
 		if merged.Model != "" {
 			if models, err := llmProvider.ListModels(ctx); err == nil {
@@ -193,34 +184,35 @@ func runPrint(userMessage, personaName string) error {
 		disabledTools = setting.WithDefaultDisabledTools(nil)
 	}
 
-	schemas := (&tool.Set{Disabled: disabledTools}).Tools()
-
-	completionOpts := llm.CompletionOptions{
-		Model:        modelID,
-		MaxTokens:    setting.DefaultMaxTokens,
-		SystemPrompt: sysPrompt,
-		Messages:     []core.Message{core.UserMessage(userMessage, nil)},
-		Tools:        schemas,
-	}
-
-	client, err := llmProvider.Client(modelID, llm.TurnHeaders(llmProvider, completionOpts.Messages))
+	cwd, _ := os.Getwd()
+	settings, _ := setting.LoadForCwd(cwd)
+	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
+	res, err := agentpkg.RunOnce(ctx, agentpkg.BuildParams{
+		Provider:      llmProvider,
+		ModelID:       modelID,
+		MaxTokens:     setting.DefaultMaxTokens,
+		CWD:           cwd,
+		Persona:       personaParts,
+		DisabledTools: disabledTools,
+		// The settings decide, as they do interactively. What differs is that
+		// nobody is at the keyboard, which the pipeline already has a name for:
+		// ShouldAvoidPrompts turns a call that would prompt into a refusal
+		// rather than parking the turn on an answer that will never come.
+		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
+			d := settings.HasPermissionToUseTool(name, args, headless)
+			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
+		},
+	}, core.UserMessage(userMessage, nil), func(text string) { fmt.Print(text) })
 	if err != nil {
 		return err
 	}
-	for event, err := range client.Stream(ctx,
-		completionOpts.Messages,
-		ai.WithSystem(sysPrompt), ai.WithTools(core.ToAITools(schemas)...),
-		ai.WithMaxTokens(setting.DefaultMaxTokens)) {
-		if err != nil {
-			return err
-		}
-		switch {
-		case event.Type == ai.EventBlockDelta && event.Block.Type == ai.BlockText:
-			fmt.Print(event.Block.Text)
-		case event.Type == ai.EventDone:
-			fmt.Println()
-		}
+	// A turn that ended on tools alone streamed nothing; say what it settled on
+	// rather than exiting silent, which is what this path used to do on every
+	// tool call.
+	if res != nil && strings.TrimSpace(res.Content) == "" {
+		fmt.Print(res.Content)
 	}
+	fmt.Println()
 	return nil
 }
 

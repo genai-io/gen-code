@@ -15,16 +15,17 @@ import (
 // through the inbox with /compact. All three collapse to the same one message,
 // announced the same way.
 
-// shortestCompactable: an opening turn and its reply. Summarising that costs a
-// model call to make the prompt no shorter.
-const shortestCompactable = 3
+// MinMessagesToCompact is the shortest conversation worth shortening: an
+// opening turn and its reply. Summarising fewer costs a model call to make the
+// prompt no shorter.
+const MinMessagesToCompact = 3
 
 // preStep shortens the conversation before it outgrows the window. The figure
 // is the SDK's, measured fresh at every boundary — the whole prompt, tool
 // schemas included. San used to keep the previous response's, which had to be
 // cleared by hand after a compaction or it would read "full" forever.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
-	if a.compactFunc == nil || len(c.Messages) < shortestCompactable {
+	if a.compactFunc == nil || len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
 	limit := a.promptBudget()
@@ -42,7 +43,7 @@ func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) 
 	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
 	}
-	if len(c.Messages) < shortestCompactable {
+	if len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
 	shorter, err := a.shorten(ctx, c.Messages, "auto")

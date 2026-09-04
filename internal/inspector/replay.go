@@ -2,8 +2,6 @@ package inspector
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -195,8 +193,8 @@ func (b *replayBuilder) checkInference(inf *transcript.InferenceRecord) {
 	system := b.sortedSections()
 	tools := b.sortedTools()
 	messageIDs := replayMessageIDs(b.activeMessages())
-	sysDigest := digestSystem(system)
-	toolsDigest := digestTools(tools)
+	sysDigest := transcript.DigestSystem(renderSections(system))
+	toolsDigest := transcript.DigestTools(tools)
 	b.integrity = append(b.integrity,
 		replayIntegrityCheck{
 			Field: "systemDigest", Expected: jsonRaw(inf.SystemDigest), Got: jsonRaw(sysDigest),
@@ -228,7 +226,7 @@ func (b *replayBuilder) snapshot() replayState {
 		System:         system,
 		Tools:          tools,
 		Messages:       b.activeMessages(),
-		Digests:        replayDigests{System: digestSystem(system), Tools: digestTools(tools)},
+		Digests:        replayDigests{System: transcript.DigestSystem(renderSections(system)), Tools: transcript.DigestTools(tools)},
 		Integrity:      append([]replayIntegrityCheck(nil), b.integrity...),
 	}
 }
@@ -352,34 +350,17 @@ func jsonRaw(v any) json.RawMessage {
 	return b
 }
 
-func digestSystem(sections []replaySystemSection) string {
+// renderSections rebuilds the prompt the agent sent from the section records
+// it left behind, the way core/system builds it: in slot order, joined by a
+// blank line. This is replay's own answer, which is why it is here and not in
+// transcript — the digest is one number, but reconstructing what was hashed is
+// what replay is for.
+func renderSections(sections []replaySystemSection) string {
 	parts := make([]string, 0, len(sections))
 	for _, sec := range sections {
 		if sec.Content != "" {
 			parts = append(parts, sec.Content)
 		}
 	}
-	return sha256Hex([]byte(strings.Join(parts, "\n\n")))
-}
-
-// digestTools hashes the canonical JSON form of tools. Caller must pass tools
-// already sorted by Name (sortedTools handles this for replay).
-func digestTools(tools []transcript.ToolSchemaView) string {
-	if len(tools) == 0 {
-		return sha256Hex(nil)
-	}
-	b, err := json.Marshal(tools)
-	if err != nil {
-		names := make([]string, len(tools))
-		for i, t := range tools {
-			names[i] = t.Name
-		}
-		b, _ = json.Marshal(names)
-	}
-	return sha256Hex(b)
-}
-
-func sha256Hex(b []byte) string {
-	sum := sha256.Sum256(b)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return strings.Join(parts, "\n\n")
 }

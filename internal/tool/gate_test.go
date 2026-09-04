@@ -13,17 +13,16 @@ import (
 	"github.com/genai-io/san/internal/hook"
 )
 
-type captureCoreTool struct {
-	input map[string]any
-}
-
-func (t *captureCoreTool) Schema() core.ToolSchema {
-	return core.ToolSchema{Name: "Bash", Description: "test"}
-}
-
-func (t *captureCoreTool) Run(_ context.Context, call ai.ToolCall) (agent.Result, error) {
-	t.input, _ = core.ParseToolInput(call.Input)
-	return agent.TextResult("ok"), nil
+// ask puts one call through a gate, the way the loop does.
+func ask(t *testing.T, g core.Gate, args map[string]any) agent.Decision {
+	t.Helper()
+	d, err := g(context.Background(), agent.PreToolContext{
+		Call: ai.ToolCall{Name: "Bash", Input: mustJSON(args)},
+	})
+	if err != nil {
+		t.Fatalf("the gate failed rather than answering: %v", err)
+	}
+	return d
 }
 
 type fakeHookHandler struct {
@@ -43,26 +42,22 @@ func (h *fakeHookHandler) ExecuteAsync(event hook.EventType, input hook.HookInpu
 func (h *fakeHookHandler) HasHooks(event hook.EventType) bool                      { return event == hook.PreToolUse }
 func (h *fakeHookHandler) StopHookActive() *bool                                   { return nil }
 
-func TestWithPreToolUseHooksAppliesUpdatedInput(t *testing.T) {
-	inner := &captureCoreTool{}
+func TestAHookRewritesTheArgumentsTheToolRuns(t *testing.T) {
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{
 		UpdatedInput: map[string]any{"command": "rtk git status"},
 	}}
-	tools := WithPreToolUseHooks(core.NewTools(inner), hooks)
+	d := ask(t, HookedPermission(hooks, nil), map[string]any{"command": "git status"})
 
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
-	}
 	if hooks.input.ToolName != "Bash" || hooks.input.ToolInput["command"] != "git status" {
 		t.Fatalf("hook received unexpected input: %#v", hooks.input)
 	}
-	if inner.input["command"] != "rtk git status" {
-		t.Fatalf("tool executed with input %#v", inner.input)
+	got, _ := core.ParseToolInput(d.Arguments)
+	if got["command"] != "rtk git status" {
+		t.Fatalf("the call the tool would run = %#v", got)
 	}
 }
 
-type fakePreToolPermissionChecker struct {
+type fakeHookAwareChecker struct {
 	called      bool
 	forcePrompt bool
 	reason      string
@@ -73,7 +68,7 @@ type fakePreToolPermissionChecker struct {
 	refuseHookAllow bool
 }
 
-func (c *fakePreToolPermissionChecker) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
+func (c *fakeHookAwareChecker) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
 	c.called = true
 	c.forcePrompt = forcePrompt
 	c.reason = reason
@@ -83,19 +78,15 @@ func (c *fakePreToolPermissionChecker) Check(ctx context.Context, name string, i
 	return false, "should not be used"
 }
 
-func (c *fakePreToolPermissionChecker) HonorsHookAllow(name string, input map[string]any) bool {
+func (c *fakeHookAwareChecker) HonorsHookAllow(name string, input map[string]any) bool {
 	return !c.refuseHookAllow
 }
 
 func TestPreToolUseAllowOverridesPermissionPrompt(t *testing.T) {
-	inner := &captureCoreTool{}
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{PermissionAllow: true}}
-	checker := &fakePreToolPermissionChecker{}
-	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
-
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	checker := &fakeHookAwareChecker{}
+	if d := ask(t, HookedPermission(hooks, checker), map[string]any{"command": "git status"}); d.Block {
+		t.Fatalf("the gate refused: %s", d.Reason)
 	}
 	if checker.called {
 		t.Fatal("permission checker should not run after PreToolUse allow")
@@ -106,32 +97,21 @@ func TestPreToolUseAllowOverridesPermissionPrompt(t *testing.T) {
 // the waiver does not hold — a deny rule, the circuit breaker, a confirmation
 // tier or an explicit ask rule — the call is gated as if no hook had spoken.
 func TestPreToolUseAllowStillGatedWhenNotHonored(t *testing.T) {
-	inner := &captureCoreTool{}
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{PermissionAllow: true}}
-	checker := &fakePreToolPermissionChecker{refuseHookAllow: true}
-	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
-
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "rm -rf important/"})})
-	if err == nil {
+	checker := &fakeHookAwareChecker{refuseHookAllow: true}
+	if d := ask(t, HookedPermission(hooks, checker), map[string]any{"command": "rm -rf important/"}); !d.Block {
 		t.Fatal("expected the gate to block the call")
 	}
 	if !checker.called {
 		t.Fatal("permission checker should run when the hook allow is not honored")
 	}
-	if inner.input != nil {
-		t.Fatalf("tool ran despite the gate refusing the call, input %#v", inner.input)
-	}
 }
 
 func TestPreToolUseAskForcesPermissionPrompt(t *testing.T) {
-	inner := &captureCoreTool{}
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{ForceAsk: true, PermissionReason: "explain this command"}}
-	checker := &fakePreToolPermissionChecker{allow: true}
-	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
-
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	checker := &fakeHookAwareChecker{allow: true}
+	if d := ask(t, HookedPermission(hooks, checker), map[string]any{"command": "git status"}); d.Block {
+		t.Fatalf("the gate refused: %s", d.Reason)
 	}
 	if !checker.called || !checker.forcePrompt || checker.reason != "explain this command" {
 		t.Fatalf("permission checker received forcePrompt=%v reason=%q called=%v", checker.forcePrompt, checker.reason, checker.called)
@@ -139,26 +119,19 @@ func TestPreToolUseAskForcesPermissionPrompt(t *testing.T) {
 }
 
 func TestPreToolUseContinueFalseBlocksWithSystemMessage(t *testing.T) {
-	inner := &captureCoreTool{}
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{ShouldContinue: false, ShouldBlock: true, AdditionalContext: "stop here"}}
-	tools := WithPreToolUseHooks(core.NewTools(inner), hooks)
-
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
-	if err == nil || err.Error() != "blocked: stop here" {
-		t.Fatalf("Execute returned error %v", err)
+	d := ask(t, HookedPermission(hooks, nil), map[string]any{"command": "git status"})
+	if !d.Block || d.Reason != "stop here" {
+		t.Fatalf("decision = %+v, want a block reading \"stop here\"", d)
 	}
 }
 
 func TestPreToolUseAskWinsOverAllow(t *testing.T) {
-	inner := &captureCoreTool{}
 	// Two hooks disagree: one allows, one asks. The user must still be prompted.
 	hooks := &fakeHookHandler{outcome: hook.HookOutcome{PermissionAllow: true, ForceAsk: true, PermissionReason: "double-check"}}
-	checker := &fakePreToolPermissionChecker{allow: true}
-	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
-
-	_, err := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": "git status"})})
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	checker := &fakeHookAwareChecker{allow: true}
+	if d := ask(t, HookedPermission(hooks, checker), map[string]any{"command": "git status"}); d.Block {
+		t.Fatalf("the gate refused: %s", d.Reason)
 	}
 	if !checker.called || !checker.forcePrompt {
 		t.Fatalf("expected a forced prompt despite allow; called=%v forcePrompt=%v", checker.called, checker.forcePrompt)

@@ -68,9 +68,57 @@ type Agent interface {
 	InterruptCurrentTurn() <-chan struct{}
 }
 
+// Gate is asked before a tool runs: it may refuse the call, rewrite the
+// arguments the model sent, or vote to end the turn. One function for the
+// whole toolset — the SDK's PreTool hook — rather than a decorator around
+// every member.
+//
+// A constructor that returns one is named for the subject it answers about,
+// not for its type: tool.Permission, tool.HookedPermission, subagent.activity.
+// The field, the type and Gates already say "gate" three times at every call
+// site.
+type Gate func(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error)
+
+// Gates asks each in order and takes the first refusal, which is the rule the
+// loop applies to several PreTool hooks. An edit to the arguments carries
+// forward to the gate after it, so a rewrite and a check can be separate
+// answers to separate questions.
+func Gates(gates ...Gate) Gate {
+	live := make([]Gate, 0, len(gates))
+	for _, g := range gates {
+		if g != nil {
+			live = append(live, g)
+		}
+	}
+	switch len(live) {
+	case 0:
+		return nil
+	case 1:
+		return live[0]
+	}
+	return func(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error) {
+		var out sdkagent.Decision
+		for _, g := range live {
+			d, err := g(ctx, c)
+			if err != nil {
+				return sdkagent.Decision{}, err
+			}
+			if d.Block {
+				return d, nil
+			}
+			if d.Arguments != "" {
+				out.Arguments = d.Arguments
+				c.Call.Input = d.Arguments
+			}
+			out.Terminate = out.Terminate || d.Terminate
+		}
+		return out, nil
+	}
+}
+
 // Config builds an agent. Client, System and Tools are required; NewAgent
-// panics without them. Permission is the tool layer's — wrap Tools with
-// tool.WithPermission first. See docs/concepts/permission-model.md.
+// panics without them. Permission goes in Gate — see
+// docs/concepts/permission-model.md.
 type Config struct {
 	ID string
 	// Client is the model for one turn. A function of the conversation because
@@ -84,9 +132,12 @@ type Config struct {
 	// InputLimit is the prompt budget auto-compaction measures against. Nil or
 	// zero turns it off. Not read off the client: the window is the model's
 	// unless a setting overrides it, and the setting is the application's.
-	InputLimit              func() int
-	System                  System                                                    // required: system prompt layers
-	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
+	InputLimit func() int
+	System     System // required: system prompt layers
+	Tools      Tools  // required
+	// Gate is asked before each tool runs and may refuse the call or rewrite
+	// what the model sent. Nil lets everything through.
+	Gate                    Gate
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
 	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
@@ -158,6 +209,7 @@ func NewAgent(cfg Config) Agent {
 		system:      cfg.System,
 		tools:       cfg.Tools,
 		compactFunc: cfg.CompactFunc,
+		gateFunc:    cfg.Gate,
 		client:      cfg.Client,
 		callOptions: cfg.CallOptions,
 		inputLimit:  cfg.InputLimit,

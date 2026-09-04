@@ -379,8 +379,8 @@ func inferenceDigest(inf *sdkagent.Inference) transcript.InferenceRecord {
 		schemas = append(schemas, t.Schema)
 	}
 	return transcript.InferenceRecord{
-		SystemDigest: sha256Hex([]byte(inf.System)),
-		ToolsDigest:  toolsDigest(schemas),
+		SystemDigest: transcript.DigestSystem(inf.System),
+		ToolsDigest:  transcript.DigestTools(toolViews(schemas)),
 		MessageIDs:   messageIDs(inf.Messages),
 	}
 }

@@ -10,7 +10,9 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // BuildParams contains all values needed to construct a core.Agent.
@@ -160,7 +162,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		CallOptions: client.CallOptions,
 		InputLimit:  client.InputLimit,
 		System:      sys,
-		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
+		Tools:       tools,
+		Gate:        tool.HookedPermission(p.HookEngine, pg),
 		CompactFunc: compactFunc,
 		OnEvent:     p.OnEvent,
 
@@ -169,4 +172,67 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	})
 
 	return ag, pg, nil
+}
+
+// RunOnce answers one message with no session around it: build the agent, hand
+// it the message, run one exchange, and report what the model said.
+//
+// It is the direct path — Append then ThinkAct, the same one a subagent takes —
+// because print mode has no inbox to wait on and nothing to interrupt. onText
+// receives the answer as it streams, so a caller can print it live.
+//
+// Permission is the caller's: a run with nobody at the keyboard cannot prompt,
+// so BuildParams.PermissionRules decides alone.
+func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (*core.Result, error) {
+	// The project's own instructions, the way the interactive path reads them.
+	// A run without them answers differently in the same repo, which is the
+	// one thing a headless run must not do.
+	message = withInstructions(p.CWD, message)
+
+	if onText != nil {
+		caller := p.OnEvent
+		p.OnEvent = func(ev core.Event) {
+			if u, ok := ev.(sdkagent.MessageUpdate); ok {
+				if text := u.Text(); text != "" {
+					onText(text)
+				}
+			}
+			if caller != nil {
+				caller(ev)
+			}
+		}
+	}
+	ag, gate, err := buildAgent(p)
+	if err != nil {
+		return nil, err
+	}
+	if gate != nil {
+		defer gate.Close()
+	}
+	ag.Append(ctx, message)
+	return ag.ThinkAct(ctx)
+}
+
+// withInstructions attaches the AGENTS.md chain to the message that opens a
+// headless run, as a reminder rather than a prompt section — the same shape
+// and the same scopes the interactive path uses, so what the model is told
+// does not depend on which one asked.
+func withInstructions(cwd string, msg core.Message) core.Message {
+	var user, project []string
+	for _, f := range system.LoadMemoryFiles(cwd) {
+		if f.Level == "global" {
+			user = append(user, f.Content)
+		} else {
+			project = append(project, f.Content)
+		}
+	}
+	reminders := []string{
+		reminder.WrapMemory("user", strings.Join(user, "\n\n")),
+		reminder.WrapMemory("project", strings.Join(project, "\n\n")),
+	}
+	text := reminder.AttachToContent(msg.Text(), reminders)
+	if text == msg.Text() {
+		return msg
+	}
+	return core.UserMessage(text, nil)
 }
