@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -80,7 +81,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	m.conv.Append(core.ChatMessage{
 		Role:           core.ChatUser,
 		Content:        core.FormatCompactSummary(info.Summary),
-		DisplayContent: fmt.Sprintf("≡ Conversation compacted — %d messages summarized (scroll up for history)", info.OriginalCount),
+		DisplayContent: fmt.Sprintf("≡ Conversation compacted — %s summarized (scroll up for history)", kit.Plural(info.OriginalCount, "message")),
 	})
 
 	trigger := info.Trigger
@@ -128,6 +129,13 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 // Only when there is no active agent does it drive OnCompacted directly so the
 // next session start still seeds the summary.
 func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
+	if errors.Is(msg.Err, conv.ErrNothingToCompact) {
+		// Not a failure: there was nothing to do. Saying so is the point —
+		// pressing /compact on a summary used to spend a model call to
+		// summarise it again, a little worse each time.
+		m.conv.Compact.Complete("Nothing to compact — the conversation is already this short.", false)
+		return tea.Batch(m.CommitMessages()...)
+	}
 	if msg.Err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Err), true)
 		return tea.Batch(m.CommitMessages()...)

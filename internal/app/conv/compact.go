@@ -4,6 +4,7 @@ package conv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -64,8 +65,18 @@ func (c *CompactState) Complete(result string, isError bool) {
 	}
 }
 
+// ErrNothingToCompact says the conversation is already as short as summarising
+// can make it. The automatic paths refuse below the same floor; this one is
+// asked for by a person, so it says so rather than spending a model call to
+// summarise a summary — which loses a little more of the conversation each
+// time it is pressed.
+var ErrNothingToCompact = errors.New("the conversation is already too short to shorten")
+
 func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message, focus string) (summary string, count int, err error) {
 	count = len(msgs)
+	if count < core.MinMessagesToCompact {
+		return "", count, ErrNothingToCompact
+	}
 
 	conversationText := core.BuildCompactionText(msgs)
 

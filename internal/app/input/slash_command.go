@@ -695,7 +695,11 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	if len(c.env.Conversation.Messages) == 0 {
 		return "No active LLM session. Send a message first to initialize the client.", nil, nil
 	}
-	if len(c.env.Conversation.Messages) < 3 {
+	// Count what would actually be summarised, not the rows on screen: a
+	// notice is a row the model never sees, so counting rows let a lone
+	// summary through and summarised the summary.
+	sendable := c.env.Conversation.ConvertToProvider()
+	if len(sendable) < core.MinMessagesToCompact {
 		return "Not enough conversation history to compact.", nil, nil
 	}
 	if c.env.Conversation.Stream.Active {
@@ -704,7 +708,7 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	c.env.Conversation.Compact.Active = true
 	c.env.Conversation.Compact.SummaryFocus = strings.TrimSpace(args)
 	c.env.Conversation.Compact.Phase = conv.PhaseSummarizing
-	c.env.Conversation.Compact.Count = len(c.env.Conversation.ConvertToProvider())
+	c.env.Conversation.Compact.Count = len(sendable)
 	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(c.env.BuildCompactRequest(c.env.Conversation.Compact.SummaryFocus, "manual"))), nil
 }
 

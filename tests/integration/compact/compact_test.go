@@ -2,6 +2,7 @@ package compact_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -49,6 +50,7 @@ func TestCompact_WithFocus(t *testing.T) {
 	msgs := []core.Message{
 		core.UserMessage("write tests", nil),
 		core.AssistantMessage("ok", "", nil),
+		core.UserMessage("and run them", nil),
 	}
 
 	_, _, err := conv.CompactConversation(context.Background(), c, msgs, "testing")
@@ -64,20 +66,36 @@ func TestCompact_WithFocus(t *testing.T) {
 	}
 }
 
-func TestCompact_EmptyConversation(t *testing.T) {
-	c, _ := newFakeClient(
-		llm.CompletionResponse{Content: ai.TextContent("Empty summary"), StopReason: "end_turn"},
-	)
-
-	summary, count, err := conv.CompactConversation(context.Background(), c, nil, "")
-	if err != nil {
-		t.Fatalf("CompactConversation() error: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("expected count 0, got %d", count)
-	}
-	if summary == "" {
-		t.Error("expected non-empty summary even for empty conversation")
+// A conversation with nothing to lose is not compacted. Summarising it spends
+// a model call to make the prompt no shorter, and pressing /compact on a
+// summary summarises the summary — a little worse each time.
+func TestAConversationTooShortToShortenIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		msgs []core.Message
+	}{
+		{"nothing at all", nil},
+		{"a lone summary", []core.Message{core.UserMessage("Previous context:\nthe summary", nil)}},
+		{"an opening turn and its reply", []core.Message{
+			core.UserMessage("hi", nil),
+			core.AssistantMessage("hello", "", nil),
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, fake := newFakeClient(
+				llm.CompletionResponse{Content: ai.TextContent("a summary nobody asked for"), StopReason: ai.StopEndTurn},
+			)
+			_, count, err := conv.CompactConversation(context.Background(), c, tc.msgs, "")
+			if !errors.Is(err, conv.ErrNothingToCompact) {
+				t.Fatalf("err = %v, want ErrNothingToCompact", err)
+			}
+			if count != len(tc.msgs) {
+				t.Errorf("count = %d, want %d — the caller is told what it has", count, len(tc.msgs))
+			}
+			if len(fake.Calls) != 0 {
+				t.Errorf("spent %d model calls on a conversation it refused to shorten", len(fake.Calls))
+			}
+		})
 	}
 }
 
@@ -89,6 +107,7 @@ func TestCompact_WithoutOptionalSections_LeavesPromptPlain(t *testing.T) {
 	msgs := []core.Message{
 		core.UserMessage("inspect session state", nil),
 		core.AssistantMessage("checking now", "", nil),
+		core.UserMessage("what did you find", nil),
 	}
 
 	_, _, err := conv.CompactConversation(context.Background(), c, msgs, "")
