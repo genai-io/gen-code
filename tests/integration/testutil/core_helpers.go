@@ -104,7 +104,6 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 
-		CWD:      cwd,
 		MaxSteps: 100,
 	}), fakeLLM
 }
@@ -138,7 +137,6 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 		Client:   stubClient(fakeLLM),
 		System:   core.NewSystem(),
 		Tools:    tools,
-		CWD:      cwd,
 		MaxSteps: 100,
 	}), fakeLLM
 }
@@ -154,7 +152,6 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 		System: core.NewSystem(),
 		Tools:  buildAllRegisteredTools(cwd),
 
-		CWD:      cwd,
 		MaxSteps: maxSteps,
 	}), fakeLLM
 }

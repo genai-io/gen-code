@@ -457,7 +457,6 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		System:      sys,
 		Tools:       coreTools,
 		CompactFunc: subagentCompactFunc(llmClient),
-		CWD:         agentCwd,
 		MaxSteps:    rc.maxSteps,
 		OutboxBuf:   -1,
 		OnEvent:     onEvent,

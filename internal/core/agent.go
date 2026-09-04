@@ -1,6 +1,10 @@
 package core
 
 import (
+	"errors"
+	"iter"
+
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -126,17 +130,34 @@ type Config struct {
 	System                  System                                                    // required: system prompt layers
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
-	CWD                     string
-	MaxSteps                int           // max LLM inference steps per turn, 0 = unlimited
-	MaxOutputRecovery       int           // max retries on truncated output, 0 = use default (3)
-	MaxTurnRetries          int           // max retries per inference step on transient stream errors, 0 = use default (2)
-	StreamFirstChunkTimeout time.Duration // abort if no first chunk arrives within this long, 0 = use default (5m)
-	StreamIdleTimeout       time.Duration // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
-	InboxBuf                int           // inbox channel buffer size, default 16
-	OutboxBuf               int           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
+	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
+	MaxOutputRecovery       int                                                       // max retries on truncated output, 0 = use default (3)
+	MaxTurnRetries          int                                                       // max retries per inference step on transient stream errors, 0 = use default (2)
+	StreamFirstChunkTimeout time.Duration                                             // abort if no first chunk arrives within this long, 0 = use default (5m)
+	StreamIdleTimeout       time.Duration                                             // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
+	InboxBuf                int                                                       // inbox channel buffer size, default 16
+	OutboxBuf               int                                                       // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
 	// OnEvent observes lifecycle events synchronously, even when OutboxBuf is -1.
 	OnEvent func(Event)
 }
+
+// Defaults for the exchange the SDK runs on San's behalf. Deliberately small:
+// the goal is to ride out a brief blip — provider overload, a rate limit, a
+// dropped connection — not to mask a sustained outage.
+const (
+	defaultMaxTurnRetries = 2
+	// defaultMaxOutputRecovery bounds how many times a model cut off by the
+	// output cap is asked to carry on. Three, because a fourth continuation of
+	// the same answer is a prompt problem rather than a budget one.
+	defaultMaxOutputRecovery = 3
+	// defaultFirstChunkTimeout bounds time-to-first-chunk. It is generous
+	// because a reasoning model may think for a while (and emit nothing) before
+	// the first token; it exists only to catch a connection that hangs at open.
+	defaultFirstChunkTimeout = 5 * time.Minute
+	// defaultStreamIdleTimeout bounds the gap *between* chunks once a response
+	// has started — a much tighter signal that an in-flight stream has stalled.
+	defaultStreamIdleTimeout = 60 * time.Second
+)
 
 // NewAgent creates an agent from config.
 //
@@ -162,6 +183,9 @@ func NewAgent(cfg Config) Agent {
 	if cfg.MaxTurnRetries <= 0 {
 		cfg.MaxTurnRetries = defaultMaxTurnRetries
 	}
+	if cfg.MaxOutputRecovery <= 0 {
+		cfg.MaxOutputRecovery = defaultMaxOutputRecovery
+	}
 	if cfg.StreamFirstChunkTimeout <= 0 {
 		cfg.StreamFirstChunkTimeout = defaultFirstChunkTimeout
 	}
@@ -175,23 +199,44 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:                cfg.ID,
-		system:            cfg.System,
-		tools:             cfg.Tools,
-		compactFunc:       cfg.CompactFunc,
-		client:            cfg.Client,
-		callOptions:       cfg.CallOptions,
-		inputLimit:        cfg.InputLimit,
-		cwd:               cfg.CWD,
-		maxSteps:          cfg.MaxSteps,
-		maxOutputRecovery: cfg.MaxOutputRecovery,
-		maxTurnRetries:    cfg.MaxTurnRetries,
-		firstChunkTimeout: cfg.StreamFirstChunkTimeout,
-		idleTimeout:       cfg.StreamIdleTimeout,
-		inbox:             make(chan Inbound, cfg.InboxBuf),
-		outbox:            outbox,
-		onEvent:           cfg.OnEvent,
+		id:          cfg.ID,
+		system:      cfg.System,
+		tools:       cfg.Tools,
+		compactFunc: cfg.CompactFunc,
+		client:      cfg.Client,
+		callOptions: cfg.CallOptions,
+		inputLimit:  cfg.InputLimit,
+		inbox:       make(chan Inbound, cfg.InboxBuf),
+		outbox:      outbox,
+		onEvent:     cfg.OnEvent,
 	}
+
+	// The SDK agent cannot exist without a client, and San does not have one
+	// yet: which client answers a turn depends on what that turn sends, so it
+	// is asked for in PreInfer with the conversation in hand. This placeholder
+	// is the handle the agent is built on and is replaced on every call before
+	// it is ever used — and if the application cannot produce one, the turn
+	// fails with its reason rather than construction panicking with it.
+	inner, err := sdkagent.New(unconfigured,
+		sdkagent.WithMaxSteps(cfg.MaxSteps),
+		// Two budgets that used to be one. WithRetry replays a call the loop
+		// knows how to replay; WithContinuation asks a model cut off by the
+		// output cap to carry on, in San's own words.
+		//
+		// The +1 is the difference between the two words: San's setting counts
+		// retries, the SDK's counts attempts, and two retries is three goes.
+		sdkagent.WithRetry(cfg.MaxTurnRetries+1, backoffBase),
+		sdkagent.WithContinuation(cfg.MaxOutputRecovery, TruncatedResumePrompt),
+		sdkagent.WithStreamTimeout(cfg.StreamFirstChunkTimeout, cfg.StreamIdleTimeout),
+		// Every message in the conversation gets a name, which is what the
+		// session's append-only writer dedupes by.
+		sdkagent.WithMessageIDs(NewMessageID),
+		sdkagent.WithHooks(a.hooks()),
+	)
+	if err != nil {
+		panic("core.NewAgent: " + err.Error())
+	}
+	a.inner = inner
 	// Mirror system + tools mutations onto the event bus. Attach after
 	// construction so each registry replays its initial members back to the
 	// observer — the recorder sees a complete event chain from t0.
@@ -378,4 +423,20 @@ func SystemChangeEvent(agentID string, c SystemChange) Event {
 
 func ToolsChangeEvent(agentID string, c ToolsChange) Event {
 	return Event{Type: OnToolsChange, Source: agentID, Data: c}
+}
+
+// unconfigured is the client an agent is built on before it has a real one.
+// Every call replaces it in PreInfer; reaching it at all would mean San handed
+// the loop an agent it never configured, so it says exactly that rather than
+// failing as though a model had been asked and had not answered.
+var unconfigured = ai.NewClientWithDriver(unconfiguredDriver{}, ai.Model{ID: "unconfigured", API: "stub"})
+
+type unconfiguredDriver struct{}
+
+func (unconfiguredDriver) Name() string { return "unconfigured" }
+
+func (unconfiguredDriver) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
+	return func(yield func(ai.Delta, error) bool) {
+		yield(ai.Delta{}, errors.New("core: no model was configured for this turn"))
+	}
 }

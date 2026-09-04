@@ -9,7 +9,6 @@ import (
 
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -46,9 +45,11 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 		UserMessage("tell me more", nil),
 	})
 
-	if !a.compact(context.Background()) {
-		t.Fatal("compact() returned false")
+	shorter, err := a.summarise(context.Background(), a.Messages(), "auto")
+	if err != nil || shorter == nil {
+		t.Fatalf("summarise() gave nothing: %v", err)
 	}
+	a.SetMessages(shorter)
 
 	var summaryAppend *Message
 	var info *CompactInfo
@@ -80,7 +81,7 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 		t.Fatalf("SummaryMessageID %q must equal the appended summary ID %q", info.SummaryMessageID, summaryAppend.ID)
 	}
 
-	msgs := a.snapshot()
+	msgs := a.Messages()
 	if len(msgs) != 1 || msgs[0].ID != summaryAppend.ID {
 		t.Fatalf("post-compact chain must be the single summary, got %d messages", len(msgs))
 	}
@@ -95,10 +96,14 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(newBlockingLLM(1)),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:       "test",
+		Client:   testClient(&talkingLLM{text: "done"}),
+		System:   NewSystem(),
+		Tools:    NewTools(),
+		MaxSteps: 1,
+		// One token of room, so the first boundary is already over budget and
+		// the hook fires on the exchange below.
+		InputLimit: func() int { return 1 },
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
 			return "the summary", nil
 		},
@@ -117,98 +122,45 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 		UserMessage("tell me more", nil),
 	})
 
-	if !a.compact(context.Background()) {
-		t.Fatal("compact() returned false")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := a.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
 	}
 
 	startIdx, compactIdx := -1, -1
 	for i, e := range captured {
 		switch e.Type {
 		case OnCompactStart:
-			cs, ok := e.CompactStart()
-			if !ok {
+			if _, ok := e.CompactStart(); !ok {
 				t.Fatalf("OnCompactStart carried %T, want CompactStart", e.Data)
 			}
-			if cs.Count != 3 {
-				t.Fatalf("CompactStart.Count = %d, want 3", cs.Count)
+			if startIdx < 0 {
+				startIdx = i
 			}
-			startIdx = i
 		case OnCompact:
-			compactIdx = i
+			if compactIdx < 0 {
+				compactIdx = i
+			}
 		}
 	}
 
 	if startIdx < 0 {
-		t.Fatal("compact did not emit OnCompactStart")
+		t.Fatal("compaction did not announce its start")
 	}
 	if compactIdx < 0 {
-		t.Fatal("compact did not emit OnCompact")
+		t.Fatal("compaction did not record its boundary")
 	}
 	if startIdx > compactIdx {
 		t.Fatalf("OnCompactStart (idx %d) must precede OnCompact (idx %d)", startIdx, compactIdx)
 	}
 }
 
-// Regression for #338: the compaction check must test the full prompt, not the
-// uncached delta InputTokens holds under prompt caching (see TotalInputTokens).
-func TestCompactionCheckCountsCachedPromptTokens(t *testing.T) {
-	resp := InferResponse{Usage: Usage{
-		InputTokens:              1_200,
-		CacheReadInputTokens:     170_000,
-		CacheCreationInputTokens: 20_000,
-	}}
-
-	const limit = 200_000
-	if NeedsCompaction(resp.InputTokens, limit) {
-		t.Fatal("precondition: uncached delta alone must look far below the threshold")
-	}
-	if !NeedsCompaction(resp.TotalInputTokens(), limit) {
-		t.Fatalf("NeedsCompaction(%d, %d) = false, want true", resp.TotalInputTokens(), limit)
-	}
-}
-
-// The provider's own count wins whenever it exists — the text estimate is a
-// fallback, never a correction.
-func TestPromptTokensOrEstimatePrefersMeasurement(t *testing.T) {
-	a := newAgentForPromptSizing(t)
-	a.SetMessages([]Message{UserMessage(strings.Repeat("x", 400_000), nil)})
-	a.lastTotalInputTokens = 12_345
-
-	if got := a.promptTokensOrEstimate(); got != 12_345 {
-		t.Fatalf("promptTokensOrEstimate() = %d, want the measured 12345", got)
-	}
-}
-
-// With no measured count the estimate stands in. It has to notice a rebuilt
-// agent seeded with a long history (session resume, model switch, toolset
-// drift), whose first prompt can already be over the threshold, without
-// tipping over on an ordinary short conversation.
-func TestPromptTokensOrEstimateFallsBackToEstimate(t *testing.T) {
-	const limit = 200_000
-	cases := []struct {
-		name           string
-		content        string
-		wantCompaction bool
-	}{
-		{"seeded history", strings.Repeat("x", 800_000), true},
-		{"fresh conversation", "fix the login bug", false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			a := newAgentForPromptSizing(t)
-			a.SetMessages([]Message{UserMessage(c.content, nil)})
-
-			got := a.promptTokensOrEstimate()
-			if got == 0 {
-				t.Fatal("promptTokensOrEstimate() = 0, want an estimate")
-			}
-			if NeedsCompaction(got, limit) != c.wantCompaction {
-				t.Fatalf("NeedsCompaction(%d, %d) = %v, want %v",
-					got, limit, !c.wantCompaction, c.wantCompaction)
-			}
-		})
-	}
-}
+// The #338 regression — measuring the uncached delta instead of the whole
+// prompt, so auto-compaction never fired — is gone by construction:
+// PreStepContext.Tokens is the whole prompt, measured fresh at every
+// boundary, tool schemas included. There is no remembered figure to get
+// wrong and nothing here left to assert.
 
 func newAgentForPromptSizing(t *testing.T) *agent {
 	t.Helper()
@@ -225,25 +177,8 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 	return ag.(*agent)
 }
 
-// Compaction collapses the chain to a single summary, so the measurement taken
-// before it must not survive: it would still read "full" against the tiny new
-// chain and compact again on every following step. Zero suppresses the check
-// until the next inference reports a fresh figure.
-func TestApplyCompactionClearsLastTotalInputTokens(t *testing.T) {
-	a := newAgentForPromptSizing(t)
-	a.SetMessages([]Message{
-		UserMessage("first", nil),
-		{Role: ai.RoleAssistant, Content: ai.TextContent("reply")},
-		UserMessage("second", nil),
-	})
-	a.lastTotalInputTokens = 195_000
-
-	a.applyCompaction(context.Background(), "summary", 3, "manual")
-
-	if a.lastTotalInputTokens != 0 {
-		t.Fatalf("lastTotalInputTokens = %d, want 0 after compaction", a.lastTotalInputTokens)
-	}
-}
+// Nothing to clear any more: the size is measured fresh at each boundary,
+// so a just-shortened conversation cannot still read as full.
 
 // A SigCompact applies an in-place compaction (replacing the chain with the
 // precomputed summary, recording the manual boundary) and must NOT start a
@@ -273,7 +208,7 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 		t.Fatal("SigCompact must not start a turn")
 	}
 
-	msgs := a.snapshot()
+	msgs := a.Messages()
 	if len(msgs) != 1 || !strings.Contains(msgs[0].Text(), "the summary") {
 		t.Fatalf("SigCompact should compact in place to the single summary, got %d messages", len(msgs))
 	}
@@ -496,61 +431,53 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timeout waiting for: %s", what)
 }
 
-func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
-	tests := []struct {
-		name  string
-		tasks []agentToolTask
-		want  bool
-	}{
-		{
-			name: "all read only",
-			tasks: []agentToolTask{
-				{call: ToolCall{Name: "Read"}},
-				{call: ToolCall{Name: "WebFetch"}},
-				{call: ToolCall{Name: "WebSearch"}},
-			},
-			want: true,
-		},
-		{
-			name: "edit serializes batch",
-			tasks: []agentToolTask{
-				{call: ToolCall{Name: "Read"}},
-				{call: ToolCall{Name: "Edit"}},
-			},
-			want: false,
-		},
-		{
-			name: "bash serializes batch",
-			tasks: []agentToolTask{
-				{call: ToolCall{Name: "Bash"}},
-				{call: ToolCall{Name: "Read"}},
-			},
-			want: false,
-		},
+// The rule that used to live in the loop — a batch runs in parallel only if
+// every call in it is read-only, or every one spawns an agent — is now a
+// property each tool declares. What is checked here is the translation: a tool
+// that may touch shared state comes back marked, and one that only looks comes
+// back as it went in.
+func TestOnlyTheToolsThatMayTouchAnythingAreMarkedSequential(t *testing.T) {
+	tools := []Tool{
+		namedTool("Read"), namedTool("WebFetch"), namedTool("WebSearch"), namedTool("LSP"),
+		namedTool("Agent"), namedTool("SendMessage"),
+		namedTool("Edit"), namedTool("Bash"), namedTool("Write"),
+	}
+	ag := NewAgent(Config{
+		ID: "test", Client: testClient(newBlockingLLM(1)),
+		System: NewSystem(), Tools: NewTools(tools...),
+	}).(*agent)
+
+	unmarked := map[string]bool{}
+	for _, t := range ag.offered() {
+		// Every tool is wrapped once to carry the call's ID; a marked one is
+		// wrapped again by Sequential, so it is no longer that inner wrapper.
+		_, plain := t.(withCallID)
+		unmarked[t.Schema().Name] = plain
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := canExecuteToolBatchInParallel(tt.tasks); got != tt.want {
-				t.Fatalf("canExecuteToolBatchInParallel() = %v, want %v", got, tt.want)
-			}
-		})
+	for _, name := range []string{"Read", "WebFetch", "WebSearch", "LSP", "Agent", "SendMessage"} {
+		if !unmarked[name] {
+			t.Errorf("%s was marked sequential; it only looks at things", name)
+		}
+	}
+	for _, name := range []string{"Edit", "Bash", "Write"} {
+		if unmarked[name] {
+			t.Errorf("%s was not marked sequential; it may touch shared state", name)
+		}
 	}
 }
 
-// The turn loop must recognize the tag the llm layer attaches, not the
-// provider wording behind it — that vocabulary lives in the llm layer now.
-func TestIsPromptTooLongReadsTheContextExceededTag(t *testing.T) {
-	if !isPromptTooLong(fmt.Errorf("infer: %w", stubContextExceeded{})) {
-		t.Fatal("isPromptTooLong() = false for a tagged error, want true")
-	}
-	if isPromptTooLong(errors.New("prompt is too long: 213423 tokens > 200000")) {
-		t.Fatal("isPromptTooLong() = true for an untagged error; core must not match provider text")
-	}
-	if isPromptTooLong(nil) {
-		t.Fatal("isPromptTooLong(nil) = true, want false")
-	}
+type stubTool struct{ name string }
+
+func namedTool(name string) Tool { return stubTool{name: name} }
+
+func (s stubTool) Schema() ToolSchema { return ToolSchema{Name: s.name} }
+func (s stubTool) Run(context.Context, ai.ToolCall) (sdkagent.Result, error) {
+	return sdkagent.TextResult("ok"), nil
 }
+
+// ai.IsContextExceeded is the SDK's, and the table of provider phrasings
+// with it.
 
 type stubContextExceeded struct{}
 
@@ -617,7 +544,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	result, err := ag.ThinkAct(ctx)
 	if !errors.Is(err, context.Canceled) {
@@ -662,7 +589,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -679,7 +606,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 
 	// Asked for again on the next call, so a mid-session change lands.
 	effort = ai.EffortHigh
-	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("again")})
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("again")})
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
@@ -707,7 +634,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -733,16 +660,40 @@ func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	result, err := ag.ThinkAct(ctx)
 	if err == nil {
-		t.Fatal("ThinkAct returned nil error for an unreachable model")
+		t.Fatal("ThinkAct returned nil error for an unconfigured model")
 	}
 	if result == nil || result.StopReason != StopError {
 		t.Fatalf("result = %+v, want a turn reported as StopError", result)
+	}
+}
+
+// A refusal and a stop sequence end a turn. Only a failed inference is
+// StopError, because Run reads that one to mean the agent died and skips the
+// TurnEvent — so anything else landing there would leave the interface waiting
+// on a boundary that never comes.
+func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
+	for _, tc := range []struct {
+		sdk  sdkagent.StopReason
+		want StopReason
+	}{
+		{sdkagent.StopEndTurn, StopEndTurn},
+		{sdkagent.StopRefusal, StopEndTurn},
+		{sdkagent.StopSequence, StopEndTurn},
+		{sdkagent.StopMaxTokens, StopMaxOutputRecoveryExhausted},
+		{sdkagent.StopMaxSteps, StopMaxSteps},
+		{sdkagent.StopCanceled, StopCancelled},
+		{sdkagent.StopTerminated, StopHook},
+		{sdkagent.StopError, StopError},
+	} {
+		if got := stopReasonOf(tc.sdk); got != tc.want {
+			t.Errorf("stopReasonOf(%q) = %q, want %q", tc.sdk, got, tc.want)
+		}
 	}
 }

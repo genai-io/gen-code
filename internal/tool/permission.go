@@ -34,7 +34,17 @@ func (pt *permissionTools) Get(name string) core.Tool {
 	return &permissionTool{inner: t, check: pt.check}
 }
 
-func (pt *permissionTools) All() []core.Tool                      { return pt.inner.All() }
+// All wraps like Get does: a caller that asks for the whole set must get the
+// same gated tools as one that asks for them by name.
+func (pt *permissionTools) All() []core.Tool {
+	inner := pt.inner.All()
+	out := make([]core.Tool, 0, len(inner))
+	for _, t := range inner {
+		out = append(out, &permissionTool{inner: t, check: pt.check})
+	}
+	return out
+}
+
 func (pt *permissionTools) Add(tool core.Tool, caller string)     { pt.inner.Add(tool, caller) }
 func (pt *permissionTools) Remove(name, caller string)            { pt.inner.Remove(name, caller) }
 func (pt *permissionTools) Schemas() []core.ToolSchema            { return pt.inner.Schemas() }
