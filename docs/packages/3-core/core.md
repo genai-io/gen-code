@@ -134,14 +134,17 @@ in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
 `System`), `internal/tool/` (for `Tool`/`Tools`), and
 `internal/llm` (for `LLM`).
 
-Two implementation files back `NewAgent`, kept inside `core` because the
+Three implementation files back `NewAgent`, kept inside `core` because the
 mailbox is inseparable from the contract:
 
 - `run.go` — the mailbox itself: an inbox, an outbox, and the loop that waits
   on one and reports to the other. San's own shape, which is why it stays.
-- `exchange.go` — one exchange: driving `sdkagent.Agent`, translating what it
-  reports into San's events, and the three hooks San gets between the loop and
-  the model.
+- `exchange.go` — one exchange: the toolset it offers, the hooks it installs,
+  driving `sdkagent.Agent` through it, and turning every event the loop reports
+  into San's.
+- `compact.go` — shortening a conversation that has outgrown its window. Not
+  the exchange's, though two of its hooks ask for it: `/compact` asks for the
+  same thing through the inbox, so it belongs to neither file that calls it.
 
 ## Lifecycle
 
