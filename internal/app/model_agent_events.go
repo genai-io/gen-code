@@ -98,7 +98,6 @@ func (m *model) OnToolResult(tr core.ToolResult) (*core.ToolResult, any) {
 		Content:    tr.Content,
 		IsError:    tr.IsError,
 	}
-	m.persistOverflow(result)
 	return result, details
 }
 

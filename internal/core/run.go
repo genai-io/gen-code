@@ -26,17 +26,18 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id          string
-	system      System
-	tools       Tools
-	compactFunc func(ctx context.Context, msgs []Message) (string, error)
-	gateFunc    Gate
-	client      func(msgs []Message) (*ai.Client, error)
-	callOptions func() []ai.Option
-	inputLimit  func() int
-	inbox       chan Inbound
-	outbox      chan Event
-	onEvent     func(Event)
+	id           string
+	system       System
+	tools        Tools
+	compactFunc  func(ctx context.Context, msgs []Message) (string, error)
+	gateFunc     Gate
+	filterResult ResultFilter
+	client       func(msgs []Message) (*ai.Client, error)
+	callOptions  func() []ai.Option
+	inputLimit   func() int
+	inbox        chan Inbound
+	outbox       chan Event
+	onEvent      func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
@@ -435,6 +436,7 @@ func (a *agent) hooks() sdkagent.Hook {
 	return sdkagent.Hook{
 		PreInfer:     a.preInfer,
 		PreTool:      a.gate,
+		PostTool:     a.filtered,
 		PreStep:      a.preStep,
 		OnInferError: a.onInferError,
 	}
@@ -449,6 +451,17 @@ func (a *agent) gate(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.D
 		return sdkagent.Decision{}, nil
 	}
 	return a.gateFunc(ctx, c)
+}
+
+// filtered is what the model is told this call produced. Nil leaves the result
+// alone, which is what the loop does with no PostTool at all — but a hook that
+// is set and always passes costs a call per tool, so this checks rather than
+// installing an empty one.
+func (a *agent) filtered(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
+	if a.filterResult == nil {
+		return nil, nil
+	}
+	return a.filterResult(ctx, c)
 }
 
 // preInfer points the call at the client this turn's messages ask for, and

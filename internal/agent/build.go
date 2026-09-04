@@ -60,6 +60,11 @@ type BuildParams struct {
 	PermissionReview  PermReviewFunc
 	HookAllowResolver PermHookAllowFunc
 
+	// ResultFilter may replace a tool result before the model is told about it — an
+	// output too large for the window, kept elsewhere and referenced. Nil
+	// sends every result through as it came.
+	ResultFilter core.ResultFilter
+
 	HookEngine   hook.Handler
 	AskUser      tool.AskUserFunc
 	ToolActivity func(toolCallID string, msg string)
@@ -157,15 +162,16 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	}
 
 	ag = core.NewAgent(core.Config{
-		ID:          "main",
-		Client:      client.TurnClient,
-		CallOptions: client.CallOptions,
-		InputLimit:  client.InputLimit,
-		System:      sys,
-		Tools:       tools,
-		Gate:        tool.HookedPermission(p.HookEngine, pg),
-		CompactFunc: compactFunc,
-		OnEvent:     p.OnEvent,
+		ID:           "main",
+		Client:       client.TurnClient,
+		CallOptions:  client.CallOptions,
+		InputLimit:   client.InputLimit,
+		System:       sys,
+		Tools:        tools,
+		Gate:         tool.HookedPermission(p.HookEngine, pg),
+		ResultFilter: p.ResultFilter,
+		CompactFunc:  compactFunc,
+		OnEvent:      p.OnEvent,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
