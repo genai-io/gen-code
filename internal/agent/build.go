@@ -162,7 +162,6 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		System:      sys,
 		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
 		CompactFunc: compactFunc,
-		CWD:         p.CWD,
 		OnEvent:     p.OnEvent,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,

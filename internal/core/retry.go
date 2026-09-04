@@ -7,21 +7,12 @@ import (
 	"time"
 )
 
-// Retry tuning for transient LLM stream failures. These are deliberately
-// small: the goal is to ride out a brief blip (provider overload, a rate
-// limit, a dropped connection), not to mask a sustained outage.
+// Exponential backoff with full jitter, for the retry loops that are not the
+// agent's — llm's one-shot Complete and autopilot's steering call. The agent's
+// own is the SDK's, and shares none of this.
 const (
-	defaultMaxTurnRetries = 2
-	// defaultFirstChunkTimeout bounds time-to-first-chunk. It is generous
-	// because a reasoning model may think for a while (and emit nothing) before
-	// the first token; it exists only to catch a connection that hangs at open.
-	defaultFirstChunkTimeout = 5 * time.Minute
-	// defaultStreamIdleTimeout bounds the gap *between* chunks once a response
-	// has started — a much tighter signal that an in-flight stream has stalled.
-	defaultStreamIdleTimeout = 60 * time.Second
-
-	retryBaseDelay = 500 * time.Millisecond
-	retryMaxDelay  = 30 * time.Second
+	backoffBase = 500 * time.Millisecond
+	backoffMax  = 30 * time.Second
 )
 
 // RetryableError marks a stream error that the turn loop may retry. Classify
@@ -63,13 +54,13 @@ var (
 )
 
 // backoffDelay returns the pre-sleep delay for a 1-based attempt: exponential
-// (base·2^(n-1)) capped at retryMaxDelay, full-jittered by frac (in [0,1)),
+// (base·2^(n-1)) capped at backoffMax, full-jittered by frac (in [0,1)),
 // then floored at `floor` (a server Retry-After hint). Pure, so the policy is
 // unit-testable without a clock.
 func backoffDelay(attempt int, floor time.Duration, frac float64) time.Duration {
-	d := float64(retryBaseDelay) * math.Pow(2, float64(attempt-1))
-	if d > float64(retryMaxDelay) {
-		d = float64(retryMaxDelay)
+	d := float64(backoffBase) * math.Pow(2, float64(attempt-1))
+	if d > float64(backoffMax) {
+		d = float64(backoffMax)
 	}
 	delay := time.Duration(d * frac) // full jitter
 	return max(delay, floor)

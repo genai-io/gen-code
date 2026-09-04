@@ -3,49 +3,7 @@ package core
 import (
 	"strings"
 	"testing"
-
-	"github.com/genai-io/sdk-go/pkg/ai"
 )
-
-// The counting path must match the materialized conversation text.
-func TestConversationTextLenMatchesBuild(t *testing.T) {
-	long := strings.Repeat("x", 800)
-	msgs := []Message{
-		UserMessage("hello <system-reminder>keep me</system-reminder>", nil),
-		AssistantMessage("reasoned reply", "", []ToolCall{
-			{ID: "1", Name: "Bash"},
-			{ID: "2", Name: "Bash"},
-			{ID: "3", Name: "Read"},
-		}),
-		ToolResultMessage(ToolResult{ToolCallID: "1", ToolName: "Bash", Content: ai.TextContent("ok")}),
-		ToolResultMessage(ToolResult{ToolCallID: "2", ToolName: "Bash", Content: ai.TextContent(long)}),
-		AssistantMessage("final answer", "", nil),
-	}
-
-	if got, want := conversationTextLen(msgs), len(BuildConversationText(msgs)); got != want {
-		t.Fatalf("conversationTextLen() = %d, want len(BuildConversationText()) = %d", got, want)
-	}
-	if got, want := conversationTextLen(nil), len(BuildConversationText(nil)); got != want {
-		t.Fatalf("conversationTextLen(nil) = %d, want %d", got, want)
-	}
-}
-
-func TestBuildConversationTextAggregatesToolCalls(t *testing.T) {
-	text := BuildConversationText([]Message{
-		AssistantMessage("", "", []ToolCall{
-			{ID: "1", Name: "Bash"},
-			{ID: "2", Name: "Bash"},
-			{ID: "3", Name: "Glob"},
-		}),
-	})
-
-	if !strings.Contains(text, "[Tool Calls: Bash × 2, Glob]") {
-		t.Fatalf("BuildConversationText() = %q, want aggregated tool calls", text)
-	}
-	if strings.Count(text, "[Tool Call: Bash]") > 0 {
-		t.Fatalf("BuildConversationText() = %q, should not emit repeated raw tool-call lines", text)
-	}
-}
 
 func TestBuildCompactionTextStripsSystemReminders(t *testing.T) {
 	content := "Fix the login bug\n\n" +
@@ -67,17 +25,6 @@ func TestBuildCompactionTextDropsReminderOnlyMessage(t *testing.T) {
 
 	if strings.Contains(text, "User:") {
 		t.Fatalf("BuildCompactionText() = %q, reminder-only message should not emit a User line", text)
-	}
-}
-
-// BuildConversationText (the estimator's input) must keep reminders so the
-// proactive-compaction size estimate reflects what is actually sent.
-func TestBuildConversationTextKeepsSystemReminders(t *testing.T) {
-	content := "Fix the login bug\n\n<system-reminder source=\"skills-directory\">\nuse the Skill tool\n</system-reminder>"
-	text := BuildConversationText([]Message{UserMessage(content, nil)})
-
-	if !strings.Contains(text, "use the Skill tool") {
-		t.Fatalf("BuildConversationText() = %q, should retain reminder content for size estimation", text)
 	}
 }
 

@@ -153,10 +153,14 @@ func TestAgent_MultipleToolCalls(t *testing.T) {
 		t.Fatalf("RunAgent() error: %v", err)
 	}
 
+	// A batch answers in one message carrying every result, which is the shape
+	// each protocol wants, so what is counted is results and not messages.
 	toolResults := 0
 	for _, m := range result.Messages {
-		if m.ToolResults() != nil && !m.ToolResults()[0].IsError {
-			toolResults++
+		for _, tr := range m.ToolResults() {
+			if !tr.IsError {
+				toolResults++
+			}
 		}
 	}
 	if toolResults != 2 {

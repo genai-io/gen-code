@@ -21,7 +21,18 @@ func (a *activityTools) Get(name string) core.Tool {
 	}
 	return &activityTool{inner: t, onExec: a.onExec}
 }
-func (a *activityTools) All() []core.Tool                      { return a.inner.All() }
+
+// All wraps like Get does. A set whose members differ depending on how you
+// ask for them is a set that will be read the wrong way by somebody.
+func (a *activityTools) All() []core.Tool {
+	inner := a.inner.All()
+	out := make([]core.Tool, 0, len(inner))
+	for _, t := range inner {
+		out = append(out, &activityTool{inner: t, onExec: a.onExec})
+	}
+	return out
+}
+
 func (a *activityTools) Add(t core.Tool, caller string)        { a.inner.Add(t, caller) }
 func (a *activityTools) Remove(name, caller string)            { a.inner.Remove(name, caller) }
 func (a *activityTools) Schemas() []core.ToolSchema            { return a.inner.Schemas() }

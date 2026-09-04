@@ -75,7 +75,6 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		CallOptions: fc.CallOptions,
 		System:      sys,
 		Tools:       restricted,
-		CWD:         fc.CWD,
 		MaxSteps:    forkMaxSteps,
 		OutboxBuf:   -1, // no outbox: this fork is headless, driven via ThinkAct
 		OnEvent:     fc.OnEvent,

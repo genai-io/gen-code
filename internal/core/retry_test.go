@@ -22,14 +22,14 @@ func TestBackoffDelayGrowsAndCaps(t *testing.T) {
 	// frac=1 (upper edge of full jitter): attempt n ≈ base·2^(n-1), capped.
 	a1 := backoffDelay(1, 0, 1)
 	a2 := backoffDelay(2, 0, 1)
-	if a1 != retryBaseDelay {
-		t.Fatalf("attempt1 = %v, want %v", a1, retryBaseDelay)
+	if a1 != backoffBase {
+		t.Fatalf("attempt1 = %v, want %v", a1, backoffBase)
 	}
-	if a2 != 2*retryBaseDelay {
-		t.Fatalf("attempt2 = %v, want %v", a2, 2*retryBaseDelay)
+	if a2 != 2*backoffBase {
+		t.Fatalf("attempt2 = %v, want %v", a2, 2*backoffBase)
 	}
-	if capped := backoffDelay(20, 0, 1); capped != retryMaxDelay {
-		t.Fatalf("attempt20 = %v, want cap %v", capped, retryMaxDelay)
+	if capped := backoffDelay(20, 0, 1); capped != backoffMax {
+		t.Fatalf("attempt20 = %v, want cap %v", capped, backoffMax)
 	}
 }
 
@@ -115,8 +115,14 @@ func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Durat
 	return a
 }
 
+// stalled is what a driver reports when a stream goes quiet: the loop replays
+// what ai.IsRetryable admits, and a network failure is one. San's own
+// RetryableError is still the llm layer's — its one-shot Complete has a retry
+// of its own — but the agent loop reads the SDK's classification now.
+var stalled = &ai.Error{Kind: ai.KindNetwork, Message: "stream stalled"}
+
 func TestThinkActRetriesTransientStreamError(t *testing.T) {
-	llm := &scriptedLLM{failErr: errStreamStalled, failures: 2}
+	llm := &scriptedLLM{failErr: stalled, failures: 2}
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -135,7 +141,7 @@ func TestThinkActRetriesTransientStreamError(t *testing.T) {
 }
 
 func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
-	llm := &scriptedLLM{failErr: errStreamStalled, failures: 99}
+	llm := &scriptedLLM{failErr: stalled, failures: 99}
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -196,7 +202,7 @@ func TestThinkActRetriesAProviderRateLimit(t *testing.T) {
 // A terminal failure the SDK could not type is a transport failure, which is
 // the one place the stream rule differs from the completed-call rule.
 func TestThinkActRetriesAnOpaqueStreamFailure(t *testing.T) {
-	llm := &scriptedLLM{failErr: errors.New("unexpected EOF"), failures: 1}
+	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindNetwork, Message: "unexpected EOF"}, failures: 1}
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -272,7 +278,7 @@ func TestStreamInferIdleTimeoutRetries(t *testing.T) {
 // finalizeResult is the concrete casualty: no Result means the transcript is
 // never written to disk.
 func TestThinkActReturnsResultWhenRetriesAreExhausted(t *testing.T) {
-	llm := &scriptedLLM{failErr: errStreamStalled, failures: 99}
+	llm := &scriptedLLM{failErr: stalled, failures: 99}
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

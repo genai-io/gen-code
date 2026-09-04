@@ -406,47 +406,18 @@ func stripSystemReminders(content string) string {
 	return strings.TrimSpace(content)
 }
 
-// BuildConversationText converts messages to text, keeping harness
-// <system-reminder> content intact. Use it where the real prompt size matters
-// (e.g. conversation-growth estimation for proactive compaction), since the
-// reminders are part of what actually gets sent to the model.
-func BuildConversationText(msgs []Message) string {
-	return buildConversationText(msgs, false)
-}
-
-// BuildCompactionText is like BuildConversationText but strips the trailing
-// <system-reminder> blocks from each user message and drops messages that were
-// nothing but reminders. Use it for summarization: reminders re-emit fresh
-// after compaction, so the summary should capture only real conversation turns.
+// BuildCompactionText renders the conversation for summarization, stripping
+// the trailing <system-reminder> blocks from each user message and dropping
+// messages that were nothing but reminders: reminders re-emit fresh after a
+// compaction, so the summary should capture only real conversation turns.
 func BuildCompactionText(msgs []Message) string {
-	return buildConversationText(msgs, true)
-}
-
-func buildConversationText(msgs []Message, stripReminders bool) string {
 	var sb strings.Builder
-	writeConversationText(&sb, msgs, stripReminders)
+	writeConversationText(&sb, msgs)
 	return sb.String()
 }
 
-// conversationTextLen returns the conversation text length without allocating it.
-// It shares the formatter with BuildConversationText to keep both results aligned.
-func conversationTextLen(msgs []Message) int {
-	var c lenCounter
-	writeConversationText(&c, msgs, false)
-	return int(c)
-}
-
-// lenCounter counts bytes written without storing them.
-type lenCounter int
-
-func (c *lenCounter) Write(p []byte) (int, error) {
-	*c += lenCounter(len(p))
-	return len(p), nil
-}
-
 // writeConversationText renders plain text for conversation summarization.
-// Both builders and counters use it to produce matching output.
-func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
+func writeConversationText(w io.Writer, msgs []Message) {
 	io.WriteString(w, "Please summarize this coding conversation:\n\n")
 
 	for _, msg := range msgs {
@@ -462,11 +433,9 @@ func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 				}
 			} else {
 				content := msg.Text()
-				if stripReminders {
-					content = stripSystemReminders(content)
-					if content == "" {
-						continue
-					}
+				content = stripSystemReminders(content)
+				if content == "" {
+					continue
 				}
 				fmt.Fprintf(w, "User: %s\n\n", content)
 			}
