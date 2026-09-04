@@ -274,10 +274,12 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 	}
 
 	if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact); compactView != "" {
-		// Leading "\n" for the same reason the tracker has one: what sits
-		// above is the committed scrollback, and every other turn in it is
-		// separated from what follows by a blank row.
-		parts = append(parts, "\n"+compactView)
+		// Surrounded by blank rows, like the self-learning indicator below
+		// and for the same two reasons: what sits above is the committed
+		// scrollback, where every turn is separated from what follows by a
+		// blank row, and what sits below is the input bar, which a live row
+		// should not be nailed to.
+		parts = append(parts, "", compactView, "")
 	}
 
 	if live := m.renderSelfLearnLive(); live != "" {

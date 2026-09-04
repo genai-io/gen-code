@@ -83,10 +83,10 @@ func TestRecorderWritesRequestedAndRespondedPerTurn(t *testing.T) {
 	// The digests are the recorder's own now, taken from the inference rather
 	// than handed to it. What they must be is content-addressed: the same
 	// system prompt digests the same way, and a different one does not.
-	if req.SystemDigest != sha256Hex([]byte("you are san")) {
+	if req.SystemDigest != transcript.DigestSystem("you are san") {
 		t.Fatalf("requested.SystemDigest = %q, want the digest of what was sent", req.SystemDigest)
 	}
-	if req.ToolsDigest != toolsDigest(nil) {
+	if req.ToolsDigest != transcript.DigestTools(nil) {
 		t.Fatalf("requested.ToolsDigest = %q, want the digest of an empty toolset", req.ToolsDigest)
 	}
 	if len(req.MessageIDs) != 2 || req.MessageIDs[0] != "m1" {
