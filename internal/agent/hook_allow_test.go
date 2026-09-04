@@ -2,8 +2,9 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 
-	"github.com/genai-io/sdk-go/pkg/agent"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -20,14 +21,6 @@ import (
 // those three: a PreToolUse hook answering "allow" used to skip the gate
 // outright, so the call never reached HasPermissionToUseTool.
 
-type recordingTool struct{ ran bool }
-
-func (r *recordingTool) Schema() core.ToolSchema { return core.ToolSchema{Name: "Bash"} }
-func (r *recordingTool) Run(context.Context, ai.ToolCall) (agent.Result, error) {
-	r.ran = true
-	return agent.TextResult("executed"), nil
-}
-
 // allowingHook answers every PreToolUse with "allow", the way a permissive user
 // hook does.
 type allowingHook struct{}
@@ -39,8 +32,8 @@ func (allowingHook) Execute(context.Context, hook.EventType, hook.HookInput) hoo
 	return hook.HookOutcome{ShouldContinue: true, PermissionAllow: true, HookSource: "PreToolUse"}
 }
 
-// gatedTools wires a tool behind the same hook + gate stack buildAgent uses.
-func gatedTools(t *testing.T, data *setting.Data, inner core.Tool) (core.Tools, *PermissionGate) {
+// gatedTools wires the same hook + gate stack buildAgent uses.
+func gatedTools(t *testing.T, data *setting.Data) (core.Gate, *PermissionGate) {
 	t.Helper()
 	gate := NewPermissionGate(func(name string, args map[string]any) PermDecisionResult {
 		decision := data.HasPermissionToUseTool(name, args, nil)
@@ -50,7 +43,7 @@ func gatedTools(t *testing.T, data *setting.Data, inner core.Tool) (core.Tools, 
 		return data.ResolveHookAllow(name, args, nil)
 	})
 	t.Cleanup(gate.Close)
-	return tool.WithPreToolUseAndPermission(core.NewTools(inner), allowingHook{}, gate), gate
+	return tool.HookedPermission(allowingHook{}, gate), gate
 }
 
 // runBash executes one command through the stack and reports whether the gate
@@ -59,12 +52,17 @@ func gatedTools(t *testing.T, data *setting.Data, inner core.Tool) (core.Tools, 
 // prompted=false instead of parking the test on a prompt that never arrives,
 // and a prompt is answered (deny) instead of parking the call on an answer that
 // never comes.
-func runBash(t *testing.T, tools core.Tools, gate *PermissionGate, command string) (prompted bool, err error) {
+func runBash(t *testing.T, ask core.Gate, gate *PermissionGate, command string) (prompted bool, err error) {
 	t.Helper()
 	done := make(chan error, 1)
 	go func() {
-		_, execErr := tools.Get("Bash").Run(context.Background(), ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": command})})
-		done <- execErr
+		d, gateErr := ask(context.Background(), sdkagent.PreToolContext{
+			Call: ai.ToolCall{Name: "Bash", Input: mustJSON(map[string]any{"command": command})},
+		})
+		if gateErr == nil && d.Block {
+			gateErr = errors.New(d.Reason)
+		}
+		done <- gateErr
 	}()
 
 	select {
@@ -78,21 +76,16 @@ func runBash(t *testing.T, tools core.Tools, gate *PermissionGate, command strin
 
 func TestHookAllowCannotWaiveDenyRule(t *testing.T) {
 	data := &setting.Data{Permissions: setting.PermissionSettings{Deny: []string{"Bash(rm:*)"}}}
-	inner := &recordingTool{}
-	tools, gate := gatedTools(t, data, inner)
+	tools, gate := gatedTools(t, data)
 
 	_, err := runBash(t, tools, gate, "rm -rf important/")
 	if err == nil {
 		t.Error("expected the deny rule to block the call despite the hook allow")
 	}
-	if inner.ran {
-		t.Error("hook allow executed a command covered by an explicit deny rule")
-	}
 }
 
 func TestHookAllowCannotWaiveCircuitBreaker(t *testing.T) {
-	inner := &recordingTool{}
-	tools, gate := gatedTools(t, &setting.Data{}, inner)
+	tools, gate := gatedTools(t, &setting.Data{})
 
 	prompted, err := runBash(t, tools, gate, "rm -rf ~")
 	if !prompted {
@@ -101,9 +94,6 @@ func TestHookAllowCannotWaiveCircuitBreaker(t *testing.T) {
 	if err == nil {
 		t.Error("expected the refused prompt to block the call")
 	}
-	if inner.ran {
-		t.Error("hook allow executed a command the circuit breaker holds")
-	}
 }
 
 // The hook stays useful: on a call no rule and no safety check speaks to, its
@@ -111,8 +101,7 @@ func TestHookAllowCannotWaiveCircuitBreaker(t *testing.T) {
 // has to be one the gate would really prompt on — a read-only one is permitted
 // by the mode default whether or not the waiver works, so it would pin nothing.
 func TestHookAllowWaivesRoutinePrompt(t *testing.T) {
-	inner := &recordingTool{}
-	tools, gate := gatedTools(t, &setting.Data{}, inner)
+	tools, gate := gatedTools(t, &setting.Data{})
 
 	prompted, err := runBash(t, tools, gate, "touch marker")
 	if err != nil {
@@ -120,9 +109,6 @@ func TestHookAllowWaivesRoutinePrompt(t *testing.T) {
 	}
 	if prompted {
 		t.Error("hook allow should have waived the routine prompt")
-	}
-	if !inner.ran {
-		t.Error("the waived call should have run")
 	}
 }
 

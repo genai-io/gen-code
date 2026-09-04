@@ -30,6 +30,7 @@ type agent struct {
 	system      System
 	tools       Tools
 	compactFunc func(ctx context.Context, msgs []Message) (string, error)
+	gateFunc    Gate
 	client      func(msgs []Message) (*ai.Client, error)
 	callOptions func() []ai.Option
 	inputLimit  func() int
@@ -427,15 +428,27 @@ func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 }
 
 // hooks is where San gets between the SDK's loop and the model: which client
-// answers this turn and what options ride with it, and — in compact.go, since
-// the answer is the same one /compact gives — when the conversation has grown
-// past what can be sent.
+// answers this turn and what options ride with it, whether a tool may run at
+// all, and — in compact.go, since the answer is the same one /compact gives —
+// when the conversation has grown past what can be sent.
 func (a *agent) hooks() sdkagent.Hook {
 	return sdkagent.Hook{
 		PreInfer:     a.preInfer,
+		PreTool:      a.gate,
 		PreStep:      a.preStep,
 		OnInferError: a.onInferError,
 	}
+}
+
+// gate is the application's answer to whether a tool may run, and with what.
+// Nil lets everything through, which is what the loop does when PreTool is nil
+// — but a hook that is set and always allows costs a call per tool, so this
+// checks rather than installing an empty one.
+func (a *agent) gate(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error) {
+	if a.gateFunc == nil {
+		return sdkagent.Decision{}, nil
+	}
+	return a.gateFunc(ctx, c)
 }
 
 // preInfer points the call at the client this turn's messages ask for, and

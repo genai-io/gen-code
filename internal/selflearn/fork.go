@@ -68,13 +68,13 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	}, "selflearn")
 
 	tools := core.NewTools(newMemoryWriteTool(fc.Memory), newSkillManageTool(fc.Skills))
-	restricted := tool.WithPermission(tools, allowOnly(tools))
 
 	ag := core.NewAgent(core.Config{
 		Client:      fc.Client,
 		CallOptions: fc.CallOptions,
 		System:      sys,
-		Tools:       restricted,
+		Tools:       tools,
+		Gate:        tool.Permission(allowOnly(tools)),
 		MaxSteps:    forkMaxSteps,
 		OutboxBuf:   -1, // no outbox: this fork is headless, driven via ThinkAct
 		OnEvent:     fc.OnEvent,

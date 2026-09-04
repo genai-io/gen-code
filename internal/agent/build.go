@@ -160,7 +160,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		CallOptions: client.CallOptions,
 		InputLimit:  client.InputLimit,
 		System:      sys,
-		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
+		Tools:       tools,
+		Gate:        tool.HookedPermission(p.HookEngine, pg),
 		CompactFunc: compactFunc,
 		OnEvent:     p.OnEvent,
 

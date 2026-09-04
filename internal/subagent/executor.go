@@ -440,14 +440,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
-	var coreTools core.Tools = tools
-	if onToolExec != nil {
-		coreTools = &activityTools{inner: tools, onExec: onToolExec}
-	}
-
-	// Wrap tools with permission decorator
 	permFn := subagentPermissionFunc(rc.permMode, rc.config.AllowTools, rc.config.DenyTools)
-	coreTools = tool.WithPermission(coreTools, permFn)
+	gate := core.Gates(activity(onToolExec), tool.Permission(permFn))
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	ag = core.NewAgent(core.Config{
@@ -455,7 +449,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		CallOptions: llmClient.CallOptions,
 		InputLimit:  llmClient.InputLimit,
 		System:      sys,
-		Tools:       coreTools,
+		Tools:       tools,
+		Gate:        gate,
 		CompactFunc: subagentCompactFunc(llmClient),
 		MaxSteps:    rc.maxSteps,
 		OutboxBuf:   -1,

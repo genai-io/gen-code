@@ -133,12 +133,12 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 	t.Helper()
 	fakeLLM := &FakeLLM{Responses: responses}
 	cwd := t.TempDir()
-	tools := tool.WithPermission(buildAllRegisteredTools(cwd), permFn)
 	return core.NewAgent(core.Config{
 		ID:       "test-agent",
 		Client:   stubClient(fakeLLM),
 		System:   core.NewSystem(),
-		Tools:    tools,
+		Tools:    buildAllRegisteredTools(cwd),
+		Gate:     tool.Permission(permFn),
 		MaxSteps: 100,
 	}), fakeLLM
 }
