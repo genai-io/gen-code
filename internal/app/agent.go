@@ -182,6 +182,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		return bashPromptResponder{model: m}
 	}
 
+	params.ResultFilter = m.filterOversizedResult
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
 		decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
 		mode := m.env.SessionMode()

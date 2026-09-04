@@ -26,17 +26,18 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id          string
-	system      System
-	tools       Tools
-	compactFunc func(ctx context.Context, msgs []Message) (string, error)
-	gateFunc    Gate
-	client      func(msgs []Message) (*ai.Client, error)
-	callOptions func() []ai.Option
-	inputLimit  func() int
-	inbox       chan Inbound
-	outbox      chan Event
-	onEvent     func(Event)
+	id           string
+	system       System
+	tools        Tools
+	compactFunc  func(ctx context.Context, msgs []Message) (string, error)
+	gate         Gate
+	resultFilter ResultFilter
+	client       func(msgs []Message) (*ai.Client, error)
+	callOptions  func() []ai.Option
+	inputLimit   func() int
+	inbox        chan Inbound
+	outbox       chan Event
+	onEvent      func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
@@ -429,26 +430,22 @@ func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 
 // hooks is where San gets between the SDK's loop and the model: which client
 // answers this turn and what options ride with it, whether a tool may run at
-// all, and — in compact.go, since the answer is the same one /compact gives —
-// when the conversation has grown past what can be sent.
+// all and what its result is reported as, and — in compact.go, since the
+// answer is the same one /compact gives — when the conversation has grown past
+// what can be sent.
+//
+// The two the application may not have are handed over as they are. A nil
+// field is a hook the loop does not call; wrapping one to check for nil would
+// install a hook that always passes, which is a call per tool to learn there
+// was nothing to ask.
 func (a *agent) hooks() sdkagent.Hook {
 	return sdkagent.Hook{
 		PreInfer:     a.preInfer,
 		PreTool:      a.gate,
+		PostTool:     a.resultFilter,
 		PreStep:      a.preStep,
 		OnInferError: a.onInferError,
 	}
-}
-
-// gate is the application's answer to whether a tool may run, and with what.
-// Nil lets everything through, which is what the loop does when PreTool is nil
-// — but a hook that is set and always allows costs a call per tool, so this
-// checks rather than installing an empty one.
-func (a *agent) gate(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error) {
-	if a.gateFunc == nil {
-		return sdkagent.Decision{}, nil
-	}
-	return a.gateFunc(ctx, c)
 }
 
 // preInfer points the call at the client this turn's messages ask for, and

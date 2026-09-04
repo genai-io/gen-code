@@ -79,6 +79,17 @@ type Agent interface {
 // site.
 type Gate func(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error)
 
+// ResultFilter decides what the model is told a tool produced.
+//
+// It is asked after the tool returns and hands back the result to send in its
+// place, or nil to send what the tool gave. The one thing San does with it is
+// keep an answer too large for the window out of the conversation, replacing
+// it with a preview and a line saying where the rest was kept.
+//
+// It does not change what the interface drew: the loop reports ToolEnd before
+// asking, so a reader is never waiting on this.
+type ResultFilter func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error)
+
 // Gates asks each in order and takes the first refusal, which is the rule the
 // loop applies to several PreTool hooks. An edit to the arguments carries
 // forward to the gate after it, so a rewrite and a check can be separate
@@ -137,7 +148,10 @@ type Config struct {
 	Tools      Tools  // required
 	// Gate is asked before each tool runs and may refuse the call or rewrite
 	// what the model sent. Nil lets everything through.
-	Gate                    Gate
+	Gate Gate
+	// ResultFilter decides what the model is told a tool produced. Nil sends
+	// every result through as the tool gave it.
+	ResultFilter            ResultFilter
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
 	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
@@ -205,17 +219,18 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:          cfg.ID,
-		system:      cfg.System,
-		tools:       cfg.Tools,
-		compactFunc: cfg.CompactFunc,
-		gateFunc:    cfg.Gate,
-		client:      cfg.Client,
-		callOptions: cfg.CallOptions,
-		inputLimit:  cfg.InputLimit,
-		inbox:       make(chan Inbound, cfg.InboxBuf),
-		outbox:      outbox,
-		onEvent:     cfg.OnEvent,
+		id:           cfg.ID,
+		system:       cfg.System,
+		tools:        cfg.Tools,
+		compactFunc:  cfg.CompactFunc,
+		gate:         cfg.Gate,
+		resultFilter: cfg.ResultFilter,
+		client:       cfg.Client,
+		callOptions:  cfg.CallOptions,
+		inputLimit:   cfg.InputLimit,
+		inbox:        make(chan Inbound, cfg.InboxBuf),
+		outbox:       outbox,
+		onEvent:      cfg.OnEvent,
 	}
 
 	// The SDK agent needs a client and San has none yet: which one answers a
