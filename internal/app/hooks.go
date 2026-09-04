@@ -207,6 +207,6 @@ func buildHookCompleter(p llm.Provider) hook.LLMCompleter {
 		if err != nil {
 			return "", err
 		}
-		return resp.Content, nil
+		return resp.Content.Text(), nil
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/tests/integration/testutil"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func newFakeClient(responses ...llm.CompletionResponse) (*llm.Client, *testutil.FakeProvider) {
@@ -18,7 +19,7 @@ func newFakeClient(responses ...llm.CompletionResponse) (*llm.Client, *testutil.
 
 func TestCompact_SummarizesConversation(t *testing.T) {
 	c, _ := newFakeClient(
-		llm.CompletionResponse{Content: "Summary: discussed file reading", StopReason: "end_turn"},
+		llm.CompletionResponse{Content: ai.TextContent("Summary: discussed file reading"), StopReason: "end_turn"},
 	)
 
 	msgs := []core.Message{
@@ -42,7 +43,7 @@ func TestCompact_SummarizesConversation(t *testing.T) {
 
 func TestCompact_WithFocus(t *testing.T) {
 	c, fake := newFakeClient(
-		llm.CompletionResponse{Content: "Focused summary on testing", StopReason: "end_turn"},
+		llm.CompletionResponse{Content: ai.TextContent("Focused summary on testing"), StopReason: "end_turn"},
 	)
 
 	msgs := []core.Message{
@@ -65,7 +66,7 @@ func TestCompact_WithFocus(t *testing.T) {
 
 func TestCompact_EmptyConversation(t *testing.T) {
 	c, _ := newFakeClient(
-		llm.CompletionResponse{Content: "Empty summary", StopReason: "end_turn"},
+		llm.CompletionResponse{Content: ai.TextContent("Empty summary"), StopReason: "end_turn"},
 	)
 
 	summary, count, err := conv.CompactConversation(context.Background(), c, nil, "")
@@ -82,7 +83,7 @@ func TestCompact_EmptyConversation(t *testing.T) {
 
 func TestCompact_WithoutOptionalSections_LeavesPromptPlain(t *testing.T) {
 	c, fake := newFakeClient(
-		llm.CompletionResponse{Content: "Plain summary", StopReason: "end_turn"},
+		llm.CompletionResponse{Content: ai.TextContent("Plain summary"), StopReason: "end_turn"},
 	)
 
 	msgs := []core.Message{

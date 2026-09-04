@@ -5,6 +5,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 type AgentOutboxMsg struct {
@@ -26,7 +27,7 @@ type AgentOutboxMsg struct {
 //   - a verb  — not a callback at all, but a service conv calls on the host.
 type Runtime interface {
 	// ── On*: agent lifecycle ────────────────────────────────────
-	OnInference(resp *core.InferResponse) // PostInfer
+	OnInference(resp *ai.Response) // PostInfer
 	// OnToolResult hands back what the model is told and, separately, the
 	// structured form the interface draws. They are two audiences.
 	OnToolResult(tr core.ToolResult) (*core.ToolResult, any)
@@ -37,6 +38,7 @@ type Runtime interface {
 	OnTurnEnd(result core.Result) tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnCompactStart(count int) tea.Cmd
+	OnCompactEnd(end core.CompactEnd) tea.Cmd
 	OnCompacted(info core.CompactInfo) tea.Cmd
 
 	// ── Handle*: system messages ────────────────────────────────

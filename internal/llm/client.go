@@ -158,16 +158,13 @@ func (l *Client) Complete(ctx context.Context,
 		if resp, err = Complete(ctx, l.provider, opts); err == nil {
 			return resp, nil
 		}
-		// Tagged on the way out, not just for the retry decision: an error
-		// leaving this package is always classified, so a caller cannot get a
-		// different answer about the same failure by reaching for a different
-		// helper.
-		err = core.ClassifyStream(err)
-		var re core.RetryableError
-		if !errors.As(err, &re) || attempt == completeMaxAttempts {
+		// No wrapping first: ai.IsRetryable answers about a bare error too, and
+		// a dropped connection is worth another go whether or not it passed a
+		// driver on the way here.
+		if !ai.IsRetryable(err) || attempt == completeMaxAttempts {
 			return resp, err
 		}
-		if werr := core.BackoffSleep(ctx, attempt, re.RetryAfter()); werr != nil {
+		if werr := core.BackoffSleep(ctx, attempt, ai.RetryAfter(err)); werr != nil {
 			return resp, werr
 		}
 	}

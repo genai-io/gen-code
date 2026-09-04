@@ -13,11 +13,11 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// scriptedLLM returns a queued sequence of InferResponses, one per Infer call,
+// scriptedLLM returns a queued sequence of responses, one per Infer call,
 // and records the last request so tests can assert on the assembled prompt.
 type scriptedLLM struct {
 	mu        sync.Mutex
-	responses []core.InferResponse
+	responses []ai.Response
 	lastReq   *ai.Request
 	calls     int
 }
@@ -28,7 +28,7 @@ func (s *scriptedLLM) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.De
 	s.mu.Lock()
 	s.lastReq = req
 	s.calls++
-	r := core.InferResponse{Content: "Nothing to save.", StopReason: core.StopEndTurn}
+	r := ai.Response{Content: ai.TextContent("Nothing to save."), StopReason: ai.StopEndTurn}
 	if len(s.responses) > 0 {
 		r = s.responses[0]
 		s.responses = s.responses[1:]
@@ -36,18 +36,18 @@ func (s *scriptedLLM) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.De
 	s.mu.Unlock()
 
 	return func(yield func(ai.Delta, error) bool) {
-		if r.Content != "" {
-			if !yield(ai.Delta{Block: ai.TextBlock(r.Content)}, nil) || !yield(ai.Delta{EndBlock: true}, nil) {
+		if r.Content.Text() != "" {
+			if !yield(ai.Delta{Block: ai.TextBlock(r.Content.Text())}, nil) || !yield(ai.Delta{EndBlock: true}, nil) {
 				return
 			}
 		}
-		for _, c := range r.ToolCalls {
+		for _, c := range r.Content.ToolCalls() {
 			if !yield(ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{ID: c.ID, Name: c.Name, Input: c.Input})}, nil) {
 				return
 			}
 		}
 		stop := ai.StopEndTurn
-		if len(r.ToolCalls) > 0 {
+		if len(r.Content.ToolCalls()) > 0 {
 			stop = ai.StopToolUse
 		}
 		yield(ai.Delta{StopReason: stop}, nil)
@@ -146,16 +146,12 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	store := newTestStore(t)
 	mgr := NewSkillManager("/work/project-x", AllowAllSkillActions())
 
-	llm := &scriptedLLM{responses: []core.InferResponse{
+	llm := &scriptedLLM{responses: []ai.Response{
 		{
-			ToolCalls: []core.ToolCall{{
-				ID:    "call-1",
-				Name:  "memory_write",
-				Input: `{"action":"add","content":"the user prefers tabs"}`,
-			}},
-			StopReason: core.StopToolUse,
+			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: "call-1", Name: "memory_write", Input: `{"action":"add","content":"the user prefers tabs"}`})},
+			StopReason: ai.StopToolUse,
 		},
-		{Content: "Saved 1 memory entry.", StopReason: core.StopEndTurn},
+		{Content: ai.TextContent("Saved 1 memory entry."), StopReason: ai.StopEndTurn},
 	}}
 
 	parentSys := core.NewSystem()

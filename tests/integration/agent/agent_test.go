@@ -19,14 +19,15 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 	_ "github.com/genai-io/san/internal/tool/registry"
 	"github.com/genai-io/san/tests/integration/testutil"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func TestAgent_GeneralExploreMode(t *testing.T) {
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
-				Content: "Explored the codebase", StopReason: "end_turn",
-				Usage: llm.Usage{InputTokens: 50, OutputTokens: 25},
+				Content: ai.TextContent("Explored the codebase"), StopReason: ai.StopEndTurn,
+				Usage: llm.Usage{Input: 50, Output: 25},
 			},
 		},
 	}
@@ -55,7 +56,7 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 func TestAgent_UnknownNameUsesDefaultTemplate(t *testing.T) {
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
-			{Content: "completed with default template", StopReason: "end_turn"},
+			{Content: ai.TextContent("completed with default template"), StopReason: ai.StopEndTurn},
 		},
 	}
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
@@ -77,9 +78,9 @@ func TestAgent_MaxStepsRespected(t *testing.T) {
 	responses := make([]llm.CompletionResponse, 505)
 	for i := range responses {
 		responses[i] = llm.CompletionResponse{
-			StopReason: "tool_use",
-			ToolCalls:  []core.ToolCall{{ID: "tc", Name: "UnknownTool", Input: "{}"}},
-			Usage:      llm.Usage{InputTokens: 1, OutputTokens: 1},
+			StopReason: ai.StopToolUse,
+			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: "tc", Name: "UnknownTool", Input: "{}"})},
+			Usage:      llm.Usage{Input: 1, Output: 1},
 		}
 	}
 
@@ -117,7 +118,7 @@ func TestAgent_ModelResolution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mp := &testutil.FakeProvider{
 				Responses: []llm.CompletionResponse{
-					{Content: "ok", StopReason: "end_turn"},
+					{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn},
 				},
 			}
 			executor := subagent.NewExecutor(mp, t.TempDir(), tt.parentModel, nil)
@@ -173,17 +174,15 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 		Responses: []llm.CompletionResponse{
 			// First response: LLM tries to write a file
 			{
-				StopReason: "tool_use",
-				ToolCalls: []core.ToolCall{
-					{ID: "tc1", Name: "Write", Input: `{"file_path":"/tmp/x.txt","content":"hello"}`},
-				},
-				Usage: llm.Usage{InputTokens: 20, OutputTokens: 10},
+				StopReason: ai.StopToolUse,
+				Content:    testutil.ToolCallContent(core.ToolCall{ID: "tc1", Name: "Write", Input: `{"file_path":"/tmp/x.txt","content":"hello"}`}),
+				Usage:      llm.Usage{Input: 20, Output: 10},
 			},
 			// Second response: LLM acknowledges the error and ends
 			{
-				Content:    "Cannot write files in explore mode",
-				StopReason: "end_turn",
-				Usage:      llm.Usage{InputTokens: 30, OutputTokens: 15},
+				Content:    ai.TextContent("Cannot write files in explore mode"),
+				StopReason: ai.StopEndTurn,
+				Usage:      llm.Usage{Input: 30, Output: 15},
 			},
 		},
 	}
@@ -243,9 +242,9 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
-				Content:    "done",
-				StopReason: "end_turn",
-				Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+				Content:    ai.TextContent("done"),
+				StopReason: ai.StopEndTurn,
+				Usage:      llm.Usage{Input: 10, Output: 5},
 			},
 		},
 	}
@@ -283,8 +282,8 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
-				Content: "background result", StopReason: "end_turn",
-				Usage: llm.Usage{InputTokens: 10, OutputTokens: 5},
+				Content: ai.TextContent("background result"), StopReason: ai.StopEndTurn,
+				Usage: llm.Usage{Input: 10, Output: 5},
 			},
 		},
 	}
@@ -320,20 +319,14 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{
 			{
-				StopReason: "tool_use",
-				Usage:      llm.Usage{InputTokens: 10, OutputTokens: 3},
-				ToolCalls: []core.ToolCall{
-					{
-						ID:    "tc1",
-						Name:  "Read",
-						Input: `{"file_path":"README.md"}`,
-					},
-				},
+				StopReason: ai.StopToolUse,
+				Usage:      llm.Usage{Input: 10, Output: 3},
+				Content:    testutil.ToolCallContent(core.ToolCall{ID: "tc1", Name: "Read", Input: `{"file_path":"README.md"}`}),
 			},
 			{
-				Content:    "Read complete",
-				StopReason: "end_turn",
-				Usage:      llm.Usage{InputTokens: 20, OutputTokens: 5},
+				Content:    ai.TextContent("Read complete"),
+				StopReason: ai.StopEndTurn,
+				Usage:      llm.Usage{Input: 20, Output: 5},
 			},
 		},
 	}

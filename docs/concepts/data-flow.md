@@ -596,7 +596,7 @@ follow-up user message resumes the same session via the inbox channel.
        │
        │                          inner break (turn cancel detected),
        │                          interruptPending.Store(false),
-       │                          TurnEvent(StopCancelled) emitted
+       │                          TurnEvent(StopCanceled) emitted
        │
        │   ◀── TurnEvent ─────────┤
        │   OnTurnEnd: StopReason==Cancelled
@@ -671,5 +671,5 @@ prompt cache behaviour).
 | `agent.Send` / outbox poll | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | Cancel mid-stream | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
 | `InterruptTurn` | [`internal/agent/session.go`](../../internal/agent/session.go) |
-| `turn` / `InterruptCurrentTurn` / Run loop | [`internal/core/agent_impl.go`](../../internal/core/agent_impl.go) |
+| `turn` / `InterruptCurrentTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | Bottom UI compose | [`internal/app/view.go`](../../internal/app/view.go) |

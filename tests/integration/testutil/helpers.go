@@ -9,6 +9,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // ---------------------------------------------------------------------------
@@ -25,39 +26,49 @@ func NewTestClient(fake *FakeProvider) *llm.Client {
 // Response builders
 // ---------------------------------------------------------------------------
 
+// ToolCallContent lays calls down as the ordered blocks a model produces: one
+// block each, in the order it asked for them.
+func ToolCallContent(calls ...core.ToolCall) ai.Content {
+	out := make(ai.Content, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, ai.ToolCallBlock(c))
+	}
+	return out
+}
+
 // ToolCallResponse builds a CompletionResponse that triggers a single tool_use.
 func ToolCallResponse(toolName, toolID, input string) llm.CompletionResponse {
 	return llm.CompletionResponse{
-		StopReason: "tool_use",
-		ToolCalls:  []core.ToolCall{{ID: toolID, Name: toolName, Input: input}},
-		Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+		StopReason: ai.StopToolUse,
+		Content:    ToolCallContent(core.ToolCall{ID: toolID, Name: toolName, Input: input}),
+		Usage:      llm.Usage{Input: 10, Output: 5},
 	}
 }
 
 // MultiToolCallResponse builds a CompletionResponse with multiple tool calls.
 func MultiToolCallResponse(calls ...core.ToolCall) llm.CompletionResponse {
 	return llm.CompletionResponse{
-		StopReason: "tool_use",
-		ToolCalls:  calls,
-		Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+		StopReason: ai.StopToolUse,
+		Content:    ToolCallContent(calls...),
+		Usage:      llm.Usage{Input: 10, Output: 5},
 	}
 }
 
 // EndTurnResponse builds a simple end_turn response with default usage.
 func EndTurnResponse(content string) llm.CompletionResponse {
 	return llm.CompletionResponse{
-		Content:    content,
-		StopReason: "end_turn",
-		Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+		Content:    ai.TextContent(content),
+		StopReason: ai.StopEndTurn,
+		Usage:      llm.Usage{Input: 10, Output: 5},
 	}
 }
 
 // EndTurnResponseWithUsage builds an end_turn response with custom token counts.
 func EndTurnResponseWithUsage(content string, input, output int) llm.CompletionResponse {
 	return llm.CompletionResponse{
-		Content:    content,
-		StopReason: "end_turn",
-		Usage:      llm.Usage{InputTokens: input, OutputTokens: output},
+		Content:    ai.TextContent(content),
+		StopReason: ai.StopEndTurn,
+		Usage:      llm.Usage{Input: input, Output: output},
 	}
 }
 

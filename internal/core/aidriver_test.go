@@ -10,30 +10,29 @@ import (
 // already has and the one five real drivers sit behind. A test says what the
 // endpoint sends; nothing in between has to be stubbed.
 
-// deltas renders one answer as the stream a driver would produce.
-func deltas(r InferResponse) []ai.Delta {
+// deltas renders one answer as the stream a driver would produce. The answer
+// is already an ordered block sequence, so this walks it rather than
+// reassembling one out of parallel fields.
+func deltas(r ai.Response) []ai.Delta {
 	var out []ai.Delta
-	if r.Thinking != "" {
-		out = append(out, ai.Delta{Block: ai.ThinkingBlock(r.Thinking, r.ThinkingSignature)},
-			ai.Delta{EndBlock: true})
+	calls := 0
+	for _, b := range r.Content {
+		if b.Type == ai.BlockToolCall {
+			calls++
+			out = append(out, ai.Delta{Block: b})
+			continue
+		}
+		out = append(out, ai.Delta{Block: b}, ai.Delta{EndBlock: true})
 	}
-	if r.Content != "" {
-		out = append(out, ai.Delta{Block: ai.TextBlock(r.Content)}, ai.Delta{EndBlock: true})
-	}
-	for _, c := range r.ToolCalls {
-		out = append(out, ai.Delta{Block: ai.ToolCallBlock(c)})
-	}
-	stop := ai.StopEndTurn
+	stop := r.StopReason
 	switch {
-	case len(r.ToolCalls) > 0:
+	case calls > 0:
 		stop = ai.StopToolUse
-	case r.StopReason == StopMaxTokens:
-		stop = ai.StopMaxTokens
+	case stop == "":
+		stop = ai.StopEndTurn
 	}
-	return append(out, ai.Delta{StopReason: stop, Usage: &ai.Usage{
-		Input: r.InputTokens, Output: r.OutputTokens,
-		CacheWrite: r.CacheCreationInputTokens, CacheRead: r.CacheReadInputTokens,
-	}})
+	usage := r.Usage
+	return append(out, ai.Delta{StopReason: stop, Usage: &usage})
 }
 
 // yieldAll is the driver body a scripted double needs: send this, then stop.

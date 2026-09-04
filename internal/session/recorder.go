@@ -360,11 +360,13 @@ func (r *Recorder) onPostInfer(ev core.Event) {
 			Turn:       turn,
 			StopReason: string(resp.StopReason),
 			LatencyMs:  latencyMs,
+			// The transcript's own names on the left: this is a disk format
+			// and keeps the keys it was written with.
 			Usage: &transcript.InferenceUsage{
-				InputTokens:              resp.InputTokens,
-				OutputTokens:             resp.OutputTokens,
-				CacheCreationInputTokens: resp.CacheCreationInputTokens,
-				CacheReadInputTokens:     resp.CacheReadInputTokens,
+				InputTokens:              resp.Usage.Input,
+				OutputTokens:             resp.Usage.Output,
+				CacheCreationInputTokens: resp.Usage.CacheWrite,
+				CacheReadInputTokens:     resp.Usage.CacheRead,
 			},
 		},
 	})

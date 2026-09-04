@@ -45,8 +45,8 @@ func TestRecorderWritesMessageBeforeInference(t *testing.T) {
 	}})
 
 	// Assistant reply appends after PostInfer.
-	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &core.InferResponse{
-		StopReason: core.StopEndTurn, Usage: core.Usage{InputTokens: 10, OutputTokens: 5},
+	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &ai.Response{
+		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 10, Output: 5},
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: assistantMsg})

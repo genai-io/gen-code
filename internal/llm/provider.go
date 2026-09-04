@@ -92,9 +92,9 @@ type CompletionOptions struct {
 	ThinkingEffort string
 }
 
-// CompletionResponse aliases core.InferResponse so the streaming layer and the
+// CompletionResponse aliases ai.Response so the streaming layer and the
 // agent loop exchange one type, with no conversion between them to drift.
-type CompletionResponse = core.InferResponse
+type CompletionResponse = ai.Response
 
 // Usage and ToolSchema are likewise core's, defined once in the foundation
 // layer rather than restated here.
@@ -172,7 +172,7 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 	if err != nil {
 		return CompletionResponse{}, err
 	}
-	return *core.FromAIResponse(resp), nil
+	return *resp, nil
 }
 
 // callOptions turns San's per-call settings into the SDK's options.

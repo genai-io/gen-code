@@ -48,6 +48,18 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 }
 
 // translate turns one SDK event into San's and folds it into the outcome.
+//
+// Three of the SDK's twelve are deliberately not forwarded, and saying so is
+// the point — an unhandled case in a closed set is otherwise indistinguishable
+// from one nobody thought about:
+//
+//	MessagesReplaced  the only hooks that replace a conversation are San's own
+//	                  two, and both announce the one message they collapse to
+//	                  as an append — which is what a transcript replays from.
+//	ToolUpdate        a tool reporting mid-run. No San tool calls agent.Report;
+//	                  the first one that does wants a case here.
+//	TurnStart         San's turn boundary is the mailbox's, not the exchange's:
+//	                  Run emits it around however many exchanges a turn took.
 func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result) {
 	switch e := event.(type) {
 	case sdkagent.MessageStart:
@@ -67,10 +79,8 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 			return
 		}
 		out.Steps++
-		resp := FromAIResponse(e.Response)
-		out.InputTokens += resp.InputTokens
-		out.OutputTokens += resp.OutputTokens
-		a.emit(ctx, PostInferEvent(a.id, resp))
+		out.Usage.Add(e.Response.Usage)
+		a.emit(ctx, PostInferEvent(a.id, e.Response))
 
 	case sdkagent.MessageAdded:
 		a.emit(ctx, AppendEvent(a.id, e.Message))
@@ -90,9 +100,15 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 	case sdkagent.CompactionStart:
 		a.emit(ctx, CompactStartEvent(a.id, CompactStart{Count: len(e.Messages)}))
 
+	case sdkagent.CompactionEnd:
+		// The loop closes this span whichever way the hook went, which is the
+		// only reason a consumer that drew a progress line on the start is
+		// guaranteed to be told to stop.
+		a.emit(ctx, CompactEndEvent(a.id, CompactEnd{Count: len(e.Messages), Err: e.Err}))
+
 	case sdkagent.TurnEnd:
 		out.Content = e.Message.Text()
-		out.StopReason = stopReasonOf(e.StopReason)
+		out.StopReason = e.StopReason
 		if e.Err != nil {
 			out.StopDetail = e.Err.Error()
 		}
@@ -116,55 +132,32 @@ func inferenceContextOf(inf *sdkagent.Inference) InferenceContext {
 	}
 }
 
-// stopReasonOf maps the SDK's reasons onto San's.
+// offered is what the model may call this exchange, with the ones that must
+// not run beside others marked — which is how the SDK is told what may go in
+// parallel.
 //
-// max_tokens becomes MaxOutputRecoveryExhausted because by the time the loop
-// reports it, WithContinuation has already asked the model to carry on as often
-// as it was allowed to: the answer is still cut off, and that is what San's
-// name says. Terminated is a tool voting to end the turn, which in San is only
-// ever a hook doing it.
-func stopReasonOf(r sdkagent.StopReason) StopReason {
-	switch r {
-	case sdkagent.StopMaxTokens:
-		return StopMaxOutputRecoveryExhausted
-	case sdkagent.StopMaxSteps:
-		return StopMaxSteps
-	case sdkagent.StopCanceled:
-		return StopCancelled
-	case sdkagent.StopTerminated:
-		return StopHook
-	case sdkagent.StopError:
-		return StopError
-	default:
-		// StopEndTurn, and the two reasons the SDK names that San does not:
-		// a refusal and a stop sequence both end a turn the model was allowed
-		// to finish. Only a failed inference is StopError, and only because
-		// Run reads that one to mean the agent died — anything else landing
-		// there would swallow the turn boundary the interface waits on.
-		return StopEndTurn
-	}
-}
-
-// sequenced marks the tools that must not run beside others, which is how the
-// SDK is told what may go in parallel.
+// The rule is the one San always had, moved off the batch and onto the tool.
+// It used to be checked when a batch arrived: all read-only, or all
+// agent-spawning, or run them one at a time. Now each tool carries the answer
+// into the loop, so a batch is parallel exactly when every member of it says
+// it may be — and the loop never has to ask about the batch as a whole.
 //
-// San's rule used to be a property of the batch — all read-only, or all
-// agent-spawning — checked in the loop against a list of names. It is the same
-// rule said where it belongs: a tool that may touch shared state declares it,
-// and one such tool makes its whole batch sequential, because a batch is only
-// safe to parallelize when every member is.
+// Which tools those are is still this list. The SDK's Sequential is the only
+// way to say it, and nothing about a tool's schema distinguishes reading a
+// file from writing one, so the knowledge stays here rather than being
+// invented somewhere it would also be a list.
 func (a *agent) offered() []Tool {
 	all := a.tools.All()
 	out := make([]Tool, 0, len(all))
 	for _, t := range all {
-		named := withCallID{inner: t}
-		if name := t.Schema().Name; isReadOnlyToolCall(name) || isAgentSpawnToolCall(name) {
-			out = append(out, named)
+		tagged := withCallID{inner: t}
+		if name := t.Schema().Name; isReadOnlyTool(name) || spawnsAnAgent(name) {
+			out = append(out, tagged)
 			continue
 		}
 		// Sequential must be outermost: the mark is on the value the loop
 		// holds, and a wrapper outside it would hide the mark.
-		out = append(out, sdkagent.Sequential(named))
+		out = append(out, sdkagent.Sequential(tagged))
 	}
 	return out
 }
@@ -233,7 +226,7 @@ func ToolCallIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-func isReadOnlyToolCall(name string) bool {
+func isReadOnlyTool(name string) bool {
 	switch name {
 	case "Read", "WebFetch", "WebSearch", "LSP":
 		return true
@@ -242,6 +235,6 @@ func isReadOnlyToolCall(name string) bool {
 	}
 }
 
-func isAgentSpawnToolCall(name string) bool {
+func spawnsAnAgent(name string) bool {
 	return name == "Agent" || name == "SendMessage"
 }

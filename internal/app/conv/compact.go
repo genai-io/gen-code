@@ -82,7 +82,7 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 		return "", count, fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	summary = strings.TrimSpace(response.Content)
+	summary = strings.TrimSpace(response.Content.Text())
 	if summary == "" {
 		return "", count, fmt.Errorf("compaction produced empty summary")
 	}

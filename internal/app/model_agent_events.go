@@ -17,9 +17,10 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func (m *model) OnInference(resp *core.InferResponse) {
+func (m *model) OnInference(resp *ai.Response) {
 	if resp == nil {
 		return
 	}
@@ -35,21 +36,15 @@ func (m *model) OnInference(resp *core.InferResponse) {
 	// lifetime sum across the whole session. Use the full prompt size
 	// (fresh + cache read + cache creation) so the ctx readout matches real
 	// context-window occupancy rather than just the uncached delta.
-	m.env.InputTokens = resp.TotalInputTokens()
-	m.env.OutputTokens = resp.OutputTokens
+	m.env.InputTokens = resp.Usage.TotalInput()
+	m.env.OutputTokens = resp.Usage.Output
 	// Both halves of the cached prefix count toward it: the first turn writes
 	// it (creation), later turns read it (read), and a turn that invalidated it
 	// writes it again — the sum is the prefix size either way.
-	m.env.CachedPrefixTokens = resp.CacheCreationInputTokens + resp.CacheReadInputTokens
+	m.env.CachedPrefixTokens = resp.Usage.CacheWrite + resp.Usage.CacheRead
 
 	if m.env.CurrentModel != nil {
-		usage := llm.Usage{
-			InputTokens:              resp.InputTokens,
-			OutputTokens:             resp.OutputTokens,
-			CacheCreationInputTokens: resp.CacheCreationInputTokens,
-			CacheReadInputTokens:     resp.CacheReadInputTokens,
-		}
-		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.ModelID, usage); ok {
+		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.ModelID, resp.Usage); ok {
 			m.env.ConversationCost = m.env.ConversationCost.Add(cost)
 		}
 	}
@@ -136,7 +131,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 
-	// User-initiated cancel surfaces here as a Result with StopCancelled now
+	// User-initiated cancel surfaces here as a Result with StopCanceled now
 	// that ThinkAct returns a phantom Result on context.Canceled. It precedes
 	// the queue drain because draining submits a fresh turn — the input queue,
 	// a cron prompt, an async hook or a parked agent notice — which is how Esc
@@ -148,7 +143,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// is empty for a cancelled turn). We still persist so the [Interrupted]
 	// marker and cancelled tool_result rows survive a crash/quit, and
 	// re-arm prompt suggestions for the now-idle textarea.
-	if result.StopReason == core.StopCancelled {
+	if result.StopReason == core.StopCanceled {
 		log.QueueLog("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
 		if cmd := m.persistAfterTurn(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)

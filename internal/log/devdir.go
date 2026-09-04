@@ -21,19 +21,6 @@ type devRequest struct {
 	Messages     any       `json:"messages"`
 }
 
-// devResponse represents the response data saved to JSON file.
-// Domain-typed fields use any so this package avoids domain imports.
-type devResponse struct {
-	Turn       int       `json:"turn"`
-	Timestamp  time.Time `json:"timestamp"`
-	Provider   string    `json:"provider"`
-	StopReason string    `json:"stop_reason"`
-	Content    string    `json:"content,omitempty"`
-	Thinking   string    `json:"thinking,omitempty"`
-	ToolCalls  any       `json:"tool_calls,omitempty"`
-	Usage      any       `json:"usage"`
-}
-
 // turnFilePrefix returns the file prefix for a given tracker and turn.
 // If tracker is nil, uses the main loop prefix.
 func turnFilePrefix(tracker *AgentTurnTracker, turn int) string {
@@ -68,30 +55,6 @@ func writeDevRequest(tracker *AgentTurnTracker, providerName, model string, opts
 	}
 
 	writeJSON(filepath.Join(devDir, turnFilePrefix(tracker, turn)+"-request.json"), req)
-}
-
-// writeDevResponse writes response data to JSON file in DEV_DIR.
-// tracker may be nil for main-loop responses.
-func writeDevResponse(tracker *AgentTurnTracker, providerName string, resp any, turn int) {
-	if !devEnabled {
-		return
-	}
-
-	res := devResponse{
-		Turn:      turn,
-		Timestamp: time.Now().UTC(),
-		Provider:  providerName,
-	}
-
-	if rl, ok := resp.(responseLoggable); ok {
-		res.StopReason = rl.LogStopReason()
-		res.Content = rl.LogContent()
-		res.Thinking = rl.LogThinking()
-		res.ToolCalls = rl.LogRawToolCalls()
-		res.Usage = rl.LogRawUsage()
-	}
-
-	writeJSON(filepath.Join(devDir, turnFilePrefix(tracker, turn)+"-response.json"), res)
 }
 
 func writeJSON(filename string, data any) {

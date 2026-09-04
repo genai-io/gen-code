@@ -119,6 +119,8 @@ github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKK
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
 github.com/genai-io/sdk-go v0.4.1 h1:sqqfYi/yKnI7HegwCF3YD1/U9Y2gNXwedzY7sXV2aHo=
 github.com/genai-io/sdk-go v0.4.1/go.mod h1:6/sC6bZFta6JJM2CLxQgi7gSRNdIoWuXC6Wk3k9dZ5g=
+github.com/genai-io/sdk-go v0.4.2 h1:RMPJ03OZzchtmjDVIPeTUTgypLqfoFbHGbsukq/0lQo=
+github.com/genai-io/sdk-go v0.4.2/go.mod h1:6/sC6bZFta6JJM2CLxQgi7gSRNdIoWuXC6Wk3k9dZ5g=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

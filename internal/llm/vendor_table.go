@@ -290,12 +290,7 @@ func costEstimator(vendorID string) CostEstimator {
 		if !pricing.Known() {
 			return Money{}, false
 		}
-		cost := pricing.Cost(ai.Usage{
-			Input:      usage.InputTokens,
-			Output:     usage.OutputTokens,
-			CacheWrite: usage.CacheCreationInputTokens,
-			CacheRead:  usage.CacheReadInputTokens,
-		})
+		cost := pricing.Cost(usage)
 		return Money{Amount: cost.Total, Currency: Currency(cost.Currency)}, true
 	}
 }

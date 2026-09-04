@@ -179,7 +179,7 @@ func TestCombinedFiresBothArms(t *testing.T) {
 func TestSkipsNonEndTurn(t *testing.T) {
 	r, fired := newTestReviewer(Config{MemoryEnabled: true})
 
-	r.Observe(core.Result{StopReason: core.StopCancelled}, false, true)
+	r.Observe(core.Result{StopReason: core.StopCanceled}, false, true)
 	r.Observe(core.Result{StopReason: core.StopMaxSteps}, false, true)
 	assertNoFire(t, fired)
 

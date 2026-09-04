@@ -45,9 +45,9 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 		UserMessage("tell me more", nil),
 	})
 
-	shorter, err := a.summarise(context.Background(), a.Messages(), "auto")
+	shorter, err := a.shorten(context.Background(), a.Messages(), "auto")
 	if err != nil || shorter == nil {
-		t.Fatalf("summarise() gave nothing: %v", err)
+		t.Fatalf("shorten() gave nothing: %v", err)
 	}
 	a.SetMessages(shorter)
 
@@ -180,70 +180,6 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 // Nothing to clear any more: the size is measured fresh at each boundary,
 // so a just-shortened conversation cannot still read as full.
 
-// A SigCompact applies an in-place compaction (replacing the chain with the
-// precomputed summary, recording the manual boundary) and must NOT start a
-// turn — otherwise the lone summary would trigger a spurious inference.
-func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
-	var captured []Event
-	ag := NewAgent(Config{
-		ID:      "test",
-		Client:  testClient(newBlockingLLM(1)),
-		System:  NewSystem(),
-		Tools:   NewTools(),
-		OnEvent: func(e Event) { captured = append(captured, e) },
-	})
-	a := ag.(*agent)
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-
-	a.SetMessages([]Message{
-		UserMessage("hi", nil),
-		AssistantMessage("hello", "", nil),
-		UserMessage("more", nil),
-	})
-
-	if a.ingest(context.Background(), Inbound{Signal: SigCompact, Summary: "the summary"}) {
-		t.Fatal("SigCompact must not start a turn")
-	}
-
-	msgs := a.Messages()
-	if len(msgs) != 1 || !strings.Contains(msgs[0].Text(), "the summary") {
-		t.Fatalf("SigCompact should compact in place to the single summary, got %d messages", len(msgs))
-	}
-
-	var info *CompactInfo
-	for _, e := range captured {
-		if e.Type == OnCompact {
-			if ci, ok := e.CompactInfo(); ok {
-				c := ci
-				info = &c
-			}
-		}
-	}
-	if info == nil {
-		t.Fatal("SigCompact should emit a CompactEvent")
-	}
-	if info.Trigger != "manual" {
-		t.Fatalf("manual compaction trigger = %q, want manual", info.Trigger)
-	}
-	if info.SummaryMessageID == "" || info.SummaryMessageID != msgs[0].ID {
-		t.Fatalf("boundary %q must equal the summary message ID %q", info.SummaryMessageID, msgs[0].ID)
-	}
-
-	if !a.ingest(context.Background(), Inbound{Msg: UserMessage("next", nil)}) {
-		t.Fatal("a normal user message must start a turn")
-	}
-}
-
-// blockingLLM blocks Infer until the caller pushes a release signal. The
-// release channel is buffered so the test can enqueue signals without
-// racing the agent goroutine's read of the field.
-type blockingLLM struct {
-	release chan struct{}
-}
-
 func newBlockingLLM(capacity int) *blockingLLM {
 	return &blockingLLM{release: make(chan struct{}, capacity)}
 }
@@ -256,166 +192,12 @@ func (b *blockingLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.De
 		case <-ctx.Done():
 			yield(ai.Delta{}, ctx.Err())
 		case <-b.release:
-			for _, d := range deltas(InferResponse{Content: "released", StopReason: StopEndTurn}) {
+			for _, d := range deltas(ai.Response{Content: ai.TextContent("released"), StopReason: ai.StopEndTurn}) {
 				if !yield(d, nil) {
 					return
 				}
 			}
 		}
-	}
-}
-
-func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
-	llm := newBlockingLLM(4)
-	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	runDone := make(chan error, 1)
-	go func() { runDone <- ag.Run(ctx) }()
-
-	// Drain outbox in the background so emit calls don't block.
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-
-	// Kick off the first turn, then interrupt while Infer is blocked.
-	ag.Inbox() <- Inbound{Msg: UserMessage("first", nil)}
-	// turn is stored at the top of each inner-loop iteration, right
-	// before ThinkAct is called — wait until that pointer is published.
-	waitFor(t, "agent turn to be stored", func() bool {
-		return ag.(*agent).turn.Load() != nil
-	})
-
-	done := ag.InterruptCurrentTurn()
-
-	// InterruptCurrentTurn's done channel should close once ThinkAct
-	// has fully unwound — i.e. before any racing caller-side mutation
-	// of agent state can collide with the agent goroutine.
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("InterruptCurrentTurn done channel did not close")
-	}
-
-	// Resume by sending a second message and releasing the LLM. The
-	// release channel is buffered so the test never races the agent's
-	// read of it. Waiting on turn.Load() instead of sleeping proves the
-	// second turn actually entered Infer.
-	ag.Inbox() <- Inbound{Msg: UserMessage("second", nil)}
-	waitFor(t, "second turn to enter Infer", func() bool {
-		return ag.(*agent).turn.Load() != nil
-	})
-	llm.release <- struct{}{}
-
-	// Wait for the second turn to drain fully before sending SigStop so
-	// the test asserts the resume path actually executed, rather than
-	// passing because SigStop preempted a never-started second turn.
-	waitFor(t, "second turn to unwind", func() bool {
-		return ag.(*agent).turn.Load() == nil
-	})
-
-	ag.Inbox() <- Inbound{Signal: SigStop}
-	select {
-	case err := <-runDone:
-		if err != nil {
-			t.Fatalf("Run returned error on shutdown: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not exit after SigStop")
-	}
-}
-
-// TestInterruptBetweenTurnsIsLatched verifies that an interrupt fired between
-// two of Run's inner-loop iterations (turn pointer nil) is not dropped — the
-// next runOneTurn must see the latch and bail. Driven through runOneTurn
-// directly because that window is only a few instructions wide.
-func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
-	llm := newBlockingLLM(4)
-	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
-	}).(*agent)
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-
-	// No turn in flight, so only the latch can carry this interrupt.
-	done := ag.InterruptCurrentTurn()
-	select {
-	case <-done:
-	default:
-		t.Fatal("between-turn interrupt should return an already-closed done channel")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	result, err, interrupted := ag.runOneTurn(ctx)
-	if !interrupted {
-		t.Fatal("runOneTurn ran a turn the latch should have stopped")
-	}
-	if result != nil || err != nil {
-		t.Fatalf("latched turn returned result=%v err=%v, want both nil", result, err)
-	}
-	if ag.interruptPending.Load() {
-		t.Error("latch should be consumed by the runOneTurn that acted on it")
-	}
-}
-
-// TestIdleInterruptDoesNotEatTheNextMessage pins the other half of the latch
-// rule. InterruptCurrentTurn latches unconditionally, so an Esc landing while
-// the agent sits idle in waitForInput left the latch set with no turn to
-// consume it — and the next user message was dropped without inferring.
-func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
-	llm := newBlockingLLM(4)
-	llm.release <- struct{}{}
-	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
-	})
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	runDone := make(chan error, 1)
-	go func() { runDone <- ag.Run(ctx) }()
-
-	// Interrupt while the agent is parked in waitForInput.
-	<-ag.InterruptCurrentTurn()
-
-	ag.Inbox() <- Inbound{Msg: UserMessage("answer me", nil)}
-
-	// blockingLLM only replies once its release token is read, so a consumed
-	// token proves Infer was reached.
-	waitFor(t, "the message after an idle interrupt to reach inference", func() bool {
-		return len(llm.release) == 0
-	})
-
-	ag.Inbox() <- Inbound{Signal: SigStop}
-	select {
-	case err := <-runDone:
-		if err != nil {
-			t.Fatalf("Run returned error on shutdown: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not exit after SigStop")
 	}
 }
 
@@ -515,12 +297,12 @@ type batchLLM struct{}
 func (batchLLM) Name() string { return "batch" }
 
 func (batchLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	return yieldAll(deltas(InferResponse{
-		StopReason: StopToolUse,
-		ToolCalls: []ToolCall{
-			{ID: "c1", Name: "first", Input: "{}"},
-			{ID: "c2", Name: "second", Input: "{}"},
-			{ID: "c3", Name: "third", Input: "{}"},
+	return yieldAll(deltas(ai.Response{
+		StopReason: ai.StopToolUse,
+		Content: ai.Content{
+			ai.ToolCallBlock(ToolCall{ID: "c1", Name: "first", Input: "{}"}),
+			ai.ToolCallBlock(ToolCall{ID: "c2", Name: "second", Input: "{}"}),
+			ai.ToolCallBlock(ToolCall{ID: "c3", Name: "third", Input: "{}"}),
 		},
 	}))
 }
@@ -550,8 +332,8 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ThinkAct err = %v, want context.Canceled", err)
 	}
-	if result.StopReason != StopCancelled {
-		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
+	if result.StopReason != StopCanceled {
+		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCanceled)
 	}
 	if n := ranOnDead.Load(); n != 0 {
 		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
@@ -568,7 +350,7 @@ func (requestRecordingDriver) Name() string { return "recording" }
 
 func (d *requestRecordingDriver) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	d.req = req
-	return yieldAll(deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}))
+	return yieldAll(deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}))
 }
 
 // The reasoning rung and the output cap are the application's, not the
@@ -649,7 +431,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 
 // A turn that cannot reach the endpoint at all is the turn's failure, not the
 // build's: it is reported like any other inference failure.
-func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
+func TestStreamInferReportsAnUnconfiguredModel(t *testing.T) {
 	ag := NewAgent(Config{
 		ID:     "test",
 		Client: func([]Message) (*ai.Client, error) { return nil, errors.New("no provider") },
@@ -674,26 +456,86 @@ func TestStreamInferReportsAnUnreachableModel(t *testing.T) {
 	}
 }
 
-// A refusal and a stop sequence end a turn. Only a failed inference is
-// StopError, because Run reads that one to mean the agent died and skips the
-// TurnEvent — so anything else landing there would leave the interface waiting
-// on a boundary that never comes.
+// Only a failed inference is StopError, because Run reads that one to mean the
+// agent died and skips the TurnEvent — so anything else equal to it would
+// leave the interface waiting on a boundary that never comes. Nothing maps
+// onto these any more, which is the point: the check is that San's words are
+// distinct values of the SDK's, not a transcription of them.
 func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
-	for _, tc := range []struct {
-		sdk  sdkagent.StopReason
-		want StopReason
-	}{
-		{sdkagent.StopEndTurn, StopEndTurn},
-		{sdkagent.StopRefusal, StopEndTurn},
-		{sdkagent.StopSequence, StopEndTurn},
-		{sdkagent.StopMaxTokens, StopMaxOutputRecoveryExhausted},
-		{sdkagent.StopMaxSteps, StopMaxSteps},
-		{sdkagent.StopCanceled, StopCancelled},
-		{sdkagent.StopTerminated, StopHook},
-		{sdkagent.StopError, StopError},
+	for _, r := range []StopReason{
+		StopEndTurn, StopTruncated, StopRefused, StopSequence,
+		StopMaxSteps, StopCanceled, StopHook,
 	} {
-		if got := stopReasonOf(tc.sdk); got != tc.want {
-			t.Errorf("stopReasonOf(%q) = %q, want %q", tc.sdk, got, tc.want)
+		if r == StopError {
+			t.Errorf("%q equals StopError, which Run reads as the agent dying", r)
 		}
+		if r == "" {
+			t.Error("a stop reason with no value would read as a turn that never ended")
+		}
+	}
+	if StopTruncated != sdkagent.StopMaxTokens || StopHook != sdkagent.StopTerminated {
+		t.Error("San's words must be the SDK's values, not a copy of them")
+	}
+}
+
+// A summarizer that produces nothing still closes the span it opened. This is
+// the case that matters: OnCompact never fires, so if the close came from
+// there, a consumer that drew a progress line on the start would be left
+// holding it — and on the OnInferError path there is no next inference to fall
+// through to, because a prompt that is still too long ends the turn.
+func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
+	var captured []Event
+	ag := NewAgent(Config{
+		ID:         "test",
+		Client:     testClient(&talkingLLM{text: "done"}),
+		System:     NewSystem(),
+		Tools:      NewTools(),
+		MaxSteps:   1,
+		InputLimit: func() int { return 1 },
+		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
+			return "", errors.New("the summarizer is down")
+		},
+		OnEvent: func(e Event) { captured = append(captured, e) },
+	})
+	a := ag.(*agent)
+
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("hi", nil),
+		AssistantMessage("hello", "", nil),
+		UserMessage("tell me more", nil),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := a.ThinkAct(ctx); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+
+	start, end := -1, -1
+	for i, e := range captured {
+		switch e.Type {
+		case OnCompactStart:
+			if start < 0 {
+				start = i
+			}
+		case OnCompactEnd:
+			if _, ok := e.CompactEnd(); !ok {
+				t.Fatalf("OnCompactEnd carried %T, want CompactEnd", e.Data)
+			}
+			end = i
+		case OnCompact:
+			t.Error("a summarizer that produced nothing announced a compaction")
+		}
+	}
+	if start < 0 {
+		t.Fatal("the hook announced nothing, so there is no span to test")
+	}
+	if end < start {
+		t.Error("the span opened and was never closed")
 	}
 }

@@ -30,7 +30,7 @@ func TestAgent_SingleTurn_EndTurn(t *testing.T) {
 	if result.Steps != 1 {
 		t.Errorf("expected 1 step, got %d", result.Steps)
 	}
-	if result.InputTokens == 0 {
+	if result.Usage.Input == 0 {
 		t.Error("expected non-zero input tokens")
 	}
 }
@@ -188,10 +188,10 @@ func TestAgent_TokenAccumulation(t *testing.T) {
 
 	// Each of the first 2 responses has 10+5 usage, third has 20+10
 	// Total: 10+10+20=40 input, 5+5+10=20 output
-	if result.InputTokens != 40 {
-		t.Errorf("expected 40 input tokens, got %d", result.InputTokens)
+	if result.Usage.Input != 40 {
+		t.Errorf("expected 40 input tokens, got %d", result.Usage.Input)
 	}
-	if result.OutputTokens != 20 {
-		t.Errorf("expected 20 output tokens, got %d", result.OutputTokens)
+	if result.Usage.Output != 20 {
+		t.Errorf("expected 20 output tokens, got %d", result.Usage.Output)
 	}
 }

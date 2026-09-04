@@ -17,22 +17,27 @@ import (
 // two automatic paths hand the replacement to the loop; the manual one sets it
 // in place. All three collapse to the same one message, announced the same way.
 
+// shortestCompactable is the conversation below which summarising buys
+// nothing: an opening turn and the reply to it. Collapsing that into a summary
+// of itself would cost a model call to make the prompt no shorter.
+const shortestCompactable = 3
+
 // preStep shortens the conversation before it outgrows the window.
 //
 // The figure it measures is the SDK's, taken fresh at every boundary — the
 // whole prompt, tool schemas included. San used to measure the previous
-// response's TotalInputTokens instead, which had to be cleared by hand after a
+// response's total input instead, which had to be cleared by hand after a
 // compaction or the stale figure would still read "full" and compact again on
 // the very next step, forever. There is nothing to clear now.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
-	if a.compactFunc == nil || len(c.Messages) < 3 {
+	if a.compactFunc == nil || len(c.Messages) < shortestCompactable {
 		return nil, nil
 	}
 	limit := a.promptBudget()
 	if limit <= 0 || !NeedsCompaction(c.Tokens, limit) {
 		return nil, nil
 	}
-	return a.summarise(ctx, c.Messages, "auto")
+	return a.shorten(ctx, c.Messages, "auto")
 }
 
 // onInferError answers the one failure the loop cannot: a prompt the provider
@@ -40,15 +45,15 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 // conversation is shortened and the step taken again.
 //
 // Attempt is the budget: two goes, because a summary that is still too long is
-// a summariser problem and a third attempt will not fix it.
+// a summarizer problem and a third attempt will not fix it.
 func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Retry, error) {
 	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
 	}
-	if len(c.Messages) < 3 {
+	if len(c.Messages) < shortestCompactable {
 		return nil, nil
 	}
-	shorter, err := a.summarise(ctx, c.Messages, "auto")
+	shorter, err := a.shorten(ctx, c.Messages, "auto")
 	if err != nil || shorter == nil {
 		// Nothing left to shorten: give up as the loop would, on the model's
 		// own failure rather than on anything invented here.
@@ -57,10 +62,10 @@ func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) 
 	return &sdkagent.Retry{Messages: shorter}, nil
 }
 
-// summarise is the compaction both hooks share: announce the wait, call the
-// application's summariser, and hand back the conversation that replaces this
+// shorten is the compaction both hooks share: announce the wait, call the
+// application's summarizer, and hand back the conversation that replaces this
 // one. Nil means it could not, which both callers read as "leave it alone".
-func (a *agent) summarise(ctx context.Context, msgs []Message, trigger string) ([]Message, error) {
+func (a *agent) shorten(ctx context.Context, msgs []Message, trigger string) ([]Message, error) {
 	// Shortening is a model call of its own and takes as long as one. The hook
 	// says so, because only the code deciding to shorten knows it is about to.
 	sdkagent.Compacting(ctx)

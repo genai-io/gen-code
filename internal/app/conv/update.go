@@ -152,6 +152,9 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	case core.OnCompactStart:
 		cs, _ := ev.CompactStart()
 		return rt.OnCompactStart(cs.Count)
+	case core.OnCompactEnd:
+		ce, _ := ev.CompactEnd()
+		return rt.OnCompactEnd(ce)
 	case core.OnMessage:
 		// Nothing to do: every path that hands a user message to the agent —
 		// idle submit, queue release, cron prompt, async hook, a notice
@@ -246,12 +249,12 @@ func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	// suppress these setters for normal text-only completions, since
 	// applyChunk flips Stream.Active=false on the Done chunk that arrives
 	// just before this PostInfer — silently dropping ThinkingSignature.
-	if resp.ThinkingSignature != "" {
-		m.SetLastThinkingSignature(resp.ThinkingSignature)
+	if sig := resp.Content.ThinkingSignature(); sig != "" {
+		m.SetLastThinkingSignature(sig)
 	}
-	if len(resp.ToolCalls) > 0 {
-		m.SetLastToolCalls(resp.ToolCalls)
-		m.Tool.Track(resp.ToolCalls)
+	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
+		m.SetLastToolCalls(calls)
+		m.Tool.Track(calls)
 	}
 	m.Stream.BuildingTool = ""
 	return nil

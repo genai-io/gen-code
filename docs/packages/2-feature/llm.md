@@ -76,11 +76,11 @@ Worth knowing beyond the names:
   `"vendor:auth_method"` form that the registry keys entries by, the store keys
   cached listings by, and a `Provider` reports as its own `Name()`. One
   function, so the three cannot drift.
-- **Classification lives in `core`, not here.** The failure the loop has to
-  read is the one leaving its own stream, so `core/classify.go` tags it there —
-  a package boundary in between is a place for it to arrive untagged. The SDK
-  still makes the decision, from the provider's typed error; San keeps no
-  second copy of its tables.
+- **Classification is nobody's here.** The SDK decides, from the provider's
+  typed error, and `ai.IsRetryable` / `ai.IsContextExceeded` read that decision
+  wherever it is needed — including for an error no driver ever wrapped. San
+  keeps no second copy of the tables and no place for a failure to arrive
+  untagged.
 - **`modelcache.go` owns the window.** The status bar's percentage and the
   agent's auto-compaction trigger are the same number, so both resolve it
   through `EffectiveInputLimit` — env override, then the user's `/tokenlimit`,

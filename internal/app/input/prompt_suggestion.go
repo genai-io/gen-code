@@ -125,7 +125,7 @@ func SuggestPromptCmd(req PromptSuggestionRequest) tea.Cmd {
 		if err != nil {
 			return PromptSuggestionMsg{Err: err}
 		}
-		return PromptSuggestionMsg{Text: resp.Content}
+		return PromptSuggestionMsg{Text: resp.Content.Text()}
 	}
 }
 

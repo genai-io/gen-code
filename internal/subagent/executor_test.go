@@ -337,7 +337,7 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 		Messages:   []core.Message{{Role: ai.RoleAssistant, Content: ai.TextContent("partial")}},
 		Steps:      2,
 		ToolUses:   1,
-		StopReason: core.StopCancelled,
+		StopReason: core.StopCanceled,
 	})
 	if result == nil {
 		t.Fatal("expected cancelled result")

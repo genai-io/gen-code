@@ -131,7 +131,7 @@ type Config struct {
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
-	MaxOutputRecovery       int                                                       // max retries on truncated output, 0 = use default (3)
+	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
 	MaxTurnRetries          int                                                       // max retries per inference step on transient stream errors, 0 = use default (2)
 	StreamFirstChunkTimeout time.Duration                                             // abort if no first chunk arrives within this long, 0 = use default (5m)
 	StreamIdleTimeout       time.Duration                                             // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
@@ -146,10 +146,10 @@ type Config struct {
 // dropped connection — not to mask a sustained outage.
 const (
 	defaultMaxTurnRetries = 2
-	// defaultMaxOutputRecovery bounds how many times a model cut off by the
+	// defaultMaxContinuations bounds how many times a model cut off by the
 	// output cap is asked to carry on. Three, because a fourth continuation of
 	// the same answer is a prompt problem rather than a budget one.
-	defaultMaxOutputRecovery = 3
+	defaultMaxContinuations = 3
 	// defaultFirstChunkTimeout bounds time-to-first-chunk. It is generous
 	// because a reasoning model may think for a while (and emit nothing) before
 	// the first token; it exists only to catch a connection that hangs at open.
@@ -183,8 +183,8 @@ func NewAgent(cfg Config) Agent {
 	if cfg.MaxTurnRetries <= 0 {
 		cfg.MaxTurnRetries = defaultMaxTurnRetries
 	}
-	if cfg.MaxOutputRecovery <= 0 {
-		cfg.MaxOutputRecovery = defaultMaxOutputRecovery
+	if cfg.MaxContinuations <= 0 {
+		cfg.MaxContinuations = defaultMaxContinuations
 	}
 	if cfg.StreamFirstChunkTimeout <= 0 {
 		cfg.StreamFirstChunkTimeout = defaultFirstChunkTimeout
@@ -217,7 +217,7 @@ func NewAgent(cfg Config) Agent {
 	// is the handle the agent is built on and is replaced on every call before
 	// it is ever used — and if the application cannot produce one, the turn
 	// fails with its reason rather than construction panicking with it.
-	inner, err := sdkagent.New(unconfigured,
+	inner, err := sdkagent.New(clientFromPreInfer,
 		sdkagent.WithMaxSteps(cfg.MaxSteps),
 		// Two budgets that used to be one. WithRetry replays a call the loop
 		// knows how to replay; WithContinuation asks a model cut off by the
@@ -226,7 +226,7 @@ func NewAgent(cfg Config) Agent {
 		// The +1 is the difference between the two words: San's setting counts
 		// retries, the SDK's counts attempts, and two retries is three goes.
 		sdkagent.WithRetry(cfg.MaxTurnRetries+1, backoffBase),
-		sdkagent.WithContinuation(cfg.MaxOutputRecovery, TruncatedResumePrompt),
+		sdkagent.WithContinuation(cfg.MaxContinuations, TruncatedResumePrompt),
 		sdkagent.WithStreamTimeout(cfg.StreamFirstChunkTimeout, cfg.StreamIdleTimeout),
 		// Every message in the conversation gets a name, which is what the
 		// session's append-only writer dedupes by.
@@ -252,14 +252,13 @@ func NewAgent(cfg Config) Agent {
 // Result represents the outcome of one completed turn (end_turn).
 // Emitted to Outbox as Event{Type: OnTurn, Data: result}.
 type Result struct {
-	Content      string     // final text output of this turn
-	Messages     []Message  // full conversation history
-	Steps        int        // LLM inference steps in this turn
-	ToolUses     int        // tool calls in this turn
-	InputTokens  int        // input tokens consumed
-	OutputTokens int        // output tokens produced
-	StopReason   StopReason // why the loop stopped
-	StopDetail   string     // human-readable detail (e.g. hook block reason)
+	Content    string     // final text output of this turn
+	Messages   []Message  // full conversation history
+	Steps      int        // LLM inference steps in this turn
+	ToolUses   int        // tool calls in this turn
+	Usage      Usage      // what every inference in this turn spent, summed
+	StopReason StopReason // why the loop stopped
+	StopDetail string     // human-readable detail (e.g. hook block reason)
 }
 
 // EventType identifies an agent lifecycle event.
@@ -270,7 +269,7 @@ const (
 	OnStart   EventType = "AgentStart" // agent begins
 	OnStop    EventType = "AgentStop"  // agent ends (error or nil in Data)
 	PreInfer  EventType = "PreInfer"   // before LLM call
-	PostInfer EventType = "PostInfer"  // after LLM response (*InferResponse in Data)
+	PostInfer EventType = "PostInfer"  // after LLM response (*ai.Response in Data)
 	OnChunk   EventType = "Chunk"      // one streamed fragment (ai.Event in Data)
 
 	// OnStreamReset fires when a transient stream failure is about to be
@@ -290,6 +289,16 @@ const (
 	// frozen. Data is CompactStart. Manual /compact drives this indicator from
 	// the UI side and does not emit it.
 	OnCompactStart EventType = "CompactStart"
+
+	// OnCompactEnd closes what OnCompactStart opened, however it went: a
+	// conversation shortened, one the summarizer decided to leave alone, or a
+	// summarizer that failed. Data is CompactEnd.
+	//
+	// It is not OnCompact, which fires only when there is a summary. A consumer
+	// that drew a progress line on the start has to be told to stop on all
+	// three — and on the path where the prompt was already too long, a failed
+	// shortening ends the turn, so there is no later event to be told by.
+	OnCompactEnd EventType = "CompactEnd"
 
 	// OnSystemChange fires when a system-prompt section is added, replaced,
 	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
@@ -315,16 +324,24 @@ func (e Event) ToolCall() (ToolCall, bool)         { tc, ok := e.Data.(ToolCall)
 func (e Event) ToolResult() (ToolResult, bool)     { tr, ok := e.Data.(ToolResult); return tr, ok }
 func (e Event) Message() (Message, bool)           { m, ok := e.Data.(Message); return m, ok }
 func (e Event) Result() (Result, bool)             { r, ok := e.Data.(Result); return r, ok }
-func (e Event) Response() (*InferResponse, bool)   { r, ok := e.Data.(*InferResponse); return r, ok }
+func (e Event) Response() (*ai.Response, bool)     { r, ok := e.Data.(*ai.Response); return r, ok }
 func (e Event) Chunk() (ai.Event, bool)            { c, ok := e.Data.(ai.Event); return c, ok }
 func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
 func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
 func (e Event) CompactStart() (CompactStart, bool) { cs, ok := e.Data.(CompactStart); return cs, ok }
+func (e Event) CompactEnd() (CompactEnd, bool)     { ce, ok := e.Data.(CompactEnd); return ce, ok }
 
 // CompactStart carries the pre-compaction message count for the OnCompactStart
 // event so the progress line can read "Compacting N messages…".
 type CompactStart struct {
 	Count int
+}
+
+// CompactEnd carries what the conversation was left holding, and why it was
+// left that way when it was not shortened.
+type CompactEnd struct {
+	Count int
+	Err   error
 }
 
 // CompactInfo carries compaction details for the OnCompact event.
@@ -405,7 +422,7 @@ func TurnEvent(agentID string, r Result) Event { return Event{Type: OnTurn, Sour
 func PreInferEvent(agentID string, ctx InferenceContext) Event {
 	return Event{Type: PreInfer, Source: agentID, Data: ctx}
 }
-func PostInferEvent(agentID string, r *InferResponse) Event {
+func PostInferEvent(agentID string, r *ai.Response) Event {
 	return Event{Type: PostInfer, Source: agentID, Data: r}
 }
 func PreToolEvent(tc ToolCall) Event    { return Event{Type: PreTool, Source: tc.Name, Data: tc} }
@@ -416,6 +433,9 @@ func CompactEvent(agentID string, info CompactInfo) Event {
 func CompactStartEvent(agentID string, cs CompactStart) Event {
 	return Event{Type: OnCompactStart, Source: agentID, Data: cs}
 }
+func CompactEndEvent(agentID string, ce CompactEnd) Event {
+	return Event{Type: OnCompactEnd, Source: agentID, Data: ce}
+}
 
 func SystemChangeEvent(agentID string, c SystemChange) Event {
 	return Event{Type: OnSystemChange, Source: agentID, Data: c}
@@ -425,11 +445,15 @@ func ToolsChangeEvent(agentID string, c ToolsChange) Event {
 	return Event{Type: OnToolsChange, Source: agentID, Data: c}
 }
 
-// unconfigured is the client an agent is built on before it has a real one.
-// Every call replaces it in PreInfer; reaching it at all would mean San handed
-// the loop an agent it never configured, so it says exactly that rather than
-// failing as though a model had been asked and had not answered.
-var unconfigured = ai.NewClientWithDriver(unconfiguredDriver{}, ai.Model{ID: "unconfigured", API: "stub"})
+// clientFromPreInfer is the client the agent is built on, named for where the
+// real one comes from: San cannot supply it here, because which client answers
+// a turn depends on what that turn sends, so PreInfer resolves it per call with
+// the conversation in hand and replaces this every time.
+//
+// Reaching it therefore means San handed the loop an agent it never configured,
+// and it says exactly that rather than failing as though a model had been asked
+// and had not answered.
+var clientFromPreInfer = ai.NewClientWithDriver(unconfiguredDriver{}, ai.Model{ID: "unconfigured", API: "stub"})
 
 type unconfiguredDriver struct{}
 

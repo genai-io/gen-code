@@ -29,18 +29,18 @@ func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) 
 
 func (m *mockLLMProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	m.lastOpts = CompletionOptions{SystemPrompt: req.System}
-	resp := CompletionResponse{Content: "no more responses", StopReason: "end_turn"}
+	resp := CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
 	if m.callIdx < len(m.responses) {
 		resp = m.responses[m.callIdx]
 		m.callIdx++
 	}
 	return func(yield func(ai.Delta, error) bool) {
-		if resp.Content != "" {
-			yield(ai.Delta{Block: ai.TextBlock(resp.Content)}, nil)
+		if resp.Content.Text() != "" {
+			yield(ai.Delta{Block: ai.TextBlock(resp.Content.Text())}, nil)
 			yield(ai.Delta{EndBlock: true}, nil)
 		}
 		yield(ai.Delta{StopReason: ai.StopEndTurn, Usage: &ai.Usage{
-			Input: resp.Usage.InputTokens, Output: resp.Usage.OutputTokens,
+			Input: resp.Usage.Input, Output: resp.Usage.Output,
 		}}, nil)
 	}
 }
@@ -68,7 +68,7 @@ func (m *mockLimitFetcherProvider) FetchModelLimits(_ context.Context, _ string)
 func TestCompleteCollectsTheStream(t *testing.T) {
 	mp := &mockLLMProvider{
 		responses: []CompletionResponse{
-			{Content: "hello", StopReason: "end_turn", Usage: Usage{InputTokens: 10, OutputTokens: 5}},
+			{Content: ai.TextContent("hello"), StopReason: ai.StopEndTurn, Usage: Usage{Input: 10, Output: 5}},
 		},
 	}
 	l := &Client{provider: mp, model: "test-model", maxTokens: 4096}
@@ -78,15 +78,15 @@ func TestCompleteCollectsTheStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if resp.Content != "hello" {
-		t.Errorf("expected 'hello', got '%s'", resp.Content)
+	if resp.Content.Text() != "hello" {
+		t.Errorf("expected 'hello', got '%s'", resp.Content.Text())
 	}
 }
 
 func TestLLMComplete(t *testing.T) {
 	mp := &mockLLMProvider{
 		responses: []CompletionResponse{
-			{Content: "summary", StopReason: "end_turn"},
+			{Content: ai.TextContent("summary"), StopReason: ai.StopEndTurn},
 		},
 	}
 	l := &Client{provider: mp, model: "test-model"}
@@ -95,8 +95,8 @@ func TestLLMComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if resp.Content != "summary" {
-		t.Errorf("expected 'summary', got '%s'", resp.Content)
+	if resp.Content.Text() != "summary" {
+		t.Errorf("expected 'summary', got '%s'", resp.Content.Text())
 	}
 }
 
@@ -382,8 +382,8 @@ func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
-	if resp.Content != "recovered" {
-		t.Fatalf("Complete() content = %q, want recovered", resp.Content)
+	if resp.Content.Text() != "recovered" {
+		t.Fatalf("Complete() content = %q, want recovered", resp.Content.Text())
 	}
 	if provider.calls != 2 {
 		t.Fatalf("Stream() calls = %d, want 2", provider.calls)

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,10 +22,10 @@ func TestOnInferenceUsesLatestCallNotAccumulated(t *testing.T) {
 	m := &model{}
 
 	// First infer: a large cached prompt. ctx = full prompt (fresh + cached).
-	m.OnInference(&core.InferResponse{Usage: core.Usage{
-		InputTokens:          500,
-		OutputTokens:         80,
-		CacheReadInputTokens: 140000,
+	m.OnInference(&ai.Response{Usage: core.Usage{
+		Input:     500,
+		Output:    80,
+		CacheRead: 140000,
 	}})
 	if m.env.InputTokens != 140500 || m.env.OutputTokens != 80 {
 		t.Fatalf("first update = in:%d out:%d, want in:140500 out:80", m.env.InputTokens, m.env.OutputTokens)
@@ -31,10 +33,10 @@ func TestOnInferenceUsesLatestCallNotAccumulated(t *testing.T) {
 
 	// Second infer in the same turn: ctx must become THIS call's full context,
 	// not the sum of both calls (which would be 281800).
-	m.OnInference(&core.InferResponse{Usage: core.Usage{
-		InputTokens:          300,
-		OutputTokens:         25,
-		CacheReadInputTokens: 141000,
+	m.OnInference(&ai.Response{Usage: core.Usage{
+		Input:     300,
+		Output:    25,
+		CacheRead: 141000,
 	}})
 	if m.env.InputTokens != 141300 || m.env.OutputTokens != 25 {
 		t.Fatalf("latest update = in:%d out:%d, want in:141300 out:25 (latest full context, not accumulated)", m.env.InputTokens, m.env.OutputTokens)
@@ -47,11 +49,11 @@ func TestOnInferenceUsesLatestCallNotAccumulated(t *testing.T) {
 func TestOnInferenceCountsCachedPromptInContext(t *testing.T) {
 	m := &model{}
 
-	m.OnInference(&core.InferResponse{Usage: core.Usage{
-		InputTokens:              500,
-		OutputTokens:             80,
-		CacheReadInputTokens:     140000,
-		CacheCreationInputTokens: 1000,
+	m.OnInference(&ai.Response{Usage: core.Usage{
+		Input:      500,
+		Output:     80,
+		CacheRead:  140000,
+		CacheWrite: 1000,
 	}})
 
 	if want := 141500; m.env.InputTokens != want {
@@ -79,7 +81,7 @@ func TestOnInferenceClearsCompactedStatusOnNextInfer(t *testing.T) {
 	m := &model{}
 	m.userInput.Provider.StatusMessage = "compacted"
 
-	m.OnInference(&core.InferResponse{Usage: core.Usage{InputTokens: 400, OutputTokens: 25}})
+	m.OnInference(&ai.Response{Usage: core.Usage{Input: 400, Output: 25}})
 
 	if m.userInput.Provider.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want compacted badge cleared on next infer", m.userInput.Provider.StatusMessage)

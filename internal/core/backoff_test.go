@@ -43,18 +43,6 @@ func TestBackoffSleepHonorsCancel(t *testing.T) {
 	}
 }
 
-func TestStreamSentinelsAreRetryable(t *testing.T) {
-	for _, e := range []error{errStreamStalled, errStreamTruncated} {
-		var re RetryableError
-		if !errors.As(e, &re) {
-			t.Fatalf("%v should satisfy RetryableError", e)
-		}
-		if re.RetryAfter() != 0 {
-			t.Fatalf("%v RetryAfter = %v, want 0", e, re.RetryAfter())
-		}
-	}
-}
-
 // scriptedLLM fails the first `failures` Infer calls with failErr, then
 // completes with a text-only end_turn response.
 type scriptedLLM struct {
@@ -73,7 +61,7 @@ func (s *scriptedLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, e
 			yield(ai.Delta{}, s.failErr)
 			return
 		}
-		for _, d := range deltas(InferResponse{Content: "ok", StopReason: StopEndTurn}) {
+		for _, d := range deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}) {
 			if !yield(d, nil) {
 				return
 			}
@@ -116,9 +104,9 @@ func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Durat
 }
 
 // stalled is what a driver reports when a stream goes quiet: the loop replays
-// what ai.IsRetryable admits, and a network failure is one. San's own
-// RetryableError is still the llm layer's — its one-shot Complete has a retry
-// of its own — but the agent loop reads the SDK's classification now.
+// what ai.IsRetryable admits, and a network failure is one. The backoff below
+// it is San's only because two retry loops that are not the agent's still
+// need one.
 var stalled = &ai.Error{Kind: ai.KindNetwork, Message: "stream stalled"}
 
 func TestThinkActRetriesTransientStreamError(t *testing.T) {
@@ -156,10 +144,8 @@ func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
 }
 
 func TestThinkActDoesNotRetryFatalError(t *testing.T) {
-	// A 400 as the driver hands it over — typed, so classification leaves it
-	// fatal. An *untyped* terminal failure is deliberately the other way: a
-	// transport routinely loses the type, and ClassifyStream gives that the
-	// benefit of the doubt (see TestThinkActRetriesAnOpaqueStreamFailure).
+	// A 400 as the driver hands it over — typed, so ai.IsRetryable leaves it
+	// fatal.
 	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindInvalidRequest, Status: 400,
 		Message: "bad request"}, failures: 99}
 	a := newRetryAgent(t, llm, 3, 0)

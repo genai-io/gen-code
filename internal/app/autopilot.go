@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
@@ -249,7 +249,7 @@ func (m *model) missionRefine(ctx context.Context, draft string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(resp.Content), nil
+	return strings.TrimSpace(resp.Content.Text()), nil
 }
 
 // ── TurnEnd steer (#5): auto-continuation ───────────────────────────────
@@ -316,16 +316,18 @@ const continueWithoutMissionTask = `No mission was briefed: steer toward the obj
 // (the step budget, exhausted output-truncation recovery) parked the agent
 // mid-work, which is exactly when an unattended run most needs picking back up.
 // A cancel is the human taking the helm and a stop hook is a configured halt —
-// neither is the copilot's to overrule. One switch, so a stop reason can never
-// be resumable without also saying why.
+// neither is the copilot's to overrule, and a refusal is the model declining —
+// asking it to carry on gets another refusal. One switch, so a stop reason can
+// never be resumable without also saying why, and anything the SDK grows that
+// San has not thought about lands on "not resumable", which is the safe half.
 func autopilotStopEvidence(reason core.StopReason) (resumable bool, situation string) {
 	switch reason {
 	case core.StopEndTurn:
 		return true, ""
 	case core.StopMaxSteps:
 		return true, "the previous turn hit its step limit and stopped mid-work — it was not finished"
-	case core.StopMaxOutputRecoveryExhausted:
-		return true, "the previous turn's output was truncated and could not be recovered — it was not finished"
+	case core.StopTruncated:
+		return true, "the previous turn's answer was cut off, and carrying on did not finish it"
 	default:
 		return false, ""
 	}
@@ -738,11 +740,10 @@ func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse f
 				return out, nil
 			}
 		} else {
-			var retryable core.RetryableError
-			if !errors.As(core.Classify(err), &retryable) {
+			if !ai.IsRetryable(err) {
 				return zero, err
 			}
-			retryFloor = retryable.RetryAfter() // a 429's Retry-After outranks our own spacing
+			retryFloor = ai.RetryAfter(err) // a 429's Retry-After outranks our own spacing
 		}
 		if attempt >= autopilotSteerAttempts {
 			return zero, err
@@ -785,7 +786,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(resp.Content), nil
+	return strings.TrimSpace(resp.Content.Text()), nil
 }
 
 // autopilotAsync runs one steer inference off the UI goroutine on a shared 60s

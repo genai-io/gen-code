@@ -284,11 +284,11 @@ func TestAutopilotSaveWithSuggestOffClearsPromptSuggestion(t *testing.T) {
 
 func TestAutopilotStopEvidence(t *testing.T) {
 	resumable := map[core.StopReason]bool{
-		core.StopEndTurn:                    true,
-		core.StopMaxSteps:                   true,
-		core.StopMaxOutputRecoveryExhausted: true,
-		core.StopCancelled:                  false, // the human took the helm
-		core.StopHook:                       false, // a configured halt
+		core.StopEndTurn:   true,
+		core.StopMaxSteps:  true,
+		core.StopTruncated: true,
+		core.StopCanceled:  false, // the human took the helm
+		core.StopHook:      false, // a configured halt
 	}
 	for reason, want := range resumable {
 		got, situation := autopilotStopEvidence(reason)

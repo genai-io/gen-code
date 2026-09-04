@@ -49,11 +49,9 @@ func (t *talkingLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, er
 	if t.quietAfterFirst && t.calls > 1 {
 		text = ""
 	}
-	return yieldAll(deltas(InferResponse{
-		Content:    text,
-		StopReason: StopToolUse,
-		ToolCalls:  []ToolCall{{ID: "call-1", Name: "noop", Input: "{}"}},
-	}))
+	content := ai.TextContent(text)
+	content = append(content, ai.ToolCallBlock(ToolCall{ID: "call-1", Name: "noop", Input: "{}"}))
+	return yieldAll(deltas(ai.Response{Content: content, StopReason: ai.StopToolUse}))
 }
 
 // newContentAgent mirrors newRetryAgent in retry_test.go: build, seed a user
@@ -126,8 +124,8 @@ func TestThinkActPreservesPartialOutputOnCancel(t *testing.T) {
 	if result == nil {
 		t.Fatal("ThinkAct returned nil Result on cancel; observers need the turn boundary")
 	}
-	if result.StopReason != StopCancelled {
-		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
+	if result.StopReason != StopCanceled {
+		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCanceled)
 	}
 	// subagent.buildUnfinishedAgentResult documents that a cancelled run's
 	// partial content travels back with the error, and RunBackground gates that
