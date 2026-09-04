@@ -252,14 +252,13 @@ func NewAgent(cfg Config) Agent {
 // Result represents the outcome of one completed turn (end_turn).
 // Emitted to Outbox as Event{Type: OnTurn, Data: result}.
 type Result struct {
-	Content      string     // final text output of this turn
-	Messages     []Message  // full conversation history
-	Steps        int        // LLM inference steps in this turn
-	ToolUses     int        // tool calls in this turn
-	InputTokens  int        // input tokens consumed
-	OutputTokens int        // output tokens produced
-	StopReason   StopReason // why the loop stopped
-	StopDetail   string     // human-readable detail (e.g. hook block reason)
+	Content    string     // final text output of this turn
+	Messages   []Message  // full conversation history
+	Steps      int        // LLM inference steps in this turn
+	ToolUses   int        // tool calls in this turn
+	Usage      Usage      // what every inference in this turn spent, summed
+	StopReason StopReason // why the loop stopped
+	StopDetail string     // human-readable detail (e.g. hook block reason)
 }
 
 // EventType identifies an agent lifecycle event.

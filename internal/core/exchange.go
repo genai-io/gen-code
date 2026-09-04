@@ -79,8 +79,7 @@ func (a *agent) translate(ctx context.Context, event sdkagent.Event, out *Result
 			return
 		}
 		out.Steps++
-		out.InputTokens += e.Response.Usage.Input
-		out.OutputTokens += e.Response.Usage.Output
+		out.Usage.Add(e.Response.Usage)
 		a.emit(ctx, PostInferEvent(a.id, e.Response))
 
 	case sdkagent.MessageAdded:

@@ -7,7 +7,6 @@ import (
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -163,8 +162,8 @@ func (e *Executor) logRunCompletion(run *preparedRun, result *core.Result, succe
 		zap.String("agent", run.cfg.displayName),
 		zap.String("stopReason", string(result.StopReason)),
 		zap.Int("steps", result.Steps),
-		zap.Int("inputTokens", result.InputTokens),
-		zap.Int("outputTokens", result.OutputTokens),
+		zap.Int("inputTokens", result.Usage.Input),
+		zap.Int("outputTokens", result.Usage.Output),
 	}
 	if success {
 		log.Logger().Info("Agent completed", logFields...)
@@ -218,7 +217,7 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 		Messages:       result.Messages,
 		StepCount:      result.Steps,
 		ToolUses:       result.ToolUses,
-		TokenUsage:     llm.Usage{Input: result.InputTokens, Output: result.OutputTokens},
+		TokenUsage:     result.Usage,
 		Duration:       time.Since(run.startedAt),
 		Activity:       append([]string(nil), run.activity...),
 		Error:          errMsg,
