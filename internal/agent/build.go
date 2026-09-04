@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -183,6 +184,11 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 // Permission is the caller's: a run with nobody at the keyboard cannot prompt,
 // so BuildParams.PermissionRules decides alone.
 func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (*core.Result, error) {
+	// The project's own instructions, the way the interactive path reads them.
+	// A run without them answers differently in the same repo, which is the
+	// one thing a headless run must not do.
+	message = withInstructions(p.CWD, message)
+
 	if onText != nil {
 		caller := p.OnEvent
 		p.OnEvent = func(ev core.Event) {
@@ -205,4 +211,28 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	}
 	ag.Append(ctx, message)
 	return ag.ThinkAct(ctx)
+}
+
+// withInstructions attaches the AGENTS.md chain to the message that opens a
+// headless run, as a reminder rather than a prompt section — the same shape
+// and the same scopes the interactive path uses, so what the model is told
+// does not depend on which one asked.
+func withInstructions(cwd string, msg core.Message) core.Message {
+	var user, project []string
+	for _, f := range system.LoadMemoryFiles(cwd) {
+		if f.Level == "global" {
+			user = append(user, f.Content)
+		} else {
+			project = append(project, f.Content)
+		}
+	}
+	reminders := []string{
+		reminder.WrapMemory("user", strings.Join(user, "\n\n")),
+		reminder.WrapMemory("project", strings.Join(project, "\n\n")),
+	}
+	text := reminder.AttachToContent(msg.Text(), reminders)
+	if text == msg.Text() {
+		return msg
+	}
+	return core.UserMessage(text, nil)
 }
